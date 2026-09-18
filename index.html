@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cyber Requiem - Roguelike</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Fonte pixel art via Google Fonts (opcional, fallback para monospace) -->
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app">
+    <!-- Menu Inicial -->
+    <div id="menuScreen" class="screen active">
+      <div class="menu-content">
+        <h1 class="game-title">
+          <span class="title-main">Cyber Requiem</span>
+          <span class="title-sub">Salve seu código</span>
+          <span class="title-tag">ROGUELIKE</span>
+        </h1>
+        <p class="menu-desc">Entre no mundo cibernético. Hackeie sistemas, neutralize vírus e sobreviva às salas corrompidas.</p>
+        <div class="menu-buttons">
+          <button id="btnPlay" class="btn btn-primary">▶ JOGAR</button>
+          <button id="btnControls" class="btn btn-secondary">⌨ CONTROLES</button>
+        </div>
+        <p class="menu-footer">Cyber Requiem v6.0 • Programadores👤 + Boss da Escada • 5 Fases • HTML5 Canvas</p>
+        <p class="menu-footer">Feito por Leonardo Schoeller</p>
+      </div>
+      <div class="bg-decoration"></div>
+    </div>
+
+    <!-- Tela de Seleção de Personagem - Menu Próprio -->
+    <div id="characterScreen" class="screen">
+      <div class="panel character-panel">
+        <div class="character-header">
+          <div class="character-header-top">
+            <h2>👥 ESCOLHA SEU PROGRAMADOR</h2>
+            <span class="character-version">7 personagens • Estrutura modular</span>
+          </div>
+          <p class="character-subtitle">Cada personagem mantém habilidades e equipamentos exclusivos. Código modular permite adicionar novos sem duplicar sistemas.</p>
+        </div>
+        <div id="characterSelect" class="character-select large">
+          <div class="char-card" data-char="jg" tabindex="0" role="button" aria-label="Selecionar JG">
+            <div class="char-icon" style="color:#facc15">🏏</div>
+            <div class="char-name">JG</div>
+            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥</span> <span style="color:#8a8198;font-size:10px">2 corações</span></div>
+            <div class="char-weapon">🏏 Bastão • Casaco cinza</div>
+            <p class="char-desc">2 ♥ • <b style="color:#facc15">Bastão exclusivo</b> — casaco cinza, camisa amarela que muda de cor ao arremessar, calça azul-escuro, sem boné. Rápido com bastão, lento sem. Arremesso giratório com dano na ida e na volta e reflete tiros inimigos.</p>
+            <span class="char-badge jg">JG • ÁGIL • REFLETE</span>
+          </div>
+          <div class="char-card" data-char="kinight" tabindex="0" role="button" aria-label="Selecionar Kinight">
+            <div class="char-icon" style="color:#60a5fa">🛡️</div>
+            <div class="char-name">Kinight</div>
+            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥</span> <span style="color:#8ecae6">♥</span> <span style="color:#8a8198;font-size:10px">3 + 1 cibernético</span></div>
+            <div class="char-weapon">⚔️ Espada</div>
+            <p class="char-desc">3 ♥ +1 ⚙ • <b style="color:#60a5fa">Só Espada</b> — armadura completa, não equipa outras armas.</p>
+            <span class="char-badge kinight">KINIGHT • TANQUE</span>
+          </div>
+          <div class="char-card jl-card" data-char="jl" tabindex="0" role="button" aria-label="Selecionar JL">
+            <div class="char-icon jl-icon" style="color:#ff6b9d"><span class="jl-67">67</span></div>
+            <div class="char-name">JL <span style="font-size:7px; letter-spacing:0.8px; color:#ff8fbc; background:rgba(255,107,157,0.16); border:1px solid rgba(255,107,157,0.28); padding:2px 5px; border-radius:999px; vertical-align:middle; margin-left:4px;">FARMAR</span></div>
+            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥</span> <span style="color:#8a8198;font-size:10px">3 corações</span> <span style="font-size:9px; color:#ff6b9d; background:rgba(255,107,157,0.12); border:1px solid rgba(255,107,157,0.22); padding:2px 6px; border-radius:999px;">EXCLUSIVO 67</span></div>
+            <div class="char-weapon"><span style="color:#ff6b9d; text-shadow:0 0 6px rgba(255,107,157,0.55)">◉ 67</span> Farmar Aura • Pistola</div>
+            <p class="char-desc"><b style="color:#ff6b9d">Farmar Aura [E] 12s</b> cria <b>área 3.8s</b> que <b style="color:#ff8fbc">causa dano 1 a cada 420ms + empurra</b> inimigos. Aura segue você — 67 pulsante + setas de repulsão.</p>
+            <div style="display:flex; gap:4px; flex-wrap:wrap; margin-top:6px;">
+              <span style="font-family:system-ui,sans-serif; font-size:9px; font-weight:800; color:#ff6b9d; background:rgba(255,107,157,0.14); border:1px solid rgba(255,107,157,0.24); padding:3px 6px; border-radius:999px;">155 RAIO</span>
+              <span style="font-family:system-ui,sans-serif; font-size:9px; font-weight:800; color:#ff8fbc; background:rgba(255,107,157,0.10); border:1px solid rgba(255,107,157,0.18); padding:3px 6px; border-radius:999px;">12s COOLDOWN</span>
+              <span style="font-family:system-ui,sans-serif; font-size:9px; font-weight:800; color:#fff; background:rgba(255,107,157,0.16); border:1px solid rgba(255,107,157,0.22); padding:3px 6px; border-radius:999px;">DANO EM ÁREA</span>
+            </div>
+            <span class="char-badge jl">JL • AURA 67 • NEON</span>
+          </div>
+          <div class="char-card" data-char="neutro" tabindex="0" role="button" aria-label="Selecionar Neutro">
+            <div class="char-icon" style="color:#d1d5db">👤</div>
+            <div class="char-name">Neutro</div>
+            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥</span> <span style="color:#8a8198;font-size:10px">3 corações</span></div>
+            <div class="char-weapon"> Pistola</div>
+            <p class="char-desc">3 ♥ • <b>Pistola padrão</b> — sem exclusivos, equilíbrio puro. Ideal para iniciantes, pode usar qualquer arma/upgrade.</p>
+            <span class="char-badge neutro">NEUTRO • EQUILÍBRIO</span>
+          </div>
+          <div class="char-card oli-card" data-char="oli" tabindex="0" role="button" aria-label="Selecionar Oli">
+            <div class="char-icon oli-icon" style="color:#a78bfa"><span class="oli-chess">♞</span></div>
+            <div class="char-name">Oli <span style="font-size:7px; letter-spacing:0.8px; color:#c4b5fd; background:rgba(167,139,250,0.16); border:1px solid rgba(167,139,250,0.28); padding:2px 5px; border-radius:999px; vertical-align:middle; margin-left:4px;">XADREZ</span></div>
+            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥</span> <span style="color:#8a8198;font-size:10px">3 corações</span> <span style="font-size:9px; color:#a78bfa; background:rgba(167,139,250,0.12); border:1px solid rgba(167,139,250,0.22); padding:2px 6px; border-radius:999px;">INVOCADOR</span></div>
+            <div class="char-weapon"><span style="color:#a78bfa; text-shadow:0 0 6px rgba(167,139,250,0.55)">♞</span> Xadrez • Pistola</div>
+            <p class="char-desc"><b style="color:#a78bfa">Xadrez [E] 10s</b> ciclo <b>♜ Torre</b> cruz+investida, <b>♝ Bispo</b> diagonal ricochete, <b>♛ Rainha</b> atiradora, <b>♚ Rei</b> invoca 3×<b>♟ Peão</b> • Peão promove ♛ após 2 abates.</p>
+            <div style="display:flex; gap:4px; flex-wrap:wrap; margin-top:6px;">
+              <span style="font-family:system-ui,sans-serif; font-size:9px; font-weight:800; color:#a78bfa; background:rgba(167,139,250,0.14); border:1px solid rgba(167,139,250,0.24); padding:3px 6px; border-radius:999px;">4 PEÇAS</span>
+              <span style="font-family:system-ui,sans-serif; font-size:9px; font-weight:800; color:#c4b5fd; background:rgba(167,139,250,0.10); border:1px solid rgba(167,139,250,0.18); padding:3px 6px; border-radius:999px;">10s COOLDOWN</span>
+              <span style="font-family:system-ui,sans-serif; font-size:9px; font-weight:800; color:#fff; background:rgba(167,139,250,0.16); border:1px solid rgba(167,139,250,0.22); padding:3px 6px; border-radius:999px;">INVOCAÇÃO</span>
+            </div>
+            <span class="char-badge oli">OLI • ♜♝♛♚ • TÁTICO</span>
+          </div>
+          <div class="char-card" data-char="ash" tabindex="0" role="button" aria-label="Selecionar Ash">
+            <div class="char-icon" style="color:#ff3b30">🪚</div>
+            <div class="char-name">Ash</div>
+            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥</span> <span style="color:#8a8198;font-size:10px">3 corações</span></div>
+            <div class="char-weapon">🪚 Motosserra</div>
+            <p class="char-desc">3 ♥ • <b style="color:#ff3b30">Motosserra fixa</b> curto reto + cura • <b>Sem especiais</b> • <b>[E] troca arma</b> • Pode carregar +1 arma.</p>
+            <span class="char-badge ash">ASH • SERRA</span>
+          </div>
+          <div class="char-card dev-card" data-char="dev" tabindex="0" role="button" aria-label="Selecionar Dev">
+            <div class="char-icon dev-icon" style="color:#7af2ff">👓</div>
+            <div class="char-name">Dev <span style="font-size:7px; letter-spacing:0.8px; color:#b8d0ff; background:rgba(122,242,255,0.16); border:1px solid rgba(122,242,255,0.28); padding:2px 5px; border-radius:999px; vertical-align:middle; margin-left:4px;">CIENTISTA</span></div>
+            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥</span> <span style="color:#8a8198;font-size:10px">3 corações</span> <span style="font-size:9px; color:#7af2ff; background:rgba(122,242,255,0.12); border:1px solid rgba(122,242,255,0.22); padding:2px 6px; border-radius:999px;">LAZER COD.</span></div>
+            <div class="char-weapon"><span style="color:#7af2ff; text-shadow:0 0 6px rgba(122,242,255,0.55)">✦</span> Lazer Codificado • Jaleco branco</div>
+            <p class="char-desc"><b style="color:#7af2ff">Lazer Codificado [Segure]</b> carrega até <b>100%</b> para disparar <b>retângulo Brimstone reto</b> com <b>ondulações</b> • Dano moderado • Alcance longo • <b style="color:#ffd8a8">Sobremesa</b> mini raios a cada <b>10%</b>.</p>
+            <div style="display:flex; gap:4px; flex-wrap:wrap; margin-top:6px;">
+              <span style="font-family:system-ui,sans-serif; font-size:9px; font-weight:800; color:#7af2ff; background:rgba(122,242,255,0.14); border:1px solid rgba(122,242,255,0.24); padding:3px 6px; border-radius:999px;">CARGA 100%</span>
+              <span style="font-family:system-ui,sans-serif; font-size:9px; font-weight:800; color:#b8d0ff; background:rgba(122,242,255,0.10); border:1px solid rgba(122,242,255,0.18); padding:3px 6px; border-radius:999px;">MÉDIA DISTÂNCIA</span>
+              <span style="font-family:system-ui,sans-serif; font-size:9px; font-weight:800; color:#ffd8a8; background:rgba(255,216,168,0.14); border:1px solid rgba(255,216,168,0.22); padding:3px 6px; border-radius:999px;">🧁 SOBREMESA</span>
+            </div>
+            <span class="char-badge dev">DEV • ÓCULOS • LAZER</span>
+          </div>
+        </div>
+        <div class="character-footer">
+          <button id="btnCharBack" class="btn btn-secondary">↩ VOLTAR</button>
+          <button id="btnPlayChar" class="btn btn-primary" disabled>▶ JOGAR</button>
+          <span id="characterHint" class="character-hint">Selecione um personagem para começar</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tela de Controles - PAINEL MELHORADO -->
+    <div id="controlsScreen" class="screen">
+      <div class="panel controls-panel">
+        <!-- Header -->
+        <div class="controls-header">
+          <div class="controls-header-top">
+            <h2>⌨ CONTROLES & GUIA</h2>
+            <span class="controls-version">Cyber Requiem v6.0 • 5 Atos • Power Star ⭐</span>
+          </div>
+          <p class="controls-subtitle">Domine os comandos, armas e segredos. Tudo que você precisa para sobreviver ao mundo cibernético até a Sala da Escada.</p>
+          <div class="controls-quickstats">
+            <span class="qstat"><i>🎯</i> 5 Fases</span>
+            <span class="qstat"><i>⭐</i> Power Star</span>
+            <span class="qstat"><i>◉</i> Boss Final</span>
+            <span class="qstat"><i>♥</i> 3 Corações</span>
+          </div>
+        </div>
+
+        <div class="controls-body">
+          <!-- Loadout Atual (dinâmico) -->
+          <div id="controlsLoadout" class="controls-loadout hidden" style="display:none">
+            <div class="loadout-header">
+              <span class="loadout-title">🎒 Seu Loadout Atual</span>
+              <span id="loadoutCharacter" class="loadout-char"></span>
+            </div>
+            <div id="loadoutContent" class="loadout-content"></div>
+            <p class="loadout-hint">Mostra personagem, arma e especial equipados • Atualiza ao pausar</p>
+          </div>
+          <!-- COMANDOS -->
+          <details class="controls-section" open>
+            <summary class="section-summary">
+              <span class="section-icon">🎮</span>
+              <span class="section-title">Comandos Essenciais</span>
+              <span class="section-badge">6 controles</span>
+            </summary>
+            <div class="controls-grid modern">
+              <div class="control-card">
+                <div class="control-card-head">
+                  <span class="cc-icon">🕹️</span>
+                  <span class="cc-title">Movimentação</span>
+                  <span class="cc-keys"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></span>
+                </div>
+                <p class="cc-desc">8 direções com diagonal normalizada. Segure duas teclas para mover na diagonal sem perder velocidade.</p>
+                <span class="cc-hint">Diagonal = 1/√2 • Colisão com paredes deslizante</span>
+              </div>
+              <div class="control-card">
+                <div class="control-card-head">
+                  <span class="cc-icon">🎯</span>
+                  <span class="cc-title">Mira & Tiro</span>
+                  <span class="cc-keys"><span class="key">↑</span><span class="key">←</span><span class="key">↓</span><span class="key">→</span></span>
+                </div>
+                <p class="cc-desc">8 direções. Combine 2 setas para diagonal. Segurar = carrega arma <span style="color:#a78bfa">CARREGADA</span> (1 → 4 dano).</p>
+                <span class="cc-hint">Metralhadora: aquecimento • Carregada: barra roxa sobre o jogador</span>
+              </div>
+              <div class="control-card accent-blue">
+                <div class="control-card-head">
+                  <span class="cc-icon">💨</span>
+                  <span class="cc-title">Dash</span>
+                  <span class="cc-keys"><span class="key wide">SHIFT</span></span>
+                </div>
+                <p class="cc-desc">Impulso de <b>160ms</b> a <b>8.5 vel</b> + invulnerabilidade <b>220ms</b>. Cooldown 900ms.</p>
+                <span class="cc-hint">Funciona parado (usa última direção). Deixa <span style="color:#ff6a00">🔥 fogo</span> se tiver Rastro de Fogo.</span>
+              </div>
+              <div class="control-card accent-yellow">
+                <div class="control-card-head">
+                  <span class="cc-icon">🔄</span>
+                  <span class="cc-title">Trocar Arma</span>
+                  <span class="cc-keys"><span class="key">Q</span></span>
+                </div>
+                <p class="cc-desc">Troca com arma no chão a <b>58px</b>. A equipada vai ao chão — sem duplicação. Hint dourado aparece quando próximo.</p>
+                <span class="cc-hint">Primária ↔ Secundária • Cancela carregamento</span>
+              </div>
+              <div class="control-card accent-cyan">
+                <div class="control-card-head">
+                  <span class="cc-icon">✦</span>
+                  <span class="cc-title">Especial [E]</span>
+                  <span class="cc-keys"><span class="key wide">E</span></span>
+                </div>
+                <p class="cc-desc">Ativa item equipado. <b>Espada Flamejante</b> explosão 120px • <b>Escudo</b> absorve <b>1 dano</b> (5s ou até absorver) • <b>Flecha Stand</b> sorteia lentidão/aliado/paralisia.</p>
+                <span class="cc-hint">Prioridade: pegar/trocar no chão > ativar. Cooldown na HUD com círculo.</span>
+              </div>
+              <div class="control-card accent-gold">
+                <div class="control-card-head">
+                  <span class="cc-icon">⭐</span>
+                  <span class="cc-title">Power Star</span>
+                  <span class="cc-keys"><span class="key star">⭐</span></span>
+                </div>
+                <p class="cc-desc"><span style="color:#ffd700"><b>RARO</b></span> — Fica <b>7s invencível</b> + dano <b>3</b> ao encostar. Aura estrelada orbitando.</p>
+                <span class="cc-hint">Cooldown <b>50s</b> na HUD • Não acumula com Dash/Escudo</span>
+              </div>
+              <div class="control-card accent-blue">
+                <div class="control-card-head">
+                  <span class="cc-icon">🐱</span>
+                  <span class="cc-title">Gato Antivírus</span>
+                  <span class="cc-keys"><span class="key">PASSIVA</span></span>
+                </div>
+                <p class="cc-desc"><span style="color:#3b82f6"><b>PASSIVA INCOMUM</b></span> — Ao coletar (item azul no chão) invoca <b>gato azul</b> que persegue, ataca e atordoa <b>1.8s</b>, volta e fica <b>2s</b> sem atacar. Fica para sempre.</p>
+                <span class="cc-hint">Item normal • Não usa [E] • Acompanha entre salas • Brilho azul</span>
+              </div>
+            </div>
+          </details>
+
+          <!-- PERSONAGENS -->
+          <details class="controls-section" open>
+            <summary class="section-summary">
+              <span class="section-icon">👥</span>
+              <span class="section-title">Personagens</span>
+              <span class="section-badge">7 personagens</span>
+            </summary>
+            <div class="characters-guide" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px;">
+              <div class="arsenal-card" style="border-color:rgba(250,204,21,0.22)">
+                <div class="arsenal-head"><span class="arsenal-name" style="color:#facc15">JG 🏏</span><span class="rarity-badge comum">2 ♥</span></div>
+                <div class="arsenal-stats"><span>4.45 vel</span><span>2.05 sem</span><span>BASTÃO</span></div>
+                <p class="arsenal-desc"><b>Bastão</b> exclusivo — casaco cinza, camisa amarela (fica laranja/branca ao carregar), calça azul-escuro, sem boné. Segure seta para carregar arremesso giratório (340 alcance, 2.8 dano) com dano na ida e na volta e reflete projéteis inimigos.</p>
+              </div>
+              <div class="arsenal-card" style="border-color:rgba(96,165,250,0.22)">
+                <div class="arsenal-head"><span class="arsenal-name" style="color:#60a5fa">Kinight 🛡️</span><span class="rarity-badge incomum">3 ♥ +1 ⚙</span></div>
+                <div class="arsenal-stats"><span>ESPADA</span><span>só espada</span><span>ARMADURA</span></div>
+                <p class="arsenal-desc"><b>3 ♥ +1 ⚙</b> (4 ♥ total). <b>Só Espada</b> + <b>armadura completa</b> visual. Não equipa outras armas.</p>
+              </div>
+              <div class="arsenal-card" style="border-color:rgba(255,107,157,0.22)">
+                <div class="arsenal-head"><span class="arsenal-name" style="color:#ff6b9d">JL • 67</span><span class="rarity-badge rara">3 ♥</span></div>
+                <div class="arsenal-stats"><span>PISTOLA</span><span>67 aura</span><span>155 raio</span></div>
+                <p class="arsenal-desc">Começa com <b>pistola</b>. <b>Farmar Aura (67)</b> [E] 12s cooldown: cria <b>área 3.8s</b> que <b>causa dano (1 a cada 420ms) e empurra</b> inimigos.</p>
+              </div>
+              <div class="arsenal-card" style="border-color:rgba(209,213,219,0.22)">
+                <div class="arsenal-head"><span class="arsenal-name" style="color:#d1d5db">Neutro 👤</span><span class="rarity-badge comum">3 ♥</span></div>
+                <div class="arsenal-stats"><span>PISTOLA</span><span>equilíbrio</span><span>versátil</span></div>
+                <p class="arsenal-desc">3 ♥ • <b>Pistola padrão</b> — sem exclusivos, pode usar qualquer arma/upgrade. Perfeito para aprender.</p>
+              </div>
+              <div class="arsenal-card" style="border-color:rgba(167,139,250,0.28)">
+                <div class="arsenal-head"><span class="arsenal-name" style="color:#a78bfa">Oli ♞</span><span class="rarity-badge muito-rara">3 ♥</span></div>
+                <div class="arsenal-stats"><span>PISTOLA</span><span>♜♝♛♚</span><span>INVOCADOR</span></div>
+                <p class="arsenal-desc">3 ♥ • <b>Xadrez ♞</b> [E] 10s: ciclo <b>♜ Torre</b> cruz (V/H)+investida, <b>♝ Bispo</b> diagonal ricochete, <b>♛ Rainha</b> atiradora, <b>♚ Rei</b> +3 peões ♟. Limite 4 peças.</p>
+              </div>
+              <div class="arsenal-card" style="border-color:rgba(255,59,48,0.28)">
+                <div class="arsenal-head"><span class="arsenal-name" style="color:#ff3b30">Ash 🪚</span><span class="rarity-badge incomum">3 ♥</span></div>
+                <div class="arsenal-stats"><span>MOTOSSERRA</span><span>curto reto</span><span>[E] troca</span></div>
+                <p class="arsenal-desc">3 ♥ • <b style="color:#ff3b30">Motosserra fixa</b> curto reto + cura (5 hits = 1♥) • <b>Sem especiais</b> • <b>[E] troca arma</b> • Pode carregar +1 arma.</p>
+              </div>
+              <div class="arsenal-card" style="border-color:rgba(122,242,255,0.28)">
+                <div class="arsenal-head"><span class="arsenal-name" style="color:#7af2ff">Dev 👓</span><span class="rarity-badge comum">3 ♥</span></div>
+                <div class="arsenal-stats"><span>LAZER COD.</span><span>Brimstone</span><span>🧁 Sobremesa</span></div>
+                <p class="arsenal-desc">3 ♥ • Óculos e jaleco branco • <b style="color:#7af2ff">Lazer Codificado</b> retângulo reto <b>Brimstone</b> com <b>ondulações</b> • <b>Segure até 100%</b> • Dano moderado (2.2) • Alcance médio-longo (400) • <b style="color:#ffd8a8">Sobremesa</b> mini a cada 10%.</p>
+              </div>
+            </div>
+            <p class="section-note">Seleção em menu próprio (1 JG • 2 Kinight • 3 JL • 4 Neutro • 5 Oli • 6 Ash • 7 Dev). Estrutura modular: novo personagem = adicionar entrada em <code>CHARACTER_DEFS</code> + hook + peça em <code>OliXadrez</code>.</p>
+          </details>
+
+          <!-- ARSENAL -->
+          <details class="controls-section">
+            <summary class="section-summary">
+              <span class="section-icon">🔫</span>
+              <span class="section-title">Arsenal & Raridades</span>
+              <span class="section-badge">5 armas + 4 raridades</span>
+            </summary>
+            <div class="arsenal-grid">
+              <div class="arsenal-card normal">
+                <div class="arsenal-head"><span class="arsenal-name">NORMAL</span><span class="rarity-badge comum">Comum</span></div>
+                <div class="arsenal-stats"><span>1 proj</span><span>280ms</span><span>380 alcance</span><span>1 dano</span></div>
+                <p class="arsenal-desc">Pistola equilibrada. Com <b>Tiro Duplo</b> vira 2 projéteis lado a lado.</p>
+              </div>
+              <div class="arsenal-card shotgun">
+                <div class="arsenal-head"><span class="arsenal-name" style="color:#ff8c42">SHOTGUN</span><span class="rarity-badge incomum">Incomum</span></div>
+                <div class="arsenal-stats"><span>5 proj cone</span><span>420ms</span><span>240 alcance</span><span>1×5 dano</span></div>
+                <p class="arsenal-desc">Cone curto. Ideal para encurralar Fugitivos.</p>
+              </div>
+              <div class="arsenal-card carregada">
+                <div class="arsenal-head"><span class="arsenal-name" style="color:#a78bfa">CARREGADA</span><span class="rarity-badge comum">Comum</span></div>
+                <div class="arsenal-stats"><span>1 proj</span><span>420ms</span><span>420 alcance</span><span>1→4 dano</span></div>
+                <p class="arsenal-desc">Segure seta para carregar. Máximo = 3 projéteis + perfura (com upgrade).</p>
+              </div>
+              <div class="arsenal-card raio">
+                <div class="arsenal-head"><span class="arsenal-name" style="color:#00e5ff">RAIO ⚡</span><span class="rarity-badge rara">Rara</span></div>
+                <div class="arsenal-stats"><span>pierce</span><span>520ms</span><span>500 alcance</span><span>3 dano</span></div>
+                <p class="arsenal-desc">Perfura inimigos. Com upgrade cadeia atinge +2 alvos.</p>
+              </div>
+              <div class="arsenal-card bazuca">
+                <div class="arsenal-head"><span class="arsenal-name" style="color:#ff3b30">BAZUCA 💥</span><span class="rarity-badge muito-rara">Muito Rara</span></div>
+                <div class="arsenal-stats"><span>área 96</span><span>900ms</span><span>lenta</span><span>5 dano</span></div>
+                <p class="arsenal-desc">Explosão com falloff 100%→50%. Não machuca você.</p>
+              </div>
+              <div class="arsenal-card metralhadora">
+                <div class="arsenal-head"><span class="arsenal-name" style="color:#ff3b30">METRALHADORA</span><span class="rarity-badge rara">Rara</span></div>
+                <div class="arsenal-stats"><span>68ms</span><span>aquecimento</span><span>360 alcance</span></div>
+                <p class="arsenal-desc">Barra TEMP. Superaquece 1.65s. Upgrades reduzem calor.</p>
+              </div>
+            </div>
+            <div class="rarity-legend">
+              <span class="rl-item"><span class="rl-dot comum"></span> Comum</span>
+              <span class="rl-item"><span class="rl-dot incomum"></span> Incomum</span>
+              <span class="rl-item"><span class="rl-dot rara"></span> Rara</span>
+              <span class="rl-item"><span class="rl-dot muito-rara"></span> Muito Rara ★ ouro</span>
+            </div>
+            <p class="section-note">Melhorias no chão (4 cores). Até 3 níveis. Aplicação vinculada à arma — troca mantém.</p>
+          </details>
+
+          <!-- INIMIGOS -->
+          <details class="controls-section">
+            <summary class="section-summary">
+              <span class="section-icon">👾</span>
+              <span class="section-title">Inimigos & Ameaças</span>
+              <span class="section-badge">8 tipos</span>
+            </summary>
+            <div class="enemies-grid">
+              <div class="enemy-card">
+                <span class="enemy-icon" style="background:#c0392b">●</span>
+                <div><b>Chaser</b><span> Persegue direto • 3 HP</span></div>
+              </div>
+              <div class="enemy-card">
+                <span class="enemy-icon" style="background:#7c3aed">◐</span>
+                <div><b>Fugitivo</b><span> Mantém 185px, foge, atira lento roxo</span></div>
+              </div>
+              <div class="enemy-card danger">
+                <span class="enemy-icon" style="background:#ff3b30">💣</span>
+                <div><b>Kamikaze</b><span> 2.9 vel, explode 92px (2 dano) — DASH para escapar</span></div>
+              </div>
+              <div class="enemy-card">
+                <span class="enemy-icon" style="background:#6d28d9">🔮</span>
+                <div><b>Invocador</b><span> Invoca 3 Chasers fracos (1 HP) a cada 3.2s</span></div>
+              </div>
+              <div class="enemy-card">
+                <span class="enemy-icon" style="background:#e85d04">⚡</span>
+                <div><b>Investida</b><span> Carrega 700ms → dash 7 vel, stun 1.8s se bater parede</span></div>
+              </div>
+              <div class="enemy-card">
+                <span class="enemy-icon" style="background:#fb923c">✕</span>
+                <div><b>X-Atirador</b><span> Fase 2+ • Anda pela área, atira em X (4 diagonais laranja 1.65 vel)</span></div>
+              </div>
+              <div class="enemy-card boss">
+                <span class="enemy-icon" style="background:#d946ef">◉</span>
+                <div><b>Miniboss</b><span> Cruz/X, investida, fase 2 invoca (Fase 4)</span></div>
+              </div>
+              <div class="enemy-card boss-gold">
+                <span class="enemy-icon" style="background:#ffd700;color:#000">⭐</span>
+                <div><b>Boss Escada</b><span> Cabeça + 2 mãos, raio, 8 projéteis, mãos 16 HP (Fase 5)</span></div>
+              </div>
+              <div class="enemy-card hazard">
+                <span class="enemy-icon" style="background:#8a8a8e">▲</span>
+                <div><b>Espinhos</b><span> Fase 3/5 • 1 dano a cada 900ms, não bloqueia</span></div>
+              </div>
+            </div>
+          </details>
+
+          <!-- FASES -->
+          <details class="controls-section">
+            <summary class="section-summary">
+              <span class="section-icon">🗺️</span>
+              <span class="section-title">Fases & Progressão</span>
+              <span class="section-badge">5 andares</span>
+            </summary>
+            <div class="phases-track">
+              <div class="phase-card p1">
+                <span class="phase-num">1</span>
+                <div><b>PORÃO</b><span>7-9 salas • Tutorial • 22% Sala Rara</span></div>
+              </div>
+              <div class="phase-card p2">
+                <span class="phase-num">2</span>
+                <div><b>CAVERNA</b><span>8-11 salas • Fugitivos +45%</span></div>
+              </div>
+              <div class="phase-card p3">
+                <span class="phase-num">3</span>
+                <div><b>ABISMO TÓXICO</b><span>9-12 salas • Espinhos • Kamikaze/Invocador</span></div>
+              </div>
+              <div class="phase-card p4">
+                <span class="phase-num">4</span>
+                <div><b>SANTUÁRIO</b><span>10-13 salas • Miniboss 35% • Investida</span></div>
+              </div>
+              <div class="phase-card p5 gold">
+                <span class="phase-num">5</span>
+                <div><b>SALA DA ESCADA</b><span>11-14 salas • Boss Final • Diálogo SIM/NÃO • Power Star ↑</span></div>
+              </div>
+            </div>
+            <div class="phase-notes">
+              <span><span class="dot locked"></span> Portas travadas até limpar sala</span>
+              <span><span style="color:#ffcc00">⬇</span> Escada libera após limpar <b>TODAS</b> as salas</span>
+              <span><span style="color:#ffd700">★</span> Sala Rara brilho dourado no centro</span>
+            </div>
+          </details>
+
+          <!-- DICAS -->
+          <details class="controls-section" open>
+            <summary class="section-summary">
+              <span class="section-icon">💡</span>
+              <span class="section-title">Dicas Estratégicas</span>
+              <span class="section-badge">8 dicas</span>
+            </summary>
+            <ul class="tips modern">
+              <li><span class="tip-icon">🚪</span> <span>Portas com cadeado <span class="dot locked"></span> só abrem quando a sala está limpa. Minimapa marca salas limpas em verde.</span></li>
+              <li><span class="tip-icon">💔</span> <span>Toque = ½ coração. Existe cooldown de 600ms — não tome dano contínuo se ficar colado.</span></li>
+              <li><span class="tip-icon">✦</span> <span>Dash funciona parado: usa última direção mirada. Use para atravessar explosões e raio do boss.</span></li>
+              <li><span class="tip-icon">🔥</span> <span><span style="color:#ff6a00">Rastro de Fogo</span> deixa chamas 3.2s no dash (1 dano a cada 420ms). Ótimo para controlar horda.</span></li>
+              <li><span class="tip-icon">⭐</span> <span><span style="color:#ffd700">Power Star</span> use em horda ou contra Boss: fique colado para causar 3 dano a cada 320ms por 7s.</span></li>
+              <li><span class="tip-icon">◉</span> <span>Boss Fase 5: 1ª fase só cabeça toma dano. Em 50% cabeça fica <b>BLOQUEADA</b> — destrua as <b>2 mãos (16 HP cada)</b> para liberar.</span></li>
+              <li><span class="tip-icon">⚡</span> <span>Boss avisa raio 950ms (linha amarela até o centro). Saia do centro! Mãos batem → 8 projéteis radiais.</span></li>
+              <li><span class="tip-icon">⬆</span> <span>Upgrades por arma: colete no chão, aplica na hora e fica vinculado. Q troca mantém. Até 3 níveis.</span></li>
+            </ul>
+          </details>
+
+          <!-- HUD -->
+          <div class="controls-hud-legend">
+            <span class="hud-legend-title">HUD</span>
+            <span class="hud-legend-item">♥ Vida</span>
+            <span class="hud-legend-item">DASH barra</span>
+            <span class="hud-legend-item">ARMA [Q]</span>
+            <span class="hud-legend-item">ESPECIAL [E] círculo</span>
+            <span class="hud-legend-item">TEMP/CARGA barras</span>
+            <span class="hud-legend-item">MAPA 5×5</span>
+          </div>
+        </div>
+
+        <div class="controls-footer">
+          <button id="btnBackMenu" class="btn btn-secondary">↩ VOLTAR AO MENU</button>
+          <span class="controls-footer-hint">ESC para fechar • Progressão é procedural (seed aleatória)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tela de Game Over -->
+    <div id="gameOverScreen" class="screen">
+      <div class="panel gameover-panel">
+        <h2 id="gameOverTitle">GAME OVER</h2>
+        <p id="gameOverStats">Você explorou 0 salas e derrotou 0 inimigos.</p>
+        <div class="menu-buttons">
+          <button id="btnPlayAgain" class="btn btn-primary">↻ JOGAR NOVAMENTE</button>
+          <button id="btnGoMenu" class="btn btn-secondary">☰ MENU</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Área do Jogo -->
+    <div id="gameContainer" class="hidden">
+      <canvas id="gameCanvas" width="960" height="540"></canvas>
+      <!-- HUD DOM - TUDO NO TOPO PARA NÃO ATRAPALHAR -->
+      <div id="hud">
+        <div id="hudTop" class="hud-top">
+          <div class="hud-top-row hud-top-main">
+            <div id="hudHearts" class="hud-hearts" aria-label="Vida"></div>
+            <div id="hudDash" class="hud-dash">
+              <span class="hud-label">DASH</span>
+              <div class="dash-bar"><div id="dashFill" class="dash-fill"></div></div>
+            </div>
+            <span id="hudFloor" class="hud-floor">FASE 1</span>
+            <span id="hudRoom" class="hud-room">SALA 1-1</span>
+            <span id="hudEnemies" class="hud-enemies">INIMIGOS: 0</span>
+            <button id="btnPause" class="hud-toggle" title="Pausar (ESC)" aria-label="Pausar">⏸</button>
+            <button id="btnToggleHud" class="hud-toggle" title="Recolher/expandir informações" aria-label="Toggle HUD">≡</button>
+          </div>
+          <div class="hud-top-row hud-top-extra">
+            <div id="hudWeapon" class="hud-weapon">
+              <span class="hud-label">ARMA [Q]</span>
+              <span id="weaponName" class="weapon-name">NORMAL [Q]</span>
+            </div>
+            <div id="tempBar" class="hud-temp" style="display:none">
+              <span class="hud-label">TEMP</span>
+              <div class="temp-bar"><div id="tempFill" class="temp-fill"></div></div>
+              <span id="tempLabel" class="temp-label">0%</span>
+            </div>
+            <div id="chargeBar" class="hud-charge" style="display:none">
+              <span class="hud-label">CARGA</span>
+              <div class="charge-bar"><div id="chargeFill" class="charge-fill"></div></div>
+              <span id="chargeLabel" class="charge-label">0%</span>
+            </div>
+            <div id="luvaBar" class="hud-luva" style="display:none">
+              <span class="hud-label">LUVA</span>
+              <div class="luva-bar"><div id="luvaFill" class="luva-fill"></div></div>
+              <span id="luvaLabel" class="luva-label">0%</span>
+            </div>
+            <div id="upgradeHud" class="hud-upgrades" style="display:none">
+              <span class="hud-label">MELHORIAS</span>
+              <div id="upgradeList" class="upgrade-list"></div>
+            </div>
+            <!-- HUD Item Especial (E) - Sistema de cooldown com barra + círculo -->
+            <div id="specialHud" class="hud-special" style="display:none">
+              <span class="hud-label">ESPECIAL [E]</span>
+              <div class="special-main">
+                <div class="special-circle-wrap">
+                  <svg class="special-circle" width="38" height="38" viewBox="0 0 38 38">
+                    <circle class="special-circle-bg" cx="19" cy="19" r="16" />
+                    <circle id="specialCircle" class="special-circle-fill" cx="19" cy="19" r="16" />
+                  </svg>
+                  <span id="specialIcon" class="special-icon">★</span>
+                </div>
+                <div class="special-info">
+                  <span id="specialName" class="special-name">—</span>
+                  <span id="specialStatus" class="special-status">Pronto!</span>
+                  <div class="special-bar"><div id="specialFill" class="special-fill"></div></div>
+                </div>
+              </div>
+            </div>
+            <span id="hudSeed" class="hud-seed"></span>
+          </div>
+        </div>
+        <div class="hud-right" style="display:none">
+          <span class="hud-hint">WASD MOVER • SETAS ATIRAR • SHIFT DASH • Q TROCA • E ESPECIAL</span>
+          <span id="hudSeed2" class="hud-seed"></span>
+        </div>
+        <div id="swapHint" class="swap-hint hidden">Pressione Q para trocar</div>
+      </div>
+    </div>
+
+    <!-- Dica flutuante -->
+    <div id="toast" class="toast hidden"></div>
+
+    <!-- Menu de Pausa (durante a partida) -->
+    <div id="pauseScreen" class="screen">
+      <div class="panel pause-panel">
+        <div class="pause-header">
+          <h2>⏸ PAUSADO</h2>
+          <span id="pauseInfo" class="pause-info">FASE 1 • SALA 2,2 • SEED 0</span>
+        </div>
+        <div class="pause-stats">
+          <span class="pause-stat"><span class="pause-stat-label">Vida</span><span id="pauseHearts" class="pause-stat-value">♥♥♥</span></span>
+          <span class="pause-stat"><span class="pause-stat-label">Arma</span><span id="pauseWeapon" class="pause-stat-value">NORMAL</span></span>
+          <span class="pause-stat"><span class="pause-stat-label">Inimigos</span><span id="pauseEnemies" class="pause-stat-value">0</span></span>
+        </div>
+        <div class="pause-buttons">
+          <button id="btnResume" class="btn btn-primary">▶ CONTINUAR (ESC)</button>
+          <button id="btnRestartRun" class="btn btn-secondary">↻ REINICIAR PARTIDA</button>
+          <button id="btnPauseControls" class="btn btn-secondary">⌨ CONTROLES</button>
+          <button id="btnPauseMenu" class="btn btn-secondary">☰ MENU PRINCIPAL</button>
+        </div>
+        <details class="controls-section pause-collected-section" open>
+          <summary class="section-summary">
+            <span class="section-icon">🎒</span>
+            <span class="section-title">Itens Coletados</span>
+            <span id="pauseCollectedCount" class="section-badge">0 itens</span>
+          </summary>
+          <div id="pauseCollected" class="pause-collected">
+            <p class="pause-empty">Nenhum item coletado ainda. Explore as salas!</p>
+          </div>
+          <div id="pauseWeapons" class="pause-weapons"></div>
+        </details>
+        <p class="pause-hint">Dica: Pressione <span class="key">ESC</span> ou <span class="key">P</span> para pausar/continuar a qualquer momento.</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
