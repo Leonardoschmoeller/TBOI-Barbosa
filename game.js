@@ -1955,9 +1955,9 @@ const UPGRADE_DEFS = [
       w.pierceCount = 999;
       w.glow = 'rgba(184,255,251,0.55)';
   }},
-  // Sobremesa - COMUM - mini raios a cada 10% (requisito balanceado, não OP)
-  // Dispara mini raio durante carregamento, dano reduzido, mais rápido, não bloqueia carga.
-  { id:'sobremesa', weapon:'RAIO_MATEMATICO', compatible:['RAIO_MATEMATICO'], rarity:'COMUM', name:'Sobremesa', desc:'A cada 10% de carga dispara mini raio (dano -58%, +38% vel)', maxLevel:1, apply:(w)=>{
+  // Sobremesa - COMUM - mini lazers teleguiados a cada 25% (cadência reduzida, pouco dano)
+  // Dispara mini lazer teleguiado durante carregamento, pouco dano, não bloqueia carga.
+  { id:'sobremesa', weapon:'RAIO_MATEMATICO', compatible:['RAIO_MATEMATICO'], rarity:'COMUM', name:'Sobremesa', desc:'A cada 25% de carga dispara mini lazer teleguiado (pouco dano, segue inimigo)', maxLevel:1, apply:(w)=>{
       w._sobremesa = true;
       // Não altera dano/speed base, apenas ativa flag - lógica de disparo fica no Game loop
   }},
@@ -2447,13 +2447,15 @@ const LAZER_BEAM_WAVE_AMP = 3.2;       // amplitude ondulação nas bordas (px)
 const LAZER_BEAM_WAVE_FREQ = 0.52;     // frequência espacial ondulação (ciclos ao longo do feixe)
 const LAZER_BEAM_WAVE_SPEED = 0.009;   // velocidade animação ondulação
 const LAZER_BEAM_DAMAGE = 2.2;         // dano moderado por beam (usa WEAPON_RAIO_MATEMATICO.damage se existir)
-// Mini raio Sobremesa - valores balanceáveis (mantido para upgrade opcional, agora mini = pequeno projétil laranja)
-const RAIO_MATEMATICO_MINI_DAMAGE_FACTOR = 0.42;   // 42% do dano principal (~0.92)
-const RAIO_MATEMATICO_MINI_SPEED_FACTOR = 1.38;    // 38% mais rápido que principal
-const RAIO_MATEMATICO_MINI_SIZE = 3.8;
-const RAIO_MATEMATICO_MINI_RANGE_FACTOR = 0.72;    // 72% do alcance principal
-const RAIO_MATEMATICO_MINI_COLOR = '#ffd8a8';      // laranja claro para diferenciar
+// Mini lazer Sobremesa - teleguiado, pouco dano, cadência reduzida
+const RAIO_MATEMATICO_MINI_DAMAGE_FACTOR = 0.22;   // 22% do dano principal (~0.48) - pouco dano
+const RAIO_MATEMATICO_MINI_SPEED_FACTOR = 0.92;    // 8% mais lento que principal (permite curva teleguiada)
+const RAIO_MATEMATICO_MINI_SIZE = 3.6;
+const RAIO_MATEMATICO_MINI_RANGE_FACTOR = 0.68;    // 68% do alcance principal
+const RAIO_MATEMATICO_MINI_COLOR = '#ffd8a8';      // laranja claro
 const RAIO_MATEMATICO_MINI_GLOW = 'rgba(255,220,160,0.45)';
+const RAIO_MATEMATICO_MINI_HOMING = 0.14;          // força de curvatura teleguiada (0.12-0.18)
+const RAIO_MATEMATICO_MINI_HOMING_RANGE = 320;     // raio de detecção teleguiado
 // Upgrade values para Raio Matemático (compatível com sistema UPGRADE_VALUES)
 const RAIO_MAT_DANO_BONUS = 0.20;            // +20% dano por nível raro
 const RAIO_MAT_CHARGE_REDUC = 0.15;           // -15% tempo carga por nível comum
@@ -5890,6 +5892,30 @@ class Bullet {
     this.dead = false;
   }
   update(dt, walls) {
+    // Mini lazer teleguiado: curva suavemente em direção ao inimigo mais próximo
+    if(this.isMiniRay){
+      try{
+        const room = (typeof window!=='undefined' && window.game && window.game.currentRoom) ? window.game.currentRoom : null;
+        if(room && room.enemies && room.enemies.length){
+          let best=null, bestD=RAIO_MATEMATICO_MINI_HOMING_RANGE;
+          for(const e of room.enemies){
+            if(e.dead) continue;
+            const d = dist(this.x, this.y, e.x, e.y);
+            if(d < bestD){ best=e; bestD=d; }
+          }
+          if(best){
+            const tx = best.x - this.x, ty = best.y - this.y;
+            const tLen = Math.hypot(tx,ty) || 1;
+            const tdx = tx/tLen, tdy = ty/tLen;
+            const turn = RAIO_MATEMATICO_MINI_HOMING;
+            let nx = this.dirX * (1-turn) + tdx * turn;
+            let ny = this.dirY * (1-turn) + tdy * turn;
+            const nLen = Math.hypot(nx,ny) || 1;
+            this.dirX = nx/nLen; this.dirY = ny/nLen;
+          }
+        }
+      }catch(e){}
+    }
     const dx = this.dirX * this.speed;
     const dy = this.dirY * this.speed;
     this.x += dx;
@@ -5904,17 +5930,28 @@ class Bullet {
     if (this.x < -20 || this.x > CANVAS_W + 20 || this.y < -20 || this.y > CANVAS_H + 20) this.dead = true;
   }
   draw(ctx) {
-    // Dev - Mini Raio Sobremesa (pequeno, laranja rápido)
+    // Dev - Mini Lazer Sobremesa teleguiado (pouco dano, segue inimigo)
     if(this.isMiniRay){
       const ang=Math.atan2(this.dirY,this.dirX);
-      // rastro curto laranja
+      // aura teleguiada pulsando
+      const pulse = 0.5 + Math.sin(Date.now()*0.012)*0.3;
+      ctx.fillStyle=`rgba(255,216,168,${0.10+pulse*0.08})`;
+      ctx.beginPath(); ctx.arc(this.x, this.y, this.size+7+pulse*2,0,Math.PI*2); ctx.fill();
+      // rastro curvo laranja - indica teleguiado
       ctx.strokeStyle=this.glow;
-      ctx.lineWidth=this.size+3;
+      ctx.lineWidth=this.size+2.8;
       ctx.lineCap='round';
       ctx.globalAlpha=0.62;
       ctx.beginPath();
-      ctx.moveTo(this.x - this.dirX*10, this.y - this.dirY*10);
+      ctx.moveTo(this.x - this.dirX*12, this.y - this.dirY*12);
       ctx.lineTo(this.x, this.y);
+      ctx.stroke();
+      // linha interna mais clara
+      ctx.strokeStyle='rgba(255,255,255,0.38)';
+      ctx.lineWidth=1.2;
+      ctx.beginPath();
+      ctx.moveTo(this.x - this.dirX*8, this.y - this.dirY*8);
+      ctx.lineTo(this.x - this.dirX*2, this.y - this.dirY*2);
       ctx.stroke();
       ctx.globalAlpha=1;
       // corpo mini
@@ -5923,10 +5960,17 @@ class Bullet {
       ctx.fillStyle=this.color;
       ctx.beginPath(); ctx.arc(this.x, this.y, this.size,0,Math.PI*2); ctx.fill();
       ctx.fillStyle='#ffffff';
-      ctx.beginPath(); ctx.arc(this.x, this.y, 1.1,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(this.x, this.y, 1.0,0,Math.PI*2); ctx.fill();
+      // ponta teleguiada (triângulo pequeno indica direção guiada)
+      ctx.fillStyle='rgba(255,220,160,0.92)';
+      ctx.beginPath();
+      ctx.moveTo(this.x+Math.cos(ang)*5, this.y+Math.sin(ang)*5);
+      ctx.lineTo(this.x+Math.cos(ang+2.4)*3.2, this.y+Math.sin(ang+2.4)*3.2);
+      ctx.lineTo(this.x+Math.cos(ang-2.4)*3.2, this.y+Math.sin(ang-2.4)*3.2);
+      ctx.closePath(); ctx.fill();
       // faísca ponta
-      ctx.fillStyle='rgba(255,255,255,0.85)';
-      ctx.beginPath(); ctx.arc(this.x+Math.cos(ang)*4, this.y+Math.sin(ang)*4, 1.0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,0.88)';
+      ctx.beginPath(); ctx.arc(this.x+Math.cos(ang)*4, this.y+Math.sin(ang)*4, 0.9,0,Math.PI*2); ctx.fill();
       return;
     }
     // Dev - Raio Matemático principal - AZAZEL BRIMSTONE AZUL (inspirado, não cópia)
@@ -9174,12 +9218,33 @@ class Player {
     });
     return [beam];
   }
-  // Gera mini raio para thresholds (chamado pelo Game loop). Retorna Bullet ou null.
+  // Gera mini lazer teleguiado para thresholds (chamado pelo Game loop). Retorna Bullet ou null.
   createRayMatematicoMini(dir){
     if(!this.weapon || !this.weapon.isRayMatematico) return null;
-    const ndir = normalize(dir.x, dir.y);
-    const baseDmg = this.weapon.damage * RAIO_MATEMATICO_MINI_DAMAGE_FACTOR;
-    // se tem upgrade dano, mini também escala proporcionalmente (usa damage já com upgrade)
+    let ndir = normalize(dir.x, dir.y);
+    // Se houver inimigo próximo, mira inicial já teleguiada (evita sair reto aleatório)
+    try{
+      const game = (typeof window!=='undefined' && window.game) ? window.game : null;
+      const room = game && game.currentRoom ? game.currentRoom : null;
+      if(room && room.enemies && room.enemies.length){
+        let best=null, bestD=RAIO_MATEMATICO_MINI_HOMING_RANGE;
+        for(const e of room.enemies){
+          if(e.dead) continue;
+          const d = dist(this.x, this.y, e.x, e.y);
+          if(d < bestD){ best=e; bestD=d; }
+        }
+        if(best){
+          const tx = best.x - this.x, ty = best.y - this.y;
+          const tLen = Math.hypot(tx,ty)||1;
+          // mistura leve: 60% mira no inimigo, 40% direção original (curva natural)
+          const mix = 0.62;
+          let mx = ndir.x*(1-mix) + (tx/tLen)*mix;
+          let my = ndir.y*(1-mix) + (ty/tLen)*mix;
+          const mLen=Math.hypot(mx,my)||1;
+          ndir = {x: mx/mLen, y: my/mLen};
+        }
+      }
+    }catch(e){}
     const scaledMiniDmg = this.weapon.damage * RAIO_MATEMATICO_MINI_DAMAGE_FACTOR;
     const miniSpeed = this.weapon.bulletSpeed * RAIO_MATEMATICO_MINI_SPEED_FACTOR;
     const miniRange = this.weapon.range * RAIO_MATEMATICO_MINI_RANGE_FACTOR;
@@ -11290,11 +11355,11 @@ class Player {
         const px=this.x+randRange(-10,10), py=y+randRange(-6,2)+bob;
         ctx.fillRect(px, py, 1,1);
       }
-      // mini indicadores sob barra quando Sobremesa ativa
+      // mini indicadores sob barra quando Sobremesa ativa (teleguiados, cadência 25%)
       if(this.hasSobremesa()){
         ctx.fillStyle='rgba(255,216,168,0.95)'; ctx.font='4px monospace'; ctx.textAlign='center';
         const cnt = this.rayMatematicoFiredThresholds ? this.rayMatematicoFiredThresholds.size : 0;
-        ctx.fillText(`🧁 ${cnt}/10`, this.x, by+bh+7); ctx.textAlign='left';
+        ctx.fillText(`🧁 ${cnt}/4`, this.x, by+bh+7); ctx.textAlign='left';
       }
     }
     // barra de carregamento visual sobre o jogador (enquanto segura) - CARREGADA
@@ -16353,9 +16418,9 @@ class Game {
             const col = prog > 0.90 ? '#ffffff' : prog > 0.60 ? '#b8fffb' : '#7af2ff';
             this.particles.push(new Particle(this.player.x + shootVec.x*11 + randRange(-2,2), this.player.y + shootVec.y*11 + randRange(-2,2), randRange(-0.5,0.5), randRange(-0.9,-0.1), 190, col, prog > 0.75 ? 2.6 : 1.6));
           }
-          // Sobremesa: a cada 10% dispara mini raio se upgrade ativo (mantido como mini projétil laranja)
+          // Sobremesa: a cada 25% dispara mini lazer teleguiado se upgrade ativo (cadência reduzida)
           if(this.player.hasSobremesa()){
-            const thresholds = [10,20,30,40,50,60,70,80,90,100];
+            const thresholds = [25,50,75,100];
             const pct = prog*100;
             for(const th of thresholds){
               if(pct >= th && !this.player.rayMatematicoFiredThresholds.has(th)){
@@ -17378,7 +17443,7 @@ class Game {
         if(this.player.isRayMatematicoCharging){
           // Gradiente ciano -> branco quando pronto, pulso no 100%
           this.chargeFill.style.background = pct>92 ? 'linear-gradient(90deg,#7af2ff,#ffffff)' : pct>55 ? 'linear-gradient(90deg,#1a8fb3,#7af2ff)' : 'linear-gradient(90deg,#0a4a5e,#1a8fb3)';
-          const sobStr = hasSobremesa ? ` • 🧁 ${miniCount}/10 mini` : '';
+          const sobStr = hasSobremesa ? ` • 🧁 ${miniCount}/4 mini` : '';
           if(this.chargeLabel) this.chargeLabel.textContent = pct>=99 ? `PRONTO! ${pct.toFixed(0)}% • SOLTE!${sobStr}` : `LAZER ${pct.toFixed(0)}% • Segure...${sobStr}`;
           if(pct>=99) this.chargeBar.style.boxShadow='0 0 10px rgba(184,255,251,0.55)';
           else if(pct>70) this.chargeBar.style.boxShadow='0 0 6px rgba(122,242,255,0.32)';
@@ -17862,14 +17927,14 @@ class Game {
         ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(108,30,60,5);
         ctx.fillStyle= prog>=0.99 ? '#ffffff' : prog>0.60 ? '#7af2ff' : '#1a8fb3';
         ctx.fillRect(109,31,58*prog,3);
-        // ticks 10% no canvas
+        // ticks 25% no canvas (cadência reduzida teleguiada)
         ctx.fillStyle='rgba(255,255,255,0.45)';
-        for(let i=1;i<10;i++){ const mx=109+(58*(i/10)); ctx.fillRect(mx,31,1,3); }
+        for(let i=1;i<4;i++){ const mx=109+(58*(i/4)); ctx.fillRect(mx,31,1,3); }
         if(prog>=0.99){ ctx.fillStyle='rgba(184,255,251,0.92)'; ctx.font='5px monospace'; ctx.textAlign='left'; ctx.fillText('PRONTO! SOLTE!',108,38); }
         else { ctx.fillStyle='rgba(255,255,255,0.72)'; ctx.font='4px monospace'; ctx.textAlign='left'; ctx.fillText(`LAZER ${Math.round(prog*100)}%`,108,38); }
         if(this.player.hasSobremesa()){
           const cnt=this.player.rayMatematicoFiredThresholds? this.player.rayMatematicoFiredThresholds.size:0;
-          ctx.fillStyle='rgba(255,216,168,0.92)'; ctx.font='4px monospace'; ctx.textAlign='left'; ctx.fillText(`🧁 ${cnt}/10 mini`,108,44);
+          ctx.fillStyle='rgba(255,216,168,0.92)'; ctx.font='4px monospace'; ctx.textAlign='left'; ctx.fillText(`🧁 ${cnt}/4 mini`,108,44);
         }
       }
       if(wn==='LUVA' && this.player.activeFist && !this.player.activeFist.dead){
