@@ -2043,6 +2043,17 @@ const SPIKE_SIZE = 28;
 const spikeDamage = 1;        // meio coração
 const spikeCooldown = 900;    // invulnerabilidade após dano de espinho
 
+// --- Noclip (passivo incomum) ---
+const NOCLIP_ITEM_SIZE = 20;
+
+// --- Escudo do Dillian (passivo incomum - Dream Shield) ---
+const DILLIAN_SHIELD_SIZE = 18;          // tamanho hitbox escudo
+const DILLIAN_SHIELD_RADIUS = 34;        // raio órbita ao redor do player
+const DILLIAN_SHIELD_SPEED = 0.0027;     // rad/ms (~2.3s por volta)
+const DILLIAN_SHIELD_DAMAGE = 0.8;       // pouco dano ao tocar inimigo
+const DILLIAN_SHIELD_COOLDOWN = 520;     // ms entre hits no mesmo inimigo
+const DILLIAN_SHIELD_BLOCK_RADIUS = 15;  // raio bloqueio projéteis
+
 // --- Sala Rara ---
 const rareRoomChance = 0.22;  // 22% de chance de gerar uma RareItemRoom por andar (configurável)
 const rareItems = ['flame_trail', 'raio', 'metralhadora', 'double_shot', 'power_star']; // expansível: basta adicionar novos tipos - power_star incluído Fase 5
@@ -8426,6 +8437,91 @@ class DoubleShotItem extends Item {
   }
 }
 
+// ===================== NOCLIP (passivo incomum) =====================
+class NoclipItem extends Item {
+  constructor(x,y){
+    super(x,y, NOCLIP_ITEM_SIZE, NOCLIP_ITEM_SIZE, 'noclip');
+  }
+  onCollect(player){
+    if(player.hasNoclip) return false;
+    player.enableNoclip();
+    return true;
+  }
+  draw(ctx){
+    const x=this.x, y=this.y + this.bob, s=this.w;
+    const pulse = 0.5 + Math.sin(this.anim*2.6)*0.34;
+    ctx.fillStyle='rgba(0,0,0,0.28)';
+    ctx.beginPath(); ctx.ellipse(x, y+ s*0.45, s*0.5, 4, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle=`rgba(120,90,255,${0.18+pulse*0.13})`;
+    ctx.beginPath(); ctx.arc(x, y, s*0.72 + pulse*3, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='#1a103a';
+    ctx.fillRect(x - s/2, y - s/2 +2, s, s-4);
+    ctx.strokeStyle='rgba(140,110,255,0.85)';
+    ctx.lineWidth=1.4; ctx.strokeRect(x - s/2, y - s/2 +2, s, s-4);
+    ctx.fillStyle='#7c5cff';
+    ctx.fillRect(x - s/2+2, y - s/2+2, s-4, 3);
+    // ícone fantasma / noclip
+    ctx.fillStyle='#fff';
+    ctx.font='12px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('◈', x, y+4); ctx.textAlign='left';
+    // faixa glitch
+    ctx.fillStyle='rgba(255,255,255,0.22)';
+    if(Math.floor(this.anim*0.004)%2===0) ctx.fillRect(x-6,y-2,12,1);
+    ctx.fillStyle='#7c5cff';
+    ctx.font='4px "Press Start 2P"'; ctx.textAlign='center';
+    ctx.fillText('NOCLIP', x, y+ s/2 +9); ctx.textAlign='left';
+    ctx.fillStyle=`rgba(140,110,255,${0.5+Math.sin(this.anim*5)*0.3})`;
+    const rx=x+Math.cos(this.anim*0.008)*4;
+    ctx.fillRect(rx, y-7, 2,1);
+  }
+}
+
+// ===================== ESCUDO DO DILLIAN (passivo incomum - Dream Shield) =====================
+class EscudoDillianItem extends Item {
+  constructor(x,y){
+    super(x,y, DILLIAN_SHIELD_SIZE, DILLIAN_SHIELD_SIZE, 'escudo_dillian');
+  }
+  onCollect(player){
+    if(player.hasDillianShield) return false;
+    player.enableDillianShield();
+    return true;
+  }
+  draw(ctx){
+    const x=this.x, y=this.y + this.bob, s=this.w;
+    const pulse = 0.5 + Math.sin(this.anim*2.4)*0.32;
+    const rot = this.anim*0.004;
+    ctx.fillStyle='rgba(0,0,0,0.28)';
+    ctx.beginPath(); ctx.ellipse(x, y+ s*0.45, s*0.5, 4, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle=`rgba(255,255,255,${0.16+pulse*0.10})`;
+    ctx.beginPath(); ctx.arc(x, y, s*0.75 + pulse*3, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='#0f1a2e';
+    ctx.fillRect(x - s/2 +1, y - s/2 +1, s-2, s-2);
+    ctx.strokeStyle='rgba(200,220,255,0.9)';
+    ctx.lineWidth=1.5; ctx.strokeRect(x - s/2 +1, y - s/2 +1, s-2, s-2);
+    ctx.strokeStyle='rgba(120,170,255,0.55)';
+    ctx.lineWidth=1; ctx.strokeRect(x - s/2 +3, y - s/2 +3, s-6, s-6);
+    ctx.save(); ctx.translate(x,y); ctx.rotate(rot);
+    ctx.fillStyle='rgba(255,255,255,0.95)';
+    ctx.fillRect(-2,-7,4,14);
+    ctx.fillStyle='#8fb0ff';
+    ctx.fillRect(-4,-5,8,2);
+    ctx.fillRect(-4,3,8,2);
+    ctx.fillStyle='#fff';
+    ctx.beginPath(); ctx.arc(0,0,3.2,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#cfe0ff';
+    ctx.beginPath(); ctx.arc(0,0,1.5,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+    // partículas dream
+    if(Math.random()<0.12){
+      ctx.fillStyle='rgba(180,210,255,0.85)';
+      ctx.fillRect(x+randRange(-5,5), y+randRange(-5,5),1,1);
+    }
+    ctx.fillStyle='#cfe0ff';
+    ctx.font='4px "Press Start 2P"'; ctx.textAlign='center';
+    ctx.fillText('DILLIAN', x, y+ s/2 +9); ctx.textAlign='left';
+  }
+}
+
 // ===================== PICKUP ITEM ESPECIAL (E) =====================
 // Item no chão que equipa um SpecialItem ao coletar.
 // Separado de WeaponItem para não misturar lógica de tiro com habilidade especial.
@@ -8652,6 +8748,10 @@ class Player {
     this.weapon = this.primaryWeapon; // arma atualmente equipada (referência)
     this.hasFlameTrail = false; // passivo raro
     this.hasDoubleShot = false; // melhoria arma principal: dois projéteis lado a lado
+    this.hasNoclip = false; // passivo incomum - atravessa espinhos sem dano
+    this.hasDillianShield = false; // passivo incomum - escudo orbitante Dream Shield
+    this.dillianShieldAngle = 0; // ângulo órbita
+    this.dillianShieldHitTimers = new Map(); // enemy -> ms até poder dar dano de novo
     this.didDashThisFrame = false; // flag para Game spawnar fogo
     this.dashStartPos = null;
     this.spikeTimer = 0; // cooldown espinhos
@@ -9620,6 +9720,31 @@ class Player {
     return fist;
   }
   enableFlameTrail(){ this.hasFlameTrail = true; }
+  enableNoclip(){
+    this.hasNoclip = true;
+    const g = (typeof window!=='undefined' && window.game) ? window.game : null;
+    if(g && g.showToast) g.showToast('◈ Noclip adquirido! Espinhos não causam dano.', 1800);
+    if(g){
+      g.shake = Math.max(g.shake||0, 60);
+      for(let k=0;k<14;k++) g.particles.push(new Particle(this.x, this.y, randRange(-1.4,1.4), randRange(-1.4,0.6), 320, '#7c5cff', 2));
+    }
+  }
+  enableDillianShield(){
+    this.hasDillianShield = true;
+    this.dillianShieldAngle = Math.random()*Math.PI*2;
+    if(!this.dillianShieldHitTimers) this.dillianShieldHitTimers = new Map();
+    else this.dillianShieldHitTimers.clear();
+    const g = (typeof window!=='undefined' && window.game) ? window.game : null;
+    if(g && g.showToast) g.showToast('🛡️ Escudo do Dillian! Um escudo para um cavaleiro paciente (Dream Shield)', 2000);
+    if(g){
+      g.shake = Math.max(g.shake||0, 70);
+      for(let k=0;k<18;k++){ const ang=Math.random()*Math.PI*2; g.particles.push(new Particle(this.x, this.y, Math.cos(ang)*randRange(1.4,3.2), Math.sin(ang)*randRange(1.2,3.2), 360, '#cfe0ff', 2.2)); }
+    }
+  }
+  getDillianShieldPos(){
+    const ang = this.dillianShieldAngle || 0;
+    return { x: this.x + Math.cos(ang)*DILLIAN_SHIELD_RADIUS, y: this.y + Math.sin(ang)*DILLIAN_SHIELD_RADIUS, ang };
+  }
   heal(amount) {
     const before = this.hp;
     this.hp = clamp(this.hp + amount, 0, this.maxHp);
@@ -9966,6 +10091,18 @@ class Player {
     } else {
       if(this.luvaCharge>0) this.luvaCharge = Math.max(0, this.luvaCharge - LUVA_CHARGE_DECAY*dt/1000*1.2);
       this.luvaIsCharging=false;
+    }
+    // Escudo do Dillian - órbita Dream Shield
+    if(this.hasDillianShield){
+      this.dillianShieldAngle += DILLIAN_SHIELD_SPEED * dt;
+      if(this.dillianShieldAngle > Math.PI*2) this.dillianShieldAngle -= Math.PI*2;
+      if(this.dillianShieldHitTimers){
+        for(const [e, t] of this.dillianShieldHitTimers){
+          const nt = t - dt;
+          if(nt <= 0) this.dillianShieldHitTimers.delete(e);
+          else this.dillianShieldHitTimers.set(e, nt);
+        }
+      }
     }
 
     const move = input.getMoveVector();
@@ -10350,6 +10487,60 @@ class Player {
         ctx.textAlign = 'center';
         ctx.fillText('BLOQUEIO', this.x, this.y + bob - 18);
         ctx.textAlign = 'left';
+      }
+    }
+    // ===== Noclip - aura fantasma roxa (indica imunidade a espinhos) =====
+    if(this.hasNoclip){
+      const pulseN = 0.5 + Math.sin(this.animTime*0.009)*0.3;
+      ctx.fillStyle=`rgba(120,90,255,${0.07+pulseN*0.05})`;
+      ctx.beginPath(); ctx.arc(this.x, this.y+bob, 22+pulseN*3,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle=`rgba(140,110,255,${0.28+pulseN*0.18})`;
+      ctx.lineWidth=1.2; ctx.setLineDash([4,3]);
+      ctx.beginPath(); ctx.arc(this.x, this.y+bob, 18+pulseN*1.8,0,Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
+      if(Math.random()<0.06){
+        ctx.fillStyle='rgba(180,160,255,0.65)';
+        const rx=this.x+randRange(-10,10), ry=this.y+bob+randRange(-8,8);
+        ctx.fillRect(rx,ry,1.5,1.5);
+      }
+    }
+    // ===== Escudo do Dillian - Dream Shield orbitante =====
+    if(this.hasDillianShield){
+      const shieldPos = this.getDillianShieldPos();
+      const sx = shieldPos.x, sy = shieldPos.y + bob*0.5; // leve bob
+      const pulseD = 0.5 + Math.sin(this.animTime*0.011)*0.32;
+      // trilha orbital faint
+      ctx.strokeStyle=`rgba(207,224,255,${0.08+pulseD*0.06})`;
+      ctx.lineWidth=1; ctx.setLineDash([2,4]);
+      ctx.beginPath(); ctx.arc(this.x, this.y+bob, DILLIAN_SHIELD_RADIUS,0,Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
+      // glow externo do escudo
+      ctx.fillStyle=`rgba(207,224,255,${0.14+pulseD*0.08})`;
+      ctx.beginPath(); ctx.arc(sx, sy, DILLIAN_SHIELD_SIZE/2 + 7,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle=`rgba(255,255,255,${0.14+pulseD*0.07})`;
+      ctx.beginPath(); ctx.arc(sx, sy, DILLIAN_SHIELD_SIZE/2 + 4,0,Math.PI*2); ctx.fill();
+      // corpo do escudo - dream shield (branco translúcido com borda azulada)
+      ctx.fillStyle='rgba(255,255,255,0.92)';
+      ctx.strokeStyle='rgba(160,190,255,0.95)';
+      ctx.lineWidth=1.6;
+      ctx.beginPath(); ctx.arc(sx, sy, DILLIAN_SHIELD_SIZE/2,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      // detalhe interno - cruz / runa (estilo hollow knight)
+      ctx.fillStyle='rgba(180,210,255,0.88)';
+      ctx.fillRect(sx-1.2, sy-6, 2.4, 12);
+      ctx.fillRect(sx-6, sy-1.2, 12, 2.4);
+      ctx.fillStyle='#fff';
+      ctx.beginPath(); ctx.arc(sx, sy, 3.4,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#8fb0ff';
+      ctx.beginPath(); ctx.arc(sx, sy, 1.8,0,Math.PI*2); ctx.fill();
+      // brilho central pulsante
+      if(pulseD>0.6){
+        ctx.fillStyle=`rgba(255,255,255,${0.22+pulseD*0.12})`;
+        ctx.beginPath(); ctx.arc(sx, sy, 2.2,0,Math.PI*2); ctx.fill();
+      }
+      // partículas dream
+      if(Math.random()<0.14){
+        ctx.fillStyle='rgba(180,210,255,0.85)';
+        ctx.fillRect(sx+randRange(-6,6), sy+randRange(-6,6),1,1);
       }
     }
     // ===== ESPADA Guardião Ágil - aura ciana + indicador velocidade/escudo =====
@@ -12439,6 +12630,24 @@ class Room {
         tryPlace(it);
       }
     }
+    // Noclip - passivo incomum (atravessa espinhos)
+    const noclipChance = this.type==='treasure' ? 0.055 : 0.025; // incomum
+    if(rng() < noclipChance && !this.isRare && !this.isMiniboss && !this.isBossStair && !this.isPartyHorde && this.items.length < 4){
+      const hasNoclip = (typeof window!=='undefined' && window.game && window.game.player) ? window.game.player.hasNoclip : false;
+      if(!hasNoclip && !this.items.some(it=> it.type==='noclip')){
+        const it = new NoclipItem(randRange(140, CANVAS_W-140), randRange(100, CANVAS_H-100));
+        tryPlace(it);
+      }
+    }
+    // Escudo do Dillian - passivo incomum Dream Shield orbitante
+    const dillianChance = this.type==='treasure' ? 0.05 : 0.022; // incomum
+    if(rng() < dillianChance && !this.isRare && !this.isMiniboss && !this.isBossStair && !this.isPartyHorde && this.items.length < 4){
+      const hasDillian = (typeof window!=='undefined' && window.game && window.game.player) ? window.game.player.hasDillianShield : false;
+      if(!hasDillian && !this.items.some(it=> it.type==='escudo_dillian')){
+        const it = new EscudoDillianItem(randRange(140, CANVAS_W-140), randRange(100, CANVAS_H-100));
+        tryPlace(it);
+      }
+    }
     // Sistema de melhorias por arma (4 raridades) - spawn integrado e balanceado com níveis
     // Boost para personagens com armas exclusivas (JG/ Kinight/ Ash/ Dev)
     let upgradeChance = this.type==='treasure' ? 0.22 : 0.11; // chance base
@@ -13558,10 +13767,19 @@ class Room {
       }
     }
 
-    // espinhos: dano periódico com cooldown ( fase 3 )
+    // espinhos: dano periódico com cooldown ( fase 3 ) - Noclip imune
     // inicializa timer no player se não existir
     if(player.spikeTimer===undefined) player.spikeTimer=0;
     if(player.spikeTimer>0) player.spikeTimer-=dt;
+    // Noclip: ignora totalmente dano de espinhos (passivo incomum)
+    if(player.hasNoclip){
+      // ainda mostra pequena partícula fantasma opcional, mas sem dano
+      for(const s of this.spikes){
+        if(s.collides(player) && Math.random()<0.04){
+          globalParticles.push(new Particle(s.x+randRange(-5,5), s.y+randRange(-3,3), randRange(-0.3,0.3), randRange(-0.6,-0.2), 220, 'rgba(120,90,255,0.55)', 1.2));
+        }
+      }
+    } else {
     for(const s of this.spikes){
       if(s.collides(player) && player.spikeTimer<=0 && !player.isInvulnerable()){
         if(player.takeDamage(s.damage)){
@@ -13574,6 +13792,7 @@ class Room {
       // opcional: inimigos também podem sofrer dano de espinhos (balanceado: kamikazes e chasers levam dano leve)
       // Mantemos: apenas kamikazes e chasers levam 0.5 do dano para não punir fugitive/summoner que já fogem
       // Para simplicidade e performance, não aplicamos dano a inimigos nos espinhos (melhor balanceamento)
+      }
     }
 
     // Boss Fase 5 - vitória: quando cabeça chega a 0, para ataques e mostra efeito de vitória
@@ -15220,6 +15439,8 @@ class Game {
     if(p.hasFlameTrail) passives.push('🔥 Rastro de Fogo (dash deixa fogo 3.2s)');
     if(p._hasSwiftBoots) passives.push('💨 Botas Velozes (+0.75 vel)');
     if(p.hasDoubleShot) passives.push('✦ Tiro Duplo (NORMAL x2)');
+    if(p.hasNoclip) passives.push('◈ Noclip (imune a espinhos)');
+    if(p.hasDillianShield) passives.push('🛡️ Escudo do Dillian (Dream Shield orbitante)');
     if(p.farmarAuraActive) passives.push('67 Aura ativa (dano+empurrão)');
     if(p.hasBastao===false && p.characterId==='jg') passives.push('🏏 Sem bastão (lento)');
     else if(p.hasBastao && p.characterId==='jg') passives.push('🏏 Com bastão (rápido)');
@@ -15295,6 +15516,8 @@ class Game {
       if(this.player.secondaryWeapon) txt+=` + ${this.player.secondaryWeapon.name}`;
       if(this.player.hasFlameTrail) txt+=' 🔥';
       if(this.player._hasSwiftBoots) txt+=' 💨';
+      if(this.player.hasNoclip) txt+=' ◈';
+      if(this.player.hasDillianShield) txt+=' 🛡️';
       wEl.textContent=txt;
     }
     const ene=document.getElementById('pauseEnemies');
@@ -15311,6 +15534,8 @@ class Game {
     if(this.player.hasFlameTrail) items.push({icon:'🔥', name:'Rastro de Fogo', desc:'Dash deixa fogo 3.2s (1 dano/420ms)', badge:'PASSIVO', color:'#ff6a00'});
     if(this.player._hasSwiftBoots) items.push({icon:'💨', name:'Botas Velozes', desc:'+0.75 velocidade', badge:'PASSIVO', color:'#00d9ff'});
     if(this.player.hasDoubleShot) items.push({icon:'✦', name:'Tiro Duplo', desc:'NORMAL dispara 2 projéteis lado a lado', badge:'MELHORIA', color:'#5a8fd4'});
+    if(this.player.hasNoclip) items.push({icon:'◈', name:'Noclip', desc:'Atravessa espinhos sem dano (incomum)', badge:'PASSIVO', color:'#7c5cff'});
+    if(this.player.hasDillianShield) items.push({icon:'🛡️', name:'Escudo do Dillian', desc:'Um escudo para um cavaleiro paciente — orbita, causa pouco dano e bloqueia projéteis (Dream Shield)', badge:'PASSIVO', color:'#cfe0ff'});
     // Especial equipado
     if(this.player.equippedSpecial){
       const sp=this.player.equippedSpecial;
@@ -15420,6 +15645,11 @@ class Game {
     this.player.hasFlameTrail = false;
     this.player.hasDoubleShot = false;
     if(this.player.primaryWeapon) this.player.primaryWeapon.hasDoubleShot = false;
+    this.player.hasNoclip = false;
+    this.player.hasDillianShield = false;
+    this.player.dillianShieldAngle = 0;
+    if(this.player.dillianShieldHitTimers) this.player.dillianShieldHitTimers.clear();
+    else this.player.dillianShieldHitTimers = new Map();
     this.player._hasSwiftBoots = false;
     this.player.speed = PLAYER_SPEED;
     this.player.baseSpeed = PLAYER_SPEED;
@@ -16810,6 +17040,67 @@ class Game {
     // Nota: enemy bullets serão adicionados via Room.update -> enemyBulletsOut, mas também precisamos tratar bullets já existentes como enemy
     for(const b of this.bullets) b.update(dt, walls);
 
+    // ===== ESCUDO DO DILLIAN - Dream Shield orbitante =====
+    if(this.player.hasDillianShield){
+      const shieldPos = this.player.getDillianShieldPos();
+      // Bloqueia projéteis inimigos (defende)
+      for(let i=this.bullets.length-1;i>=0;i--){
+        const b=this.bullets[i];
+        if(b.owner==='enemy' && !b.dead){
+          if(dist(b.x,b.y, shieldPos.x, shieldPos.y) < DILLIAN_SHIELD_BLOCK_RADIUS + b.size){
+            b.dead=true;
+            for(let k=0;k<5;k++) this.particles.push(new Particle(b.x,b.y, randRange(-1.2,1.2), randRange(-1.2,0.6), 220, '#cfe0ff', 1.8));
+            for(let k=0;k<3;k++) this.particles.push(new Particle(shieldPos.x, shieldPos.y, randRange(-0.8,0.8), randRange(-0.8,0.4), 180, '#ffffff', 1.4));
+            this.shake=Math.max(this.shake, 14);
+            this.currentRoom.explosions.push({x:b.x,y:b.y,radius:6,life:160,max:160,isDillianBlock:true});
+          }
+        }
+      }
+      // Dano pouco ao tocar inimigo (orbitante)
+      for(const e of this.currentRoom.enemies){
+        if(e.dead) continue;
+        if(e.type==='hacker' && !e.battleStarted) continue;
+        if(e.type==='stair_boss'){
+          for(const hand of e.getHands()){
+            if(hand.dead||hand.invulnerable) continue;
+            if(dist(shieldPos.x, shieldPos.y, hand.x, hand.y) < DILLIAN_SHIELD_SIZE/2 + hand.w*0.42){
+              const t = this.player.dillianShieldHitTimers.get(hand) || 0;
+              if(t<=0){
+                const died=hand.takeDamage(DILLIAN_SHIELD_DAMAGE);
+                this.player.dillianShieldHitTimers.set(hand, DILLIAN_SHIELD_COOLDOWN);
+                for(let k=0;k<4;k++) this.particles.push(new Particle(hand.x, hand.y, randRange(-1.2,1.2), randRange(-1.2,0.6), 200, '#cfe0ff', 1.6));
+                hand.hitFlash=110;
+                if(died){ for(let k=0;k<8;k++){ const ang=Math.random()*Math.PI*2; this.particles.push(new Particle(hand.x, hand.y, Math.cos(ang)*randRange(1,2.5), Math.sin(ang)*randRange(1,2.5), 260, '#cfe0ff',2)); } }
+              }
+            }
+          }
+          if(!e.isHeadInvulnerable() && dist(shieldPos.x, shieldPos.y, e.x, e.y) < DILLIAN_SHIELD_SIZE/2 + e.w*0.42){
+            const t=this.player.dillianShieldHitTimers.get(e)||0;
+            if(t<=0){
+              const died=e.takeDamage(DILLIAN_SHIELD_DAMAGE);
+              this.player.dillianShieldHitTimers.set(e, DILLIAN_SHIELD_COOLDOWN);
+              for(let k=0;k<4;k++) this.particles.push(new Particle(e.x, e.y, randRange(-1.2,1.2), randRange(-1.2,0.6), 200, '#cfe0ff',1.6));
+              e.hitFlash=110;
+              if(died) for(let k=0;k<8;k++){ const ang=Math.random()*Math.PI*2; this.particles.push(new Particle(e.x,e.y, Math.cos(ang)*randRange(1,2.5), Math.sin(ang)*randRange(1,2.5),260,'#cfe0ff',2)); }
+            }
+          }
+          continue;
+        }
+        if(dist(shieldPos.x, shieldPos.y, e.x, e.y) < DILLIAN_SHIELD_SIZE/2 + Math.max(e.w,e.h)*0.42){
+          const t=this.player.dillianShieldHitTimers.get(e)||0;
+          if(t<=0){
+            const died=e.takeDamage(DILLIAN_SHIELD_DAMAGE);
+            this.player.dillianShieldHitTimers.set(e, DILLIAN_SHIELD_COOLDOWN);
+            for(let k=0;k<4;k++) this.particles.push(new Particle(e.x, e.y, randRange(-1.1,1.1), randRange(-1.1,0.5), 200, '#cfe0ff',1.6));
+            e.hitFlash=110;
+            const ang=Math.atan2(e.y - shieldPos.y, e.x - shieldPos.x);
+            e.x+=Math.cos(ang)*5; e.y+=Math.sin(ang)*5;
+            if(died) for(let k=0;k<8;k++){ const ang2=Math.random()*Math.PI*2; this.particles.push(new Particle(e.x,e.y, Math.cos(ang2)*randRange(1,2.5), Math.sin(ang2)*randRange(1,2.5),260,'#cfe0ff',2)); }
+          }
+        }
+      }
+    }
+
     // enemy bullets collision com player
     for(let i=this.bullets.length-1;i>=0;i--){
       const b=this.bullets[i];
@@ -17663,6 +17954,8 @@ class Game {
       }
       if(this.player.hasFlameTrail) txt += ` 🔥`;
       if(this.player._hasSwiftBoots) txt += ` 💨`;
+      if(this.player.hasNoclip) txt += ` ◈`;
+      if(this.player.hasDillianShield) txt += ` 🛡️`;
       if(this.player.hasDoubleShot) txt += ` x2`;
       if(this.player.weapon.hasPochita) txt += ` 🪚x3`;
       this.hudWeapon.textContent=txt;
