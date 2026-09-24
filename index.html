@@ -23,7 +23,7 @@
           <button id="btnPlay" class="btn btn-primary">▶ JOGAR</button>
           <button id="btnControls" class="btn btn-secondary">⌨ CONTROLES</button>
         </div>
-        <p class="menu-footer">Cyber Requiem v6.0 • Programadores👤 + Boss da Escada • 5 Fases • HTML5 Canvas</p>
+        <p class="menu-footer">Cyber Requiem v6.1 • Programadores👤 + Boss Hacker • 6 Fases • Mineradora de Coins • HTML5 Canvas</p>
         <p class="menu-footer">Feito por Leonardo Schoeller</p>
       </div>
       <div class="bg-decoration"></div>
@@ -127,11 +127,11 @@
         <div class="controls-header">
           <div class="controls-header-top">
             <h2>⌨ CONTROLES & GUIA</h2>
-            <span class="controls-version">Cyber Requiem v6.0 • 5 Atos • Power Star ⭐</span>
+            <span class="controls-version">Cyber Requiem v6.1 • 6 Atos • Power Star ⭐ + Setch</span>
           </div>
           <p class="controls-subtitle">Domine os comandos, armas e segredos. Tudo que você precisa para sobreviver ao mundo cibernético até a Sala da Escada.</p>
           <div class="controls-quickstats">
-            <span class="qstat"><i>🎯</i> 5 Fases</span>
+            <span class="qstat"><i>🎯</i> 6 Fases</span>
             <span class="qstat"><i>⭐</i> Power Star</span>
             <span class="qstat"><i>◉</i> Boss Final</span>
             <span class="qstat"><i>♥</i> 3 Corações</span>
@@ -349,6 +349,14 @@
                 <span class="enemy-icon" style="background:#fb923c">✕</span>
                 <div><b>X-Atirador</b><span> Fase 2+ • Anda pela área, atira em X (4 diagonais laranja 1.65 vel)</span></div>
               </div>
+              <div class="enemy-card" style="border-color: rgba(255,107,157,0.18); background: rgba(255,107,157,0.06);">
+                <span class="enemy-icon" style="background: linear-gradient(135deg, #ff6b9d, #ffcc00, #3b82f6, #ff3b30);">🐒</span>
+                <div><b>Macaco</b><span> Novo • 3 HP • Pulo ágil • Cores: rosa, amarelo, vermelho, azul, verde, roxo etc. • Variações Tank/Brutal</span></div>
+              </div>
+              <div class="enemy-card" style="border-color: rgba(168,85,247,0.18); background: rgba(168,85,247,0.06);">
+                <span class="enemy-icon" style="background:#a78bfa">🎲</span>
+                <div><b>Sala Setch</b><span> 2× tamanho • Fase 5/6 • NPC copinhos • Bola nos copos • Recompensa: upgrade ou Vida Cibernética</span></div>
+              </div>
               <div class="enemy-card boss">
                 <span class="enemy-icon" style="background:#d946ef">◉</span>
                 <div><b>Miniboss</b><span> Cruz/X, investida, fase 2 invoca (Fase 4)</span></div>
@@ -369,7 +377,7 @@
             <summary class="section-summary">
               <span class="section-icon">🗺️</span>
               <span class="section-title">Fases & Progressão</span>
-              <span class="section-badge">5 andares</span>
+              <span class="section-badge">6 andares</span>
             </summary>
             <div class="phases-track">
               <div class="phase-card p1">
@@ -390,7 +398,11 @@
               </div>
               <div class="phase-card p5 gold">
                 <span class="phase-num">5</span>
-                <div><b>SALA DA ESCADA</b><span>11-14 salas • Boss Final • Diálogo SIM/NÃO • Power Star ↑</span></div>
+                <div><b>SALA DA ESCADA</b><span>11-14 salas • Boss Escada • Diálogo SIM/NÃO • Power Star ↑</span></div>
+              </div>
+              <div class="phase-card p6 gold" style="border-color: rgba(255,183,0,0.32); background: linear-gradient(90deg, rgba(255,183,0,0.08), rgba(0,0,0,0.18));">
+                <span class="phase-num" style="color:#ffb700; background:#1a1500; border-color: rgba(255,183,0,0.32);">6</span>
+                <div><b>MINERADORA DE COINS</b><span>13-16 salas • Boss Hacker (Dark Vírus) • Macaco 🐒 • Sala Setch 2× • Coins 💰</span></div>
               </div>
             </div>
             <div class="phase-notes">
@@ -405,7 +417,7 @@
             <summary class="section-summary">
               <span class="section-icon">💡</span>
               <span class="section-title">Dicas Estratégicas</span>
-              <span class="section-badge">8 dicas</span>
+              <span class="section-badge">11 dicas</span>
             </summary>
             <ul class="tips modern">
               <li><span class="tip-icon">🚪</span> <span>Portas com cadeado <span class="dot locked"></span> só abrem quando a sala está limpa. Minimapa marca salas limpas em verde.</span></li>
@@ -416,6 +428,9 @@
               <li><span class="tip-icon">◉</span> <span>Boss Fase 5: 1ª fase só cabeça toma dano. Em 50% cabeça fica <b>BLOQUEADA</b> — destrua as <b>2 mãos (16 HP cada)</b> para liberar.</span></li>
               <li><span class="tip-icon">⚡</span> <span>Boss avisa raio 950ms (linha amarela até o centro). Saia do centro! Mãos batem → 8 projéteis radiais.</span></li>
               <li><span class="tip-icon">⬆</span> <span>Upgrades por arma: colete no chão, aplica na hora e fica vinculado. Q troca mantém. Até 3 níveis.</span></li>
+              <li><span class="tip-icon">🐒</span> <span><span style="color:#ff6b9d">Macaco</span> novo inimigo colorido (rosa/amarelo/vermelho/azul/verde/roxo/laranja/ciano) — pulo ágil, 3 HP, aparece em várias fases.</span></li>
+              <li><span class="tip-icon">🎲</span> <span><span style="color:#a78bfa">Sala Setch</span> 2× tamanho — Fase 5/6 • NPC com copos: 3 copos embaralham, escolha 1/2/3 ou clique. Acerto = upgrade arma ou Vida Cibernética.</span></li>
+              <li><span class="tip-icon">💰</span> <span><span style="color:#ffb700">Mineradora Fase 6</span> 13-16 salas • Boss Hacker final (Dark Vírus) com 4 fases • Coins douradas no chão • Variações Tank/Brutal.</span></li>
             </ul>
           </details>
 

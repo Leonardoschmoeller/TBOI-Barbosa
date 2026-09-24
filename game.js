@@ -1,6 +1,6 @@
 /* 
-  Cyber Requiem - Roguelike 2D Completo v6.0 - HUD TOPO + Q TROCA + TIRO DUPLO + METRALHADORA + CARREGADA + Bone Heart
-  Arquitetura: Game, Player, Chaser, Fugitive, Kamikaze, Summoner, Bullet, Room, MapGenerator, Particle, InputHandler, Item/HealingItem/WeaponItem/FlameTrailItem/SwiftBootsItem/DoubleShotItem, FirePatch, Spike
+  Cyber Requiem - Roguelike 2D Completo v6.1 - Mineradora Fase 6 + Macaco + Sala Setch 2x + Hacker movido
+  Arquitetura: Game, Player, Chaser, Fugitive, Kamikaze, Summoner, Bullet, Room, MapGenerator, Particle, InputHandler, Item/HealingItem/WeaponItem/FlameTrailItem/SwiftBootsItem/DoubleShotItem, FirePatch, Spike, Macaco, SetchNPC/SetchCupGame
   Controles: WASD mover, Setas atirar 8 direções (segurar = carregar CARREGADA), Shift dash, Q troca com arma no chão próxima (58px, hint, sem duplicação)
   Novidades v5.1: Arma comum CARREGADA com mecânica de carregamento (segurar seta carrega dano 1→4, barra roxa, cancela ao trocar) + Q troca robusta (reutiliza objeto, sem duplicação/desaparecimento/infinito, hint)
   Novidades v5: HUD topo compacto, Q troca com arma no chão (sem duplicação), Tiro Duplo lado a lado (WEAPON_NORMAL melhorada), Metralhadora rara com aquecimento (TEMP bar) e redução velocidade
@@ -111,6 +111,70 @@ const CHARGED_MIN_DAMAGE = 1;          // dano mínimo (clique rápido / carga m
 const CHARGED_MAX_DAMAGE = 4;          // dano máximo (carga completa, 2 corações)
 const CHARGED_MIN_CHARGE_TIME = 140;   // ms mínimo para começar a escalar dano
 const CHARGED_MAX_CHARGE_TIME = 1100;  // ms até carga máxima (segurar ~1.1s = dano máx)
+
+// ===================== NOVA MECÂNICA: LASER CARREGÁVEL + TIMING MINIGAME =====================
+// Arquitetura modular: cada subsistema em classe separada, valores facilmente configuráveis.
+// - LASER_CONFIG centraliza balanceamento (charge, timing, dano, velocidade)
+// - Sistema de carregamento do laser (LaserChargeSystem)
+// - Sistema do minigame (LaserTimingMinigame)
+// - Detecção do timing (LaserTimingMinigame.isInZone / checkTiming)
+// - Laser poderoso (PerfectLaser)
+// - Laser teleguiado (HomingLaser)
+// - Sistema de dano (integrado via Bullet/laser damage)
+// - Interface/efeitos visuais (drawLaserHUD, feedback)
+// Fluxo completo: Atacar → carregar barra → 100% → minigame → acertar zona verde → laser correspondente
+// Valores deixados explícitos para fácil edição por designers.
+const LASER_CONFIG = {
+  // --- Sistema de carregamento do laser ---
+  chargeTime: 900,              // ms para encher 100% (variável balanceável) - tempo de carregamento da barra
+  // --- Sistema do minigame ---
+  zoneSize: 0.18,               // tamanho da zona verde (0.18 = 18% da barra) - configurável, maior = mais fácil
+  zoneStart: 0.58,              // posição inicial da zona verde (0..1-zoneSize) - ex: 0.58 = 58%
+  markerSpeed: 1.42,            // velocidade do marcador (unidades barra por segundo, ping-pong) - configurável
+  minigameDuration: 3200,       // ms máximo para apertar, senão considera erro (teleguiado) - tempo limite do minigame
+  // --- Detecção do timing ---
+  perfectWindowExpand: 0.0,     // expansão extra da zona (0 = exata, 0.02 = 2% tolerância)
+  // --- Laser poderoso (acerto perfeito) ---
+  perfectDamage: 7,             // bastante dano (> normal 1, > carregada 4) - sensação impacto forte
+  perfectSpeed: 12.5,           // velocidade do projétil perfeito (muito rápido)
+  perfectRange: 520,            // alcance longo
+  perfectSize: 7,               // tamanho visual maior
+  perfectColor: '#ff1a2e',      // vermelho intenso para impacto forte
+  perfectGlow: 'rgba(255,26,46,0.52)', // brilho vermelho impacto
+  // --- Laser teleguiado (erro) ---
+  homingDamage: 2.6,            // menos dano que perfeito (balanceado)
+  homingSpeed: 6.8,             // velocidade do teleguiado (permite curva)
+  homingRange: 440,             // alcance teleguiado
+  homingSize: 5,                // tamanho menor (diferente visual)
+  homingColor: '#7af2ff',       // ciano teleguiado distinto
+  homingGlow: 'rgba(122,242,255,0.44)', // brilho ciano
+  homingTurnRate: 0.098,        // força de curvatura por frame (0.06 suave, 0.15 agressivo) - configurável
+  homingDetectRadius: 420,      // raio de detecção do inimigo
+  // --- Interface / Feedback ---
+  chargeBarColorLow: '#ff3b30', // cor barra 0-50%
+  chargeBarColorMid: '#ff8c42', // cor barra 50-85%
+  chargeBarColorHigh: '#ffeb3b',// cor barra 85-99%
+  chargeBarColorFull: '#ffffff',// cor barra 100%
+  zoneColor: '#4ade80',         // cor zona verde
+  feedbackPerfectDuration: 900, // ms feedback PERFEITO! na tela
+  feedbackMissDuration: 900,    // ms feedback ERROU!
+};
+// Definição da arma Laser (integrada ao sistema de armas existente)
+const WEAPON_LASER = {
+  name: 'LASER',
+  cooldown: 680,                // intervalo após disparo (balanceado, não spam)
+  range: 460,
+  damage: 2.6,                  // placeholder - dano real vem de LASER_CONFIG perfect/homing
+  count: 1,
+  spread: 0,
+  bulletSpeed: 9.5,
+  color: '#ff3b30',
+  bulletSize: 6,
+  pierce: false,
+  isLaser: true                 // flag identifica mecânica laser carregável
+};
+// Tamanho do pickup Laser no chão (para WeaponItem)
+const ITEM_SIZE_LASER = 22;
 
 // Melhoria arma principal: tiro duplo lado a lado
 const DOUBLE_SHOT_OFFSET = 7; // deslocamento lateral em pixels (variável fácil de editar)
@@ -1550,6 +1614,11 @@ const UPGRADE_VALUES = {
   // Especial - incomum: redução de recarga de itens especiais
   ESPECIAL_INCOMUM_COOLDOWN: 0.10, // -10% recarga especiais por acúmulo até 30%
   GERAL_MUITO_RARA_PIERCING: 1,       // +1 pierce geral
+  // LASER - nova arma carregável com timing (modular, balanceável)
+  LASER_COMUM_CHARGE_REDUC: 0.14,   // -14% tempo carga
+  LASER_INCOMUM_DANO_PERFECT: 0.22, // +22% dano perfeito
+  LASER_RARA_ZONA_SIZE: 0.35,       // +35% tamanho zona verde (mais fácil)
+  LASER_MUITO_RARA_DANO_HOMING: 0.30, // +30% dano teleguiado + perfura
 };
 // Caps para evitar infinito/exagerado
 const UPGRADE_CAPS = {
@@ -1955,6 +2024,37 @@ const UPGRADE_DEFS = [
       w.pierceCount = 999;
       w.glow = 'rgba(184,255,251,0.55)';
   }},
+  // ===================== LASER - Upgrades modulares (configurável em LASER_CONFIG) =====================
+  // Cada upgrade altera um subsistema distinto (carga, dano, zona). Fácil balancear via valores acima.
+  { id:'laser_comum_carga', weapon:'LASER', rarity:'COMUM', name:'Capacitor Rápido', desc:'-14% tempo de carregamento (barra enche mais rápido)', apply:(w)=>{
+      const base=LASER_CONFIG.chargeTime;
+      // aplica em arma: guarda _laserChargeMax reduzido
+      const cur = w._laserChargeMax || base;
+      const novo = Math.max(Math.round(cur * (1-UPGRADE_VALUES.LASER_COMUM_CHARGE_REDUC)), UPGRADE_CAPS.MIN_CHARGE_TIME);
+      w._laserChargeMax = novo;
+      // também atualiza config global para próximos (opcional, mas mantém coerência)
+      // Não altera LASER_CONFIG diretamente para não afetar outras instâncias
+  }},
+  { id:'laser_incomum_dano', weapon:'LASER', rarity:'INCOMUM', name:'Amplificador Perfeito', desc:'+22% dano do laser perfeito (impacto forte)', apply:(w)=>{
+      const base=LASER_CONFIG.perfectDamage;
+      // dano perfeito escala via arma flag
+      w._laserPerfectBonus = (w._laserPerfectBonus||0) + UPGRADE_VALUES.LASER_INCOMUM_DANO_PERFECT;
+      // aplica também direto se já tiver valor
+      if(!w._laserPerfectDamage) w._laserPerfectDamage = base;
+      w._laserPerfectDamage = Math.min(w._laserPerfectDamage * (1+UPGRADE_VALUES.LASER_INCOMUM_DANO_PERFECT), base*UPGRADE_CAPS.MAX_DANO_FACTOR);
+  }},
+  { id:'laser_rara_zona', weapon:'LASER', rarity:'RARA', name:'Mira Guiada', desc:'+35% tamanho da zona verde (timing mais fácil)', apply:(w)=>{
+      // aumenta zona verde: guarda bonus para minigame
+      w._laserZoneBonus = (w._laserZoneBonus||0) + UPGRADE_VALUES.LASER_RARA_ZONA_SIZE;
+      // Zona efetiva = base * (1+bonus) limitada a 0.45 (45% da barra)
+      const eff = Math.min(LASER_CONFIG.zoneSize * (1+w._laserZoneBonus), 0.45);
+      w._laserZoneSize = eff;
+  }},
+  { id:'laser_muito_rara_furia', weapon:'LASER', rarity:'MUITO_RARA', name:'Laser Furioso', desc:'+30% dano teleguiado + teleguiado perfura 1', apply:(w)=>{
+      w._laserHomingBonus = (w._laserHomingBonus||0) + UPGRADE_VALUES.LASER_MUITO_RARA_DANO_HOMING;
+      w._laserHomingPierce = true;
+      w._laserHomingDamage = LASER_CONFIG.homingDamage * (1+w._laserHomingBonus);
+  }},
   // Sobremesa - COMUM - mini lazers teleguiados a cada 25% (cadência reduzida, pouco dano)
   // Dispara mini lazer teleguiado durante carregamento, pouco dano, não bloqueia carga.
   { id:'sobremesa', weapon:'RAIO_MATEMATICO', compatible:['RAIO_MATEMATICO'], rarity:'COMUM', name:'Sobremesa', desc:'A cada 25% de carga dispara mini lazer teleguiado (pouco dano, segue inimigo)', maxLevel:1, apply:(w)=>{
@@ -2054,6 +2154,13 @@ const DILLIAN_SHIELD_DAMAGE = 0.8;       // pouco dano ao tocar inimigo
 const DILLIAN_SHIELD_COOLDOWN = 520;     // ms entre hits no mesmo inimigo
 const DILLIAN_SHIELD_BLOCK_RADIUS = 15;  // raio bloqueio projéteis
 
+// --- Técnica Secreta Joestar (passivo comum - JoJo referência) ---
+const JOESTAR_SIZE = 20;                 // tamanho hitbox item
+const JOESTAR_DURATION = 5000;           // 5 segundos de bônus após sofrer dano (requisito)
+const JOESTAR_SPEED_BONUS = 1.45;        // +1.45 velocidade (variável balanceável, comum mas impactante)
+const JOESTAR_SPAWN_CHANCE = 0.045;      // 4.5% por sala normal (comum)
+const JOESTAR_SPAWN_TREASURE = 0.08;     // 8% em sala tesouro (comum)
+
 // --- Sala Rara ---
 const rareRoomChance = 0.22;  // 22% de chance de gerar uma RareItemRoom por andar (configurável)
 const rareItems = ['flame_trail', 'raio', 'metralhadora', 'double_shot', 'power_star']; // expansível: basta adicionar novos tipos - power_star incluído Fase 5
@@ -2066,6 +2173,46 @@ const PARTY_HORDE_ENEMIES_MIN = 4; // por onda (mín)
 const PARTY_HORDE_ENEMIES_MAX = 6; // por onda (máx)
 // Cores festa (tema vibrante)
 const PARTY_COLORS = ['#ff3b30','#ffcc00','#00e5ff','#4ade80','#c084fc','#ff6b9d','#ffd23f'];
+
+// ===================== FASE 6: MINERADORA DE COINS =====================
+const FLOOR6_MINERADORA_COIN_CHANCE = 0.52; // 52% coins decorativos na fase 6
+const FLOOR6_MINERADORA_EXTRA_COINS = 0; // futuro: moedas coletáveis
+const HACKER_FLOOR = 6; // Boss Hacker movido para Fase 6 (Mineradora de Coins)
+
+// ===================== MACACO (NOVO INIMIGO COLORIDO) =====================
+const MACACO_SIZE = 26;
+const MACACO_HP = 3;
+const MACACO_SPEED = 1.82;
+const MACACO_DETECT_RADIUS = 220;
+const MACACO_JUMP_COOLDOWN = 900; // ms entre pulos
+const MACACO_JUMP_SPEED = 5.2; // velocidade do pulo rápido
+const MACACO_JUMP_DURATION = 220; // ms pulando
+const MACACO_DAMAGE = 1;
+const MACACO_COLORS = {
+  rosa:    { color:'#ff6b9d', glow:'rgba(255,107,157,0.22)', icon:'🐒'},
+  amarelo: { color:'#ffcc00', glow:'rgba(255,204,0,0.22)', icon:'🐒'},
+  vermelho:{ color:'#ff3b30', glow:'rgba(255,59,48,0.22)', icon:'🐒'},
+  azul:    { color:'#3b82f6', glow:'rgba(59,130,246,0.22)', icon:'🐒'},
+  verde:   { color:'#4ade80', glow:'rgba(74,222,128,0.22)', icon:'🐒'},
+  roxo:    { color:'#a78bfa', glow:'rgba(167,139,250,0.22)', icon:'🐒'},
+  laranja: { color:'#ff8c42', glow:'rgba(255,140,66,0.22)', icon:'🐒'},
+  ciano:   { color:'#00e5ff', glow:'rgba(0,229,255,0.22)', icon:'🐒'}
+};
+const MACACO_COLOR_KEYS = Object.keys(MACACO_COLORS);
+const MACACO_SPAWN_FLOORS = [2,3,4,5,6]; // pode aparecer em várias fases
+
+// ===================== SALA SETCH (2x TAMANHO) =====================
+const SETCH_ROOM_CHANCE = 0.24; // 24% por andar quando elegível (Fase 5 ou 6)
+const SETCH_ROOM_FLOORS = [5,6]; // só aparece em Fase 5 ou 6
+const SETCH_ROOM_MIN_DISTANCE = 2; // distância mínima do start
+const SETCH_CUP_COUNT = 3;
+const SETCH_SHUFFLE_MOVES = 7; // número de trocas de copos
+const SETCH_SHUFFLE_SPEED = 420; // ms por troca
+const SETCH_SHOW_BALL_TIME = 900; // ms mostra bolinha antes de esconder
+const SETCH_NPC_SIZE_W = 28;
+const SETCH_NPC_SIZE_H = 34;
+const SETCH_REWARD_UPGRADE_CHANCE = 0.50; // 50% upgrade, 50% vida cibernética
+const SETCH_INTERACT_RANGE = 64;
 
 // --- Fase 4: Miniboss (configurável) ---
 const MINIBOSS_ROOM_CHANCE = 0.35; // 35% de chance de gerar sala miniboss na Fase 4 (fácil alterar)
@@ -2237,6 +2384,323 @@ function drawVariationIcon(ctx, enemy, x, y, bob){
     ctx.fillStyle='rgba(255,215,0,0.92)';
     ctx.font='5px monospace'; ctx.textAlign='center';
     ctx.fillText('ELITE', enemy.x, y-16+bob); ctx.textAlign='left';
+  }
+}
+
+// ===================== LASER MODULAR - SISTEMAS SEPARADOS (Fácil Modificação) =====================
+// Cada classe/função abaixo é independente e documentada. Valores vêm de LASER_CONFIG.
+// Para balancear, edite apenas LASER_CONFIG no topo. Para mudar visual, edite as classes de interface.
+// ---------------------------------------------------------------------------------------------------
+// Sistema de carregamento do laser: controla progresso 0..1 baseado no tempo segurando ataque.
+// - Não cria timers múltiplos: usa dt do loop principal (confiável mesmo com lag).
+// - Métodos simples: update(dt, isHolding), getProgress(), isFull(), reset()
+class LaserChargeSystem {
+  constructor(config){
+    // config: { chargeTime } em ms
+    this.chargeTime = config.chargeTime ?? 900; // ms para 100% (variável balanceável)
+    this.time = 0;          // ms acumulados segurando
+    this.progress = 0;      // 0..1
+    this.isFull = false;
+  }
+  // Atualiza com dt e se está segurando botão de ataque. Retorna progresso 0..1.
+  update(dt, isHolding){
+    if(!isHolding){
+      return this.progress;
+    }
+    this.time += dt;
+    if(this.time > this.chargeTime) this.time = this.chargeTime;
+    this.progress = clamp(this.time / this.chargeTime, 0, 1);
+    this.isFull = this.progress >= 0.999;
+    return this.progress;
+  }
+  getProgress(){ return this.progress; }
+  isReady(){ return this.isFull; }
+  // Reseta para 0 (chamado após disparo ou cancelar)
+  reset(){
+    this.time = 0;
+    this.progress = 0;
+    this.isFull = false;
+  }
+  // Permite atualizar chargeTime em runtime se upgrade mudar
+  setChargeTime(ms){ this.chargeTime = ms; if(this.time>ms) this.time=ms; this.progress = clamp(this.time/ms,0,1); }
+}
+
+// Sistema do minigame: marcador ping-pong que se movimenta por uma barra.
+// - Zona verde em [zoneStart, zoneStart+zoneSize]
+// - Marcador vai 0 -> 1 -> 0 ... com markerSpeed (unidades por segundo)
+// - Visual e lógica separados: update move marcador, checkTiming verifica acerto.
+class LaserTimingMinigame {
+  constructor(config){
+    // Valores configuráveis (fáceis de editar em LASER_CONFIG)
+    this.zoneStart = config.zoneStart ?? 0.58;   // início da zona verde 0..1
+    this.zoneSize = config.zoneSize ?? 0.18;     // tamanho da zona 0..1
+    this.markerSpeed = config.markerSpeed ?? 1.42; // velocidade do marcador (barra/s)
+    this.duration = config.minigameDuration ?? 3200; // ms limite para apertar (senão miss)
+    this.expand = config.perfectWindowExpand ?? 0.0; // tolerância extra
+    // Estado interno
+    this.markerPos = 0;      // 0..1 posição atual
+    this.dir = 1;            // 1 = indo para 1, -1 = voltando para 0
+    this.time = 0;           // ms desde início
+    this.active = false;
+    this.result = null;      // null, 'perfect', 'miss'
+  }
+  // Inicia novo minigame (reset marcador para 0 e direção 1)
+  start(){
+    this.markerPos = 0;
+    this.dir = 1;
+    this.time = 0;
+    this.active = true;
+    this.result = null;
+  }
+  // Atualiza movimento do marcador. Retorna true se ainda ativo, false se expirou (timeout = miss)
+  update(dt){
+    if(!this.active) return false;
+    this.time += dt;
+    // Movimento ping-pong
+    this.markerPos += this.dir * this.markerSpeed * (dt/1000);
+    if(this.markerPos >= 1){ this.markerPos = 1; this.dir = -1; }
+    else if(this.markerPos <= 0){ this.markerPos = 0; this.dir = 1; }
+    // Timeout automático -> miss (teleguiado)
+    if(this.time >= this.duration){
+      this.active = false;
+      this.result = 'miss';
+      return false;
+    }
+    return true;
+  }
+  // Detecção do timing: verifica se marcador está dentro da zona verde no momento do clique.
+  // Retorna true se PERFEITO (dentro), false se ERROU (fora). Também define result.
+  checkTiming(){
+    if(!this.active) return false;
+    const inZone = this.isInZone(this.markerPos);
+    this.result = inZone ? 'perfect' : 'miss';
+    this.active = false;
+    return inZone;
+  }
+  // Verifica se posição está dentro da zona verde (com expand tolerância)
+  isInZone(pos){
+    const z0 = this.zoneStart - this.expand;
+    const z1 = this.zoneStart + this.zoneSize + this.expand;
+    return pos >= z0 && pos <= z1;
+  }
+  getMarkerPos(){ return this.markerPos; }
+  getZone(){ return { start: this.zoneStart, end: this.zoneStart + this.zoneSize }; }
+  isActive(){ return this.active; }
+  getResult(){ return this.result; }
+  // Permite reconfigurar em runtime (upgrade altera zona)
+  setZone(start,size){ this.zoneStart=start; this.zoneSize=size; }
+  setSpeed(s){ this.markerSpeed=s; }
+}
+
+// Sistema de dano do laser (função modular)
+// - Centraliza cálculo de dano para perfeito vs teleguiado
+// - Fácil ajustar multiplicadores sem espalhar lógica
+function getLaserDamage(type){
+  if(type==='perfect') return LASER_CONFIG.perfectDamage;
+  if(type==='homing') return LASER_CONFIG.homingDamage;
+  return LASER_CONFIG.homingDamage;
+}
+
+// Laser poderoso (acerto perfeito): projétil rápido, dano alto, efeito impacto forte, sem teleguiado.
+// - Visual: vermelho intenso, brilho forte, tamanho maior, trilha larga
+// - Mecânica: pierce 1 (atravessa 1 inimigo), dano alto
+class PerfectLaser {
+  constructor(x, y, dirX, dirY, config){
+    this.x = x; this.y = y;
+    this.dirX = dirX; this.dirY = dirY;
+    this.speed = config.perfectSpeed ?? LASER_CONFIG.perfectSpeed;
+    this.damage = config.perfectDamage ?? LASER_CONFIG.perfectDamage;
+    this.range = config.perfectRange ?? LASER_CONFIG.perfectRange;
+    this.size = config.perfectSize ?? LASER_CONFIG.perfectSize;
+    this.color = config.perfectColor ?? LASER_CONFIG.perfectColor;
+    this.glow = config.perfectGlow ?? LASER_CONFIG.perfectGlow;
+    this.traveled = 0;
+    this.owner = 'player';
+    this.dead = false;
+    this.isPerfectLaser = true; // flag para detecção em Bullet draw/update
+    this.isLaserPerfect = true; // alias
+    this.pierce = true;
+    this.pierceCount = 1; // atravessa 1 (configurável)
+    this.hitEnemies = new Set();
+    this.trail = [];
+  }
+  // Atualiza movimento reto, verifica paredes e alcance
+  update(dt, walls){
+    const dx = this.dirX * this.speed;
+    const dy = this.dirY * this.speed;
+    this.x += dx; this.y += dy;
+    this.traveled += Math.hypot(dx,dy);
+    // rastro para efeito
+    this.trail.push({x:this.x, y:this.y, life:120});
+    if(this.trail.length>6) this.trail.shift();
+    for(const t of this.trail) t.life-=dt;
+    this.trail=this.trail.filter(t=>t.life>0);
+    if(this.traveled > this.range) this.dead = true;
+    for(const w of walls){
+      if(circleRectCollide(this.x,this.y,this.size,w.x,w.y,w.w,w.h)){ this.dead=true; break; }
+    }
+    if(this.x<-24||this.x>CANVAS_W+24||this.y<-24||this.y>CANVAS_H+24) this.dead=true;
+    return !this.dead;
+  }
+  // Desenho com sensação de impacto forte: brilho vermelho largo + núcleo branco + trilha
+  draw(ctx){
+    // trilha vermelha impacto
+    for(const t of this.trail){
+      const a=clamp(t.life/120,0,1);
+      ctx.fillStyle=`rgba(255,26,46,${a*0.16})`;
+      ctx.beginPath(); ctx.arc(t.x,t.y, (this.size+6)*a,0,Math.PI*2); ctx.fill();
+    }
+    // glow externo impacto forte
+    ctx.fillStyle=this.glow;
+    ctx.beginPath(); ctx.arc(this.x,this.y,this.size+6,0,Math.PI*2); ctx.fill();
+    // rastro alongado (impacto)
+    ctx.strokeStyle=this.glow;
+    ctx.lineWidth=this.size+3.5;
+    ctx.lineCap='round';
+    ctx.globalAlpha=0.55;
+    ctx.beginPath();
+    ctx.moveTo(this.x - this.dirX*18, this.y - this.dirY*18);
+    ctx.lineTo(this.x, this.y);
+    ctx.stroke();
+    ctx.globalAlpha=1;
+    // corpo principal vermelho intenso
+    ctx.fillStyle=this.color;
+    ctx.beginPath(); ctx.arc(this.x,this.y,this.size,0,Math.PI*2); ctx.fill();
+    // núcleo branco impacto
+    ctx.fillStyle='#ffffff';
+    ctx.beginPath(); ctx.arc(this.x,this.y,this.size*0.42,0,Math.PI*2); ctx.fill();
+    // brilho topo
+    ctx.fillStyle='rgba(255,255,255,0.9)';
+    ctx.beginPath(); ctx.arc(this.x -1.2, this.y -1.2,1.4,0,Math.PI*2); ctx.fill();
+    // faísca impacto extra quando em voo
+    if(Math.random()<0.45){
+      ctx.fillStyle='rgba(255,255,255,0.72)';
+      const px=this.x - this.dirX*4 + randRange(-2,2);
+      const py=this.y - this.dirY*4 + randRange(-2,2);
+      ctx.fillRect(px,py,1.2,1.2);
+    }
+  }
+  getRect(){ return {x:this.x-this.size, y:this.y-this.size, w:this.size*2, h:this.size*2}; }
+}
+
+// Laser teleguiado (erro): segue o inimigo mais próximo, dano menor, visual distinto ciano.
+// - Visual: ciano, tamanho menor, curva suave indicada por setinha
+// - Mecânica: homing com turnRate configurável, detecta inimigo dentro de homingDetectRadius
+class HomingLaser {
+  constructor(x, y, dirX, dirY, config){
+    this.x = x; this.y = y;
+    this.dirX = dirX; this.dirY = dirY;
+    this.speed = config.homingSpeed ?? LASER_CONFIG.homingSpeed;
+    this.damage = config.homingDamage ?? LASER_CONFIG.homingDamage;
+    this.range = config.homingRange ?? LASER_CONFIG.homingRange;
+    this.size = config.homingSize ?? LASER_CONFIG.homingSize;
+    this.color = config.homingColor ?? LASER_CONFIG.homingColor;
+    this.glow = config.homingGlow ?? LASER_CONFIG.homingGlow;
+    this.turnRate = config.homingTurnRate ?? LASER_CONFIG.homingTurnRate;
+    this.detectRadius = config.homingDetectRadius ?? LASER_CONFIG.homingDetectRadius;
+    this.traveled = 0;
+    this.owner = 'player';
+    this.dead = false;
+    this.isHomingLaser = true;
+    this.isLaserHoming = true;
+    this.hitEnemies = new Set();
+    this.pierce = false;
+    this.trail = [];
+  }
+  // Atualiza com homing: curva em direção ao inimigo mais próximo
+  update(dt, walls){
+    // Busca alvo mais próximo dentro do raio
+    try{
+      const room = (typeof window!=='undefined' && window.game && window.game.currentRoom) ? window.game.currentRoom : null;
+      if(room && room.enemies && room.enemies.length){
+        let best=null, bestD=this.detectRadius;
+        for(const e of room.enemies){
+          if(e.dead) continue;
+          const d=dist(this.x,this.y,e.x,e.y);
+          if(d<bestD){ best=e; bestD=d; }
+        }
+        if(best){
+          const tx=best.x - this.x, ty=best.y - this.y;
+          const tLen=Math.hypot(tx,ty)||1;
+          const tdx=tx/tLen, tdy=ty/tLen;
+          // interpola direção atual com direção alvo (curva suave)
+          let nx=this.dirX*(1-this.turnRate) + tdx*this.turnRate;
+          let ny=this.dirY*(1-this.turnRate) + tdy*this.turnRate;
+          const nLen=Math.hypot(nx,ny)||1;
+          this.dirX=nx/nLen; this.dirY=ny/nLen;
+        }
+      }
+    }catch(e){}
+    const dx=this.dirX*this.speed;
+    const dy=this.dirY*this.speed;
+    this.x+=dx; this.y+=dy;
+    this.traveled+=Math.hypot(dx,dy);
+    this.trail.push({x:this.x,y:this.y,life:140});
+    if(this.trail.length>7) this.trail.shift();
+    for(const t of this.trail) t.life-=dt;
+    this.trail=this.trail.filter(t=>t.life>0);
+    if(this.traveled>this.range) this.dead=true;
+    for(const w of walls){
+      if(circleRectCollide(this.x,this.y,this.size,w.x,w.y,w.w,w.h)){ this.dead=true; break; }
+    }
+    if(this.x<-24||this.x>CANVAS_W+24||this.y<-24||this.y>CANVAS_H+24) this.dead=true;
+    return !this.dead;
+  }
+  // Visual ciano teleguiado distinto do perfeito: mostra curva e setinha
+  draw(ctx){
+    for(const t of this.trail){
+      const a=clamp(t.life/140,0,1);
+      ctx.fillStyle=`rgba(122,242,255,${a*0.14})`;
+      ctx.beginPath(); ctx.arc(t.x,t.y,(this.size+5)*a,0,Math.PI*2); ctx.fill();
+    }
+    // trilha ciana indicando curva
+    ctx.strokeStyle=this.glow;
+    ctx.lineWidth=this.size+2.6;
+    ctx.lineCap='round';
+    ctx.globalAlpha=0.52;
+    ctx.beginPath();
+    ctx.moveTo(this.x - this.dirX*14, this.y - this.dirY*14);
+    ctx.lineTo(this.x, this.y);
+    ctx.stroke();
+    ctx.globalAlpha=1;
+    // glow
+    ctx.fillStyle=this.glow;
+    ctx.beginPath(); ctx.arc(this.x,this.y,this.size+4.5,0,Math.PI*2); ctx.fill();
+    // corpo ciano
+    ctx.fillStyle=this.color;
+    ctx.beginPath(); ctx.arc(this.x,this.y,this.size,0,Math.PI*2); ctx.fill();
+    // núcleo branco menor (menos impacto que perfeito)
+    ctx.fillStyle='#e0f7ff';
+    ctx.beginPath(); ctx.arc(this.x,this.y,this.size*0.38,0,Math.PI*2); ctx.fill();
+    // setinha teleguiada na ponta
+    const ang=Math.atan2(this.dirY,this.dirX);
+    ctx.fillStyle='rgba(122,242,255,0.92)';
+    ctx.beginPath();
+    ctx.moveTo(this.x+Math.cos(ang)*5, this.y+Math.sin(ang)*5);
+    ctx.lineTo(this.x+Math.cos(ang+2.45)*3.0, this.y+Math.sin(ang+2.45)*3.0);
+    ctx.lineTo(this.x+Math.cos(ang-2.45)*3.0, this.y+Math.sin(ang-2.45)*3.0);
+    ctx.closePath(); ctx.fill();
+  }
+  getRect(){ return {x:this.x-this.size, y:this.y-this.size, w:this.size*2, h:this.size*2}; }
+}
+
+// Helper para efeitos visuais do laser (interface/efeitos)
+// - Centraliza partículas e shake para não duplicar código
+function playLaserEffects(game, type, x, y, dir){
+  if(!game || !game.particles) return;
+  if(type==='perfect'){
+    // impacto forte: explosão vermelha + branco + shake alto
+    for(let k=0;k<16;k++){ const ang=Math.random()*Math.PI*2; const sp=randRange(1.8,5.2); game.particles.push(new Particle(x+dir.x*10,y+dir.y*10, Math.cos(ang)*sp, Math.sin(ang)*sp, 320, ['#ff1a2e','#ff6b35','#ffffff'][randInt(0,2)], 3.2)); }
+    for(let k=0;k<10;k++) game.particles.push(new Particle(x,y, randRange(-1.6,1.6), randRange(-1.6,0.6), 280, '#ffffff', 2.4));
+    // anel de impacto
+    if(game.currentRoom) game.currentRoom.explosions.push({x:x+dir.x*14,y:y+dir.y*14,radius:8,life:220,max:220,isLaserPerfect:true});
+    game.shake=Math.max(game.shake, 95);
+  } else {
+    // teleguiado: partículas cianas suaves + shake leve
+    for(let k=0;k<10;k++) game.particles.push(new Particle(x+dir.x*8,y+dir.y*8, randRange(-1.4,1.4), randRange(-1.4,0.5), 240, '#7af2ff', 2));
+    for(let k=0;k<4;k++) game.particles.push(new Particle(x,y, randRange(-0.8,0.8), randRange(-0.8,0.3), 180, '#ffffff',1.4));
+    if(game.currentRoom) game.currentRoom.explosions.push({x:x+dir.x*10,y:y+dir.y*10,radius:6,life:180,max:180,isLaserHoming:true});
+    game.shake=Math.max(game.shake, 48);
   }
 }
 
@@ -2705,18 +3169,19 @@ function applyCharacterToPlayer(player, characterId){
   // Reseta contaminação de outros personagens
   player.cyberHp = 0;
   player.maxCyberHp = CYBER_HEART_MAX_CYBER;
-  // Arma inicial - inclui RAIO_MATEMATICO exclusivo Dev
-  const wMap = { NORMAL: WEAPON_NORMAL, SHOTGUN: WEAPON_SHOTGUN, RAIO: WEAPON_RAIO, METRALHADORA: WEAPON_METRALHADORA, CARREGADA: WEAPON_CARREGADA, BAZUCA: WEAPON_BAZUCA, ESPADA: WEAPON_ESPADA, LUVA: WEAPON_LUVA, BASTAO: WEAPON_BASTAO, MOTOSSERRA: WEAPON_MOTOSSERRA, RAIO_MATEMATICO: WEAPON_RAIO_MATEMATICO };
+  // Arma inicial - inclui RAIO_MATEMATICO exclusivo Dev e LASER
+  const wMap = { NORMAL: WEAPON_NORMAL, SHOTGUN: WEAPON_SHOTGUN, RAIO: WEAPON_RAIO, METRALHADORA: WEAPON_METRALHADORA, CARREGADA: WEAPON_CARREGADA, BAZUCA: WEAPON_BAZUCA, ESPADA: WEAPON_ESPADA, LUVA: WEAPON_LUVA, BASTAO: WEAPON_BASTAO, MOTOSSERRA: WEAPON_MOTOSSERRA, LASER: WEAPON_LASER, RAIO_MATEMATICO: WEAPON_RAIO_MATEMATICO };
   // limpa upgrades anteriores? Mantém? No startGame já reseta, mas aqui reconstrói com upgrades se houver
   // Starter weapon com upgrades vinculados (se já houver upgrades coletados, buildUpgraded)
   if(def.starterWeapon && wMap[def.starterWeapon]){
     // Usa createWeaponWithUpgrades se existir, senão copia base
     if(typeof player.buildUpgradedWeapon === 'function'){
       // Garante que weaponUpgrades está inicializado
-      if(!player.weaponUpgrades) player.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], RAIO_MATEMATICO:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], ALL:[], SPECIAL:[] };
-      // Para JG, adiciona suporte BASTAO e MOTOSSERRA
+      if(!player.weaponUpgrades) player.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], RAIO_MATEMATICO:[], LASER:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], ALL:[], SPECIAL:[] };
+      // Para JG, adiciona suporte BASTAO e MOTOSSERRA e LASER
       if(!player.weaponUpgrades['BASTAO']) player.weaponUpgrades['BASTAO'] = [];
       if(!player.weaponUpgrades['MOTOSSERRA']) player.weaponUpgrades['MOTOSSERRA'] = [];
+      if(!player.weaponUpgrades['LASER']) player.weaponUpgrades['LASER'] = [];
       if(!player.weaponUpgrades['RAIO_MATEMATICO']) player.weaponUpgrades['RAIO_MATEMATICO'] = [];
       const built = player.buildUpgradedWeapon(def.starterWeapon);
       player.primaryWeapon = built || {...wMap[def.starterWeapon]};
@@ -2950,6 +3415,13 @@ const FLOOR_THEMES = {
     wall: '#4a2e18', wallTop: '#6b4220', wallLine: 'rgba(80,40,10,0.28)',
     bg: '#0f0906', accent: '#ffd700', doorLocked: '#5a1a0a',
     decor: 'escada', vignette: 'rgba(80,40,0,0.38)'
+  },
+  6: {
+    id: 6, name: 'MINERADORA DE COINS',
+    floorA: '#1a1508', floorB: '#241a00',
+    wall: '#4a3a0a', wallTop: '#6b5210', wallLine: 'rgba(80,60,0,0.28)',
+    bg: '#0a0800', accent: '#ffb700', doorLocked: '#5a3a00',
+    decor: 'mineradora', vignette: 'rgba(80,60,0,0.42)'
   }
 };
 
@@ -3057,6 +3529,56 @@ class Particle {
     ctx.fillStyle = this.color;
     ctx.fillRect(Math.round(this.x), Math.round(this.y), this.size, this.size);
     ctx.globalAlpha = 1;
+  }
+}
+
+// Estrela roxa Joestar - partícula especial com glifo ★ que gira e pulsa (efeito ativação)
+class StarParticle {
+  constructor(x, y, vx, vy, life, color, size, char='★'){
+    this.x=x; this.y=y; this.vx=vx; this.vy=vy; this.life=life; this.maxLife=life;
+    this.color=color; this.size=size; this.char=char;
+    this.alpha=1;
+    this.rotation=Math.random()*Math.PI*2;
+    this.spin=randRange(-0.14,0.14);
+    this.scale=1;
+    this.decay=0.96;
+  }
+  update(dt){
+    this.x+=this.vx;
+    this.y+=this.vy;
+    this.vx*=this.decay;
+    this.vy*=this.decay;
+    this.vy+=0.08;
+    this.rotation+=this.spin;
+    // pulso de escala
+    const prog=1 - this.life/this.maxLife;
+    this.scale = 1 + Math.sin(prog*Math.PI)*0.25;
+    this.life-=dt;
+    this.alpha=clamp(this.life/this.maxLife,0,1);
+    return this.life>0;
+  }
+  draw(ctx){
+    ctx.save();
+    ctx.globalAlpha=this.alpha;
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.rotation);
+    ctx.scale(this.scale, this.scale);
+    ctx.fillStyle=this.color;
+    ctx.font=`${Math.round(this.size*5)}px sans-serif`;
+    ctx.textAlign='center';
+    ctx.textBaseline='middle';
+    // sombra leve para destacar
+    ctx.fillStyle='rgba(0,0,0,0.35)';
+    ctx.fillText(this.char, 0.8, 0.8);
+    ctx.fillStyle=this.color;
+    ctx.fillText(this.char, 0, 0);
+    // brilho central
+    if(Math.random()<0.12){
+      ctx.fillStyle='rgba(255,255,255,0.85)';
+      ctx.fillText('·', 0, -this.size*1.2);
+    }
+    ctx.restore();
+    ctx.globalAlpha=1;
   }
 }
 
@@ -7874,6 +8396,7 @@ class WeaponItem extends Item {
     const isBastao = low==='bastao' || low===WEAPON_BASTAO.name.toLowerCase();
     const isMotosserra = low==='motosserra' || low===WEAPON_MOTOSSERRA.name.toLowerCase();
     const isRayMatematico = low==='raio_matematico' || low===WEAPON_RAIO_MATEMATICO.name.toLowerCase();
+    const isLaser = low==='laser' || low===WEAPON_LASER.name.toLowerCase();
     const isMartelo = false;
     const isLanca = false;
     const isArco = false;
@@ -7889,6 +8412,7 @@ class WeaponItem extends Item {
     else if(isLuva) size = ITEM_SIZE_LUVA;
     else if(isBastao) size = ITEM_SIZE_BASTAO;
     else if(isMotosserra) size = ITEM_SIZE_MOTOSSERRA;
+    else if(isLaser) size = ITEM_SIZE_LASER;
     // martelo/lanca/arco/machado removidos
     super(x, y, size, size, weaponType);
     this.weaponType = weaponType;
@@ -7902,6 +8426,7 @@ class WeaponItem extends Item {
     this.isBastao = isBastao;
     this.isMotosserra = isMotosserra;
     this.isRayMatematico = isRayMatematico;
+    this.isLaser = isLaser;
     this.isMartelo = isMartelo;
     this.isLanca = isLanca;
     this.isArco = isArco;
@@ -8131,6 +8656,31 @@ class WeaponItem extends Item {
       ctx.fillStyle=`rgba(255,255,255,${0.6+Math.sin(this.anim*5)*0.3})`; const rmx=x+Math.cos(this.anim*1.6)*5; ctx.fillRect(rmx, y-6, 2,1.5);
       // indicador Pochita se very rare (mostra no chão como preview)
       ctx.fillStyle='rgba(255,180,60,0.42)'; ctx.font='6px monospace'; ctx.textAlign='center'; ctx.fillText('◉', x+6, y-7); ctx.textAlign='left';
+    } else if(this.isLaser){
+      // LASER carregável + timing - rifle futurista vermelho/ciano com zona verde preview
+      const x=this.x, y=this.y + this.bob, s=this.w;
+      const pulse=0.5+Math.sin(this.anim*2.3)*0.32;
+      ctx.fillStyle='rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.ellipse(x, y+s*0.5, s*0.5, 4,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle=`rgba(255,26,46,${0.20+pulse*0.12})`; ctx.beginPath(); ctx.arc(x,y,s*0.78+pulse*4,0,Math.PI*2); ctx.fill();
+      // corpo rifle
+      ctx.fillStyle='#1a0a0a'; ctx.fillRect(x - s/2+1, y-6, s-2, 12);
+      ctx.fillStyle='#2a1a1e'; ctx.fillRect(x - s/2+2, y-5, s-4, 10);
+      // cano longo vermelho
+      ctx.fillStyle='#ff1a2e'; ctx.fillRect(x - s/2+4, y-2, s-8, 4);
+      ctx.fillStyle='#ff6b35'; ctx.fillRect(x - s/2+5, y-1, s-10, 2);
+      // zona verde mini preview na arma (indica timing)
+      ctx.fillStyle='rgba(74,222,128,0.28)'; ctx.fillRect(x -4, y-4, 8, 1.5);
+      ctx.fillStyle='#4ade80'; ctx.fillRect(x -2, y-4, 4, 1.5);
+      // mira
+      ctx.fillStyle='#e0ffff'; ctx.fillRect(x + s/2-4, y-3, 2, 6);
+      ctx.fillStyle='#ffffff'; ctx.fillRect(x + s/2-3.5, y-1, 1, 2);
+      // núcleo brilhante pulsante
+      ctx.fillStyle=`rgba(255,255,255,${0.55+pulse*0.28})`; ctx.fillRect(x-1, y-1, 2, 2);
+      // faixa lateral ciana (teleguiado preview)
+      ctx.fillStyle='rgba(122,242,255,0.62)'; ctx.fillRect(x - s/2+2, y+3, s-4, 1);
+      ctx.fillStyle='#ffcc00'; ctx.font='4px "Press Start 2P"'; ctx.textAlign='center';
+      ctx.fillText('LASER', x, y+s/2+10); ctx.textAlign='left';
+      ctx.fillStyle=`rgba(255,255,255,${0.6+Math.sin(this.anim*5)*0.3})`; const rlx=x+Math.cos(this.anim*1.6)*5; ctx.fillRect(rlx, y-6, 2,1.5);
     } else if(this.isRayMatematico){
       // Azazel Brimstone Azul - ícone no chão (horizontal beam com chifres)
       const x=this.x, y=this.y + this.bob, s=this.w;
@@ -8522,6 +9072,62 @@ class EscudoDillianItem extends Item {
   }
 }
 
+// ===================== TÉCNICA SECRETA JOESTAR (passivo comum - JoJo) =====================
+// Item comum: ao sofrer dano, ganha bônus de velocidade por 5 segundos (fuga Joestar - referência JoJo)
+// Visual: estrela dourada + roxo JoJo, tag "JOJO" / "JOESTAR"
+class JoestarTecnicaItem extends Item {
+  constructor(x,y){
+    super(x,y, JOESTAR_SIZE, JOESTAR_SIZE, 'joestar_tecnica');
+  }
+  onCollect(player){
+    if(player.hasJoestarTechnique) return false;
+    player.enableJoestarTechnique();
+    return true;
+  }
+  draw(ctx){
+    const x=this.x, y=this.y + this.bob, s=this.w;
+    const pulse = 0.5 + Math.sin(this.anim*2.6)*0.34;
+    const pulseGold = 0.5 + Math.sin(this.anim*3.2)*0.30;
+    ctx.fillStyle='rgba(0,0,0,0.28)';
+    ctx.beginPath(); ctx.ellipse(x, y+ s*0.45, s*0.5, 4, 0, 0, Math.PI*2); ctx.fill();
+    // glow duplo dourado + roxo JoJo
+    ctx.fillStyle=`rgba(255,215,0,${0.20+pulse*0.14})`;
+    ctx.beginPath(); ctx.arc(x, y, s*0.75 + pulse*4, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle=`rgba(124,58,237,${0.12+pulseGold*0.08})`;
+    ctx.beginPath(); ctx.arc(x, y, s*0.62 + pulseGold*2, 0, Math.PI*2); ctx.fill();
+    // base carta/emblema Joestar
+    ctx.fillStyle='#1a103a';
+    ctx.fillRect(x - s/2 +1, y - s/2 +1, s-2, s-2);
+    ctx.strokeStyle='rgba(255,215,0,0.92)';
+    ctx.lineWidth=1.5; ctx.strokeRect(x - s/2 +1, y - s/2 +1, s-2, s-2);
+    ctx.strokeStyle='rgba(124,58,237,0.55)';
+    ctx.lineWidth=1; ctx.strokeRect(x - s/2 +3, y - s/2 +3, s-6, s-6);
+    // faixa superior dourada
+    ctx.fillStyle='#ffd700';
+    ctx.fillRect(x - s/2 +1, y - s/2 +1, s-2, 3);
+    // estrela Joestar central (5 pontas simplificada - quadrado + brilho)
+    ctx.fillStyle='#fff';
+    ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('★', x, y+4); ctx.textAlign='left';
+    // brilho estrela
+    ctx.fillStyle=`rgba(255,255,255,${0.55+pulseGold*0.30})`;
+    ctx.beginPath(); ctx.arc(x+4, y-3, 1.2, 0, Math.PI*2); ctx.fill();
+    // texto JOJO pequeno
+    ctx.fillStyle='#ffd700';
+    ctx.font='4px "Press Start 2P"'; ctx.textAlign='center';
+    ctx.fillText('JOJO', x, y+ s/2 +9); ctx.textAlign='left';
+    // partículas douradas periódicas
+    if(Math.random()<0.14){
+      ctx.fillStyle='rgba(255,215,0,0.88)';
+      ctx.fillRect(x+randRange(-6,6), y+randRange(-6,4),1.5,1.5);
+    }
+    if(Math.random()<0.08){
+      ctx.fillStyle='rgba(124,58,237,0.85)';
+      ctx.fillRect(x+randRange(-5,5), y+randRange(-5,5),1,1);
+    }
+  }
+}
+
 // ===================== PICKUP ITEM ESPECIAL (E) =====================
 // Item no chão que equipa um SpecialItem ao coletar.
 // Separado de WeaponItem para não misturar lógica de tiro com habilidade especial.
@@ -8752,6 +9358,10 @@ class Player {
     this.hasDillianShield = false; // passivo incomum - escudo orbitante Dream Shield
     this.dillianShieldAngle = 0; // ângulo órbita
     this.dillianShieldHitTimers = new Map(); // enemy -> ms até poder dar dano de novo
+    this.hasJoestarTechnique = false; // passivo comum - Técnica Secreta Joestar (JoJo) - ao sofrer dano ganha velocidade 5s
+    this.joestarTimer = 0; // ms restantes do bônus Joestar
+    this.joestarActive = false; // true enquanto bônus ativo
+    this.joestarPulse = 0; // timer visual
     this.didDashThisFrame = false; // flag para Game spawnar fogo
     this.dashStartPos = null;
     this.spikeTimer = 0; // cooldown espinhos
@@ -8789,7 +9399,7 @@ class Player {
     this.motosserraChargeMax = MOTOSSERRA_CHARGE_MAX;
     this.motosserraIdleTimer = 0; // ms sem atacar para decair
     // sistema de melhorias por arma (4 raridades, valores em UPGRADE_VALUES) + níveis
-    this.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], RAIO_MATEMATICO:[], ALL:[], SPECIAL:[] };
+    this.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], LASER:[], RAIO_MATEMATICO:[], ALL:[], SPECIAL:[] };
     this.obtainedUpgrades = new Set(); // ids únicos para evitar duplicação (compatibilidade)
     this.upgradeLevels = new Map(); // id -> nível atual (1..maxLevel) para melhorias com níveis
     // ================= SISTEMA ITENS ESPECIAIS (E) =================
@@ -8817,6 +9427,21 @@ class Player {
     this.rayMatematicoFiredThresholds = new Set(); // thresholds já disparados (10,20...)
     this.rayMatematicoReady = false; // true quando 100% atingido
     this._lastRayMatematicoProgress = 0;
+    // ===================== LASER CARREGÁVEL + TIMING (modular) =====================
+    // Sistema organizado em 3 camadas: carregamento, minigame, disparo
+    // - LaserChargeSystem gerencia progresso 0..1 (LASER_CONFIG.chargeTime)
+    // - LaserTimingMinigame gerencia marcador e zona verde
+    // - PerfectLaser / HomingLaser são projéteis distintos
+    this.laserChargeSystem = new LaserChargeSystem(LASER_CONFIG);
+    this.laserChargeTime = 0;        // compat: alias para laserChargeSystem.time (ms)
+    this.isLaserCharging = false;    // está carregando barra?
+    this.laserChargeDir = null;      // direção durante carga
+    this.laserMinigame = new LaserTimingMinigame(LASER_CONFIG); // minigame instância modular
+    this.laserMinigameActive = false; // true quando barra chegou 100% e minigame está rodando
+    this.laserFeedback = null;       // { type:'perfect'|'miss', timer: ms }
+    this.laserFeedbackTimer = 0;     // ms restantes para mostrar PERFEITO! / ERROU!
+    this._lastLaserProgress = 0;     // último progresso para efeitos
+    this._laserMinigameDir = null;   // direção guardada para disparo após minigame
   }
   reset(x, y) {
     this.x = x; this.y = y;
@@ -8832,8 +9457,11 @@ class Player {
     else this.rayMatematicoFiredThresholds.clear();
     this.rayMatematicoReady=false;
     this.swordChargeTime=0; this.isSwordCharging=false; this.swordChargeDir=null; this.swordHeavyReady=false;
-    this.swordCombo=0; this.swordComboTimer=0;
+     this.swordCombo=0; this.swordComboTimer=0;
     this.swordGuardianActive=false; this.swordGuardianCharges=0; this.swordGuardianTimer=0;
+    // LASER - limpa carga/minigame ao resetar sala (mas mantém feedback breve)
+    if(this.isLaserCharging){ this.cancelLaserCharge(); }
+    if(this.laserMinigameActive){ this.cancelLaserMinigame(); }
     // Motosserra barra cura mantém entre salas (não zera no reset de sala, só em new game via startGame) - mas garante inicialização
     if(this.motosserraCharge===undefined) this.motosserraCharge=0;
     if(this.motosserraChargeMax===undefined) this.motosserraChargeMax=MOTOSSERRA_CHARGE_MAX;
@@ -8855,6 +9483,8 @@ class Player {
     // cancela carga se estiver carregando
     if(this.isCharging) this.cancelCharge();
     if(this.isRayMatematicoCharging) this.cancelRayMatematicoCharge();
+    if(this.isLaserCharging) this.cancelLaserCharge();
+    if(this.laserMinigameActive) this.cancelLaserMinigame();
     if (t==='shotgun' || t===WEAPON_SHOTGUN.name.toLowerCase()) {
       this.setSecondaryWeapon('shotgun');
       this.weapon = this.secondaryWeapon;
@@ -8879,6 +9509,9 @@ class Player {
     } else if (t==='motosserra' || t===WEAPON_MOTOSSERRA.name.toLowerCase()) {
       this.setSecondaryWeapon('motosserra');
       this.weapon = this.secondaryWeapon;
+    } else if (t==='laser' || t===WEAPON_LASER.name.toLowerCase()) {
+      this.setSecondaryWeapon('laser');
+      this.weapon = this.secondaryWeapon;
     } else if (t==='raio_matematico' || t===WEAPON_RAIO_MATEMATICO.name.toLowerCase()) {
       this.setSecondaryWeapon('raio_matematico');
       this.weapon = this.secondaryWeapon;
@@ -8899,6 +9532,7 @@ class Player {
     else if(t==='luva' || t==='luva_foguete' || t===WEAPON_LUVA.name.toLowerCase()) wName='LUVA';
     else if(t==='bastao' || t===WEAPON_BASTAO.name.toLowerCase()) wName='BASTAO';
     else if(t==='motosserra' || t===WEAPON_MOTOSSERRA.name.toLowerCase()) wName='MOTOSSERRA';
+    else if(t==='laser' || t===WEAPON_LASER.name.toLowerCase()) wName='LASER';
     else if(t==='raio_matematico' || t===WEAPON_RAIO_MATEMATICO.name.toLowerCase()) wName='RAIO_MATEMATICO';
     // martelo/lanca/arco/machado wName removidos
     else return false;
@@ -8932,6 +9566,8 @@ class Player {
     if(this.isSwordCharging) this.cancelSwordCharge();
     if(this.isBastaoCharging) this.cancelBastaoCharge();
     if(this.isRayMatematicoCharging) this.cancelRayMatematicoCharge();
+    if(this.isLaserCharging) this.cancelLaserCharge();
+    if(this.laserMinigameActive) this.cancelLaserMinigame();
     // troca instantânea entre primária e secundária
     if(this.weapon === this.primaryWeapon) this.weapon = this.secondaryWeapon;
     else this.weapon = this.primaryWeapon;
@@ -8999,7 +9635,7 @@ class Player {
   }
   // constrói arma com todas as melhorias já obtidas para aquele tipo (reutiliza base + aplica cumulativo com caps)
   buildUpgradedWeapon(weaponName){
-    const map = { NORMAL: WEAPON_NORMAL, SHOTGUN: WEAPON_SHOTGUN, RAIO: WEAPON_RAIO, METRALHADORA: WEAPON_METRALHADORA, CARREGADA: WEAPON_CARREGADA, BAZUCA: WEAPON_BAZUCA, ESPADA: WEAPON_ESPADA, LUVA: WEAPON_LUVA, BASTAO: WEAPON_BASTAO, MOTOSSERRA: WEAPON_MOTOSSERRA, RAIO_MATEMATICO: WEAPON_RAIO_MATEMATICO };
+    const map = { NORMAL: WEAPON_NORMAL, SHOTGUN: WEAPON_SHOTGUN, RAIO: WEAPON_RAIO, METRALHADORA: WEAPON_METRALHADORA, CARREGADA: WEAPON_CARREGADA, BAZUCA: WEAPON_BAZUCA, ESPADA: WEAPON_ESPADA, LUVA: WEAPON_LUVA, BASTAO: WEAPON_BASTAO, MOTOSSERRA: WEAPON_MOTOSSERRA, LASER: WEAPON_LASER, RAIO_MATEMATICO: WEAPON_RAIO_MATEMATICO };
     const base = map[weaponName];
     if(!base) return null;
     const w = { ...base };
@@ -9365,6 +10001,165 @@ class Player {
   }
   hasSobremesa(){
     return !!(this.weapon && this.weapon._sobremesa);
+  }
+  // ===================== LASER CARREGÁVEL + TIMING (modular) =====================
+  // Métodos organizados para manter código limpo e fácil de modificar.
+  // - isLaserWeapon: verifica se arma atual é LASER
+  // - startLaserCharge / updateLaserCharge / cancelLaserCharge / getLaserChargeProgress: Sistema de carregamento
+  // - startLaserMinigame / updateLaserMinigame / checkLaserTiming / cancelLaserMinigame: Sistema do minigame
+  // - firePerfectLaser / fireHomingLaser: Laser poderoso vs teleguiado
+  // Valores configuráveis em LASER_CONFIG no topo.
+  isLaserWeapon(){ return this.weapon && !!this.weapon.isLaser; }
+  isLaserChargingWeapon(){ return this.isLaserWeapon(); }
+  // Inicia carregamento da barra (chamado quando jogador segura ataque com LASER)
+  startLaserCharge(dir){
+    if(!this.isLaserWeapon()) return false;
+    if(!this.canShoot()) return false;
+    if(this.isLaserCharging || this.laserMinigameActive) return false;
+    this.isLaserCharging = true;
+    this.laserChargeTime = 0;
+    this.laserChargeDir = { x: dir.x, y: dir.y };
+    this._lastLaserProgress = 0;
+    // garante que LaserChargeSystem está sincronizado e aplica upgrades de carga
+    if(this.laserChargeSystem){
+      this.laserChargeSystem.reset();
+      // Upgrade LASER_COMUM reduz chargeTime: verifica _laserChargeMax na arma
+      const upgradedTime = this.weapon && this.weapon._laserChargeMax ? this.weapon._laserChargeMax : LASER_CONFIG.chargeTime;
+      this.laserChargeSystem.setChargeTime(upgradedTime);
+    }
+    // cancela outros carregamentos para não conflitar
+    if(this.isCharging) this.cancelCharge();
+    if(this.isSwordCharging) this.cancelSwordCharge();
+    return true;
+  }
+  // Atualiza barra enquanto segura - chama LaserChargeSystem.update
+  updateLaserCharge(dt, dir){
+    if(!this.isLaserCharging) return 0;
+    if(dir){ this.laserChargeDir.x=dir.x; this.laserChargeDir.y=dir.y; }
+    // Atualiza sistema modular
+    const prog = this.laserChargeSystem ? this.laserChargeSystem.update(dt, true) : 0;
+    // compat alias
+    this.laserChargeTime = this.laserChargeSystem ? this.laserChargeSystem.time : 0;
+    this._lastLaserProgress = prog;
+    // Se chegou a 100%, inicia automaticamente minigame (fluxo requisitado)
+    if(prog >= 0.999 && !this.laserMinigameActive){
+      this.startLaserMinigame();
+    }
+    return prog;
+  }
+  cancelLaserCharge(){
+    this.isLaserCharging = false;
+    this.laserChargeTime = 0;
+    this.laserChargeDir = null;
+    this._lastLaserProgress = 0;
+    if(this.laserChargeSystem) this.laserChargeSystem.reset();
+  }
+  cancelLaserMinigame(){
+    this.laserMinigameActive = false;
+    if(this.laserMinigame) {
+      this.laserMinigame.active = false;
+      this.laserMinigame.result = null;
+    }
+    this._laserMinigameDir = null;
+  }
+  getLaserChargeProgress(){
+    if(this.laserChargeSystem) return this.laserChargeSystem.getProgress();
+    const maxC = LASER_CONFIG.chargeTime;
+    return clamp(this.laserChargeTime / maxC, 0, 1);
+  }
+  // Inicia minigame de timing: marcador ping-pong + zona verde
+  startLaserMinigame(){
+    // Salva direção para disparo após minigame
+    this._laserMinigameDir = this.laserChargeDir ? { ...this.laserChargeDir } : { ...this.lastDir };
+    this.isLaserCharging = false; // para de carregar, agora é minigame
+    if(this.laserChargeSystem) this.laserChargeSystem.reset();
+    this.laserChargeTime = 0;
+    this.laserMinigameActive = true;
+    if(this.laserMinigame){
+      // sincroniza zona/tamanho caso config tenha mudado (upgrade) - modular
+      const hasZoneBonus = this.weapon && this.weapon._laserZoneSize;
+      const zoneSize = hasZoneBonus ? this.weapon._laserZoneSize : LASER_CONFIG.zoneSize;
+      this.laserMinigame.zoneStart = LASER_CONFIG.zoneStart;
+      this.laserMinigame.zoneSize = zoneSize;
+      this.laserMinigame.markerSpeed = LASER_CONFIG.markerSpeed;
+      this.laserMinigame.duration = LASER_CONFIG.minigameDuration;
+      this.laserMinigame.start();
+    }
+    // feedback visual rápido que entrou no minigame
+    this.laserFeedback = null;
+    this.laserFeedbackTimer = 0;
+  }
+  // Atualiza minigame: move marcador, verifica timeout
+  // Retorna: 'active' se ainda rodando, 'timeout' se expirou (miss)
+  updateLaserMinigame(dt){
+    if(!this.laserMinigameActive || !this.laserMinigame) return 'inactive';
+    const stillActive = this.laserMinigame.update(dt);
+    // se timeout, já marcou result='miss', dispara automaticamente teleguiado
+    if(!stillActive && this.laserMinigame.getResult()==='miss'){
+      // timeout -> erro (teleguiado)
+      return 'timeout';
+    }
+    return stillActive ? 'active' : 'ended';
+  }
+  // Detecção do timing: verifica se marcador está na zona verde no momento do clique
+  // Retorna true se PERFEITO, false se ERROU
+  checkLaserTiming(){
+    if(!this.laserMinigameActive || !this.laserMinigame) return false;
+    const isPerfect = this.laserMinigame.checkTiming();
+    this.laserMinigameActive = false;
+    return isPerfect;
+  }
+  // Dispara laser poderoso (acerto perfeito): alto dano, impacto forte
+  firePerfectLaser(dir){
+    const d = normalize(dir.x, dir.y);
+    const sx = this.x + d.x * (this.w/2 + 10);
+    const sy = this.y + d.y * (this.h/2 + 8);
+    const proj = new PerfectLaser(sx, sy, d.x, d.y, LASER_CONFIG);
+    // aplica dano configurável (considera upgrade LASER_INCOMUM)
+    const basePerf = this.weapon && this.weapon._laserPerfectDamage ? this.weapon._laserPerfectDamage : LASER_CONFIG.perfectDamage;
+    proj.damage = basePerf;
+    // upgrade de zona/dano: ajusta range/size se houver
+    if(this.weapon && this.weapon.range) proj.range = this.weapon.range;
+    // cooldown pós disparo
+    this.shootCooldown = this.weapon.cooldown;
+    this.lastDir.x = d.x; this.lastDir.y = d.y;
+    if(d.x!==0) this.facing = d.x>0?1:-1;
+    // feedback
+    this.laserFeedback = { type:'perfect', timer: LASER_CONFIG.feedbackPerfectDuration };
+    this.laserFeedbackTimer = LASER_CONFIG.feedbackPerfectDuration;
+    // limpa estado
+    this.isLaserCharging = false;
+    this.laserChargeTime = 0;
+    if(this.laserChargeSystem) this.laserChargeSystem.reset();
+    this.laserMinigameActive = false;
+    return proj;
+  }
+  // Dispara laser teleguiado (erro): menor dano, segue inimigo
+  fireHomingLaser(dir){
+    const d = normalize(dir.x, dir.y);
+    const sx = this.x + d.x * (this.w/2 + 8);
+    const sy = this.y + d.y * (this.h/2 + 6);
+    const proj = new HomingLaser(sx, sy, d.x, d.y, LASER_CONFIG);
+    // considera upgrade LASER_MUITO_RARA (dano teleguiado + pierce)
+    const baseHoming = this.weapon && this.weapon._laserHomingDamage ? this.weapon._laserHomingDamage : LASER_CONFIG.homingDamage;
+    proj.damage = baseHoming;
+    if(this.weapon && this.weapon._laserHomingPierce) proj.pierce = true;
+    this.shootCooldown = this.weapon.cooldown;
+    this.lastDir.x = d.x; this.lastDir.y = d.y;
+    if(d.x!==0) this.facing = d.x>0?1:-1;
+    this.laserFeedback = { type:'miss', timer: LASER_CONFIG.feedbackMissDuration };
+    this.laserFeedbackTimer = LASER_CONFIG.feedbackMissDuration;
+    this.isLaserCharging = false;
+    this.laserChargeTime = 0;
+    if(this.laserChargeSystem) this.laserChargeSystem.reset();
+    this.laserMinigameActive = false;
+    return proj;
+  }
+  // Atalho unificado: verifica timing e dispara tipo correto (chamado pelo Game)
+  // Retorna projétil criado
+  resolveLaserMinigame(isPerfect, dir){
+    if(isPerfect) return this.firePerfectLaser(dir);
+    else return this.fireHomingLaser(dir);
   }
   // ===== ESPADA - Golpe pesado com preparo =====
   isSwordWeapon(){ return this.weapon && this.weapon.isSword; }
@@ -9741,6 +10536,58 @@ class Player {
       for(let k=0;k<18;k++){ const ang=Math.random()*Math.PI*2; g.particles.push(new Particle(this.x, this.y, Math.cos(ang)*randRange(1.4,3.2), Math.sin(ang)*randRange(1.2,3.2), 360, '#cfe0ff', 2.2)); }
     }
   }
+  enableJoestarTechnique(){
+    this.hasJoestarTechnique = true;
+    this.joestarTimer = 0;
+    this.joestarActive = false;
+    this.joestarPulse = 0;
+    const g = (typeof window!=='undefined' && window.game) ? window.game : null;
+    if(g && g.showToast) g.showToast('💨 Técnica Secreta Joestar! Ao sofrer dano: +velocidade 5s!', 2200);
+    if(g){
+      g.shake = Math.max(g.shake||0, 60);
+      for(let k=0;k<16;k++){ const ang=Math.random()*Math.PI*2; g.particles.push(new Particle(this.x, this.y, Math.cos(ang)*randRange(1.4,3.2), Math.sin(ang)*randRange(1.2,3.2), 340, '#ffd700', 2)); }
+      for(let k=0;k<10;k++) g.particles.push(new Particle(this.x, this.y, randRange(-1.2,1.2), randRange(-1.2,0.6), 260, '#7c3aed', 2));
+      if(g.currentRoom) g.currentRoom.explosions.push({x:this.x,y:this.y,radius:10,life:300,max:300,isJoestar:true});
+    }
+  }
+  triggerJoestarTechnique(){
+    if(!this.hasJoestarTechnique) return false;
+    this.joestarTimer = JOESTAR_DURATION;
+    this.joestarActive = true;
+    this.joestarPulse = 0;
+    const g = (typeof window!=='undefined' && window.game) ? window.game : null;
+    if(g){
+      for(let k=0;k<12;k++){ const ang=Math.random()*Math.PI*2; g.particles.push(new Particle(this.x, this.y, Math.cos(ang)*randRange(1.6,3.6), Math.sin(ang)*randRange(1.6,3.6), 320, '#ffd700', 2.4)); }
+      for(let k=0;k<8;k++) g.particles.push(new Particle(this.x, this.y, randRange(-1.2,1.2), randRange(-1.6,0.6), 260, '#c084fc', 1.8));
+      // Efeito estrelinhas roxas - burst JoJo ao ativar (requisito)
+      const purpleStars=['#a78bfa','#c084fc','#7c3aed','#d8b4fe','#9333ea','#e9d5ff'];
+      const starChars=['★','✦','✧','★'];
+      for(let k=0;k<14;k++){
+        const ang=Math.random()*Math.PI*2;
+        const sp=randRange(1.8,4.2);
+        const vx=Math.cos(ang)*sp, vy=Math.sin(ang)*sp;
+        const col=purpleStars[randInt(0,purpleStars.length-1)];
+        const ch=starChars[randInt(0,starChars.length-1)];
+        const sz=randRange(2.2,3.6);
+        g.particles.push(new StarParticle(this.x, this.y, vx, vy, randRange(420,680), col, sz, ch));
+      }
+      // anel interno de estrelinhas mais lentas
+      for(let k=0;k<8;k++){
+        const ang=(k/8)*Math.PI*2;
+        const vx=Math.cos(ang)*1.1, vy=Math.sin(ang)*1.1;
+        const col=['#e9d5ff','#c084fc','#a78bfa'][k%3];
+        g.particles.push(new StarParticle(this.x+Math.cos(ang)*10, this.y+Math.sin(ang)*10, vx*0.6, vy*0.6 -0.4, 520, col, 2.4, '★'));
+      }
+      g.shake = Math.max(g.shake||0, 55);
+      if(g.showToast) g.showToast('💨 Técnica Secreta Joestar ativada! +velocidade 5s!', 1300);
+      if(g.currentRoom) g.currentRoom.explosions.push({x:this.x,y:this.y,radius:10,life:280,max:280,isJoestar:true});
+      // segundo anel roxo de estrelas
+      if(g.currentRoom) g.currentRoom.explosions.push({x:this.x,y:this.y,radius:12,life:420,max:420,isJoestarStars:true});
+    }
+    return true;
+  }
+  isJoestarActive(){ return this.hasJoestarTechnique && this.joestarActive && this.joestarTimer>0; }
+  getJoestarProgress(){ if(!this.hasJoestarTechnique || this.joestarTimer<=0) return 0; return clamp(this.joestarTimer / JOESTAR_DURATION,0,1); }
   getDillianShieldPos(){
     const ang = this.dillianShieldAngle || 0;
     return { x: this.x + Math.cos(ang)*DILLIAN_SHIELD_RADIUS, y: this.y + Math.sin(ang)*DILLIAN_SHIELD_RADIUS, ang };
@@ -9852,6 +10699,8 @@ class Player {
         }
         this.hurtCooldown = 600;
         this.invulnTimer = 400;
+        // Técnica Secreta Joestar - mesmo quebrando osso conta como sofrer dano (ativa bônus 5s)
+        if(this.hasJoestarTechnique) this.triggerJoestarTechnique();
         return false; // dano absorvido pela quebra do osso, sem perder vida vermelha
       }
       // Caso especial: osso com apenas ½ coração (1 HP) e dano de 1 coração (2 HP) -> só esvazia, não quebra (fiel ao Isaac)
@@ -9886,6 +10735,8 @@ class Player {
     }
     this.hurtCooldown = 600;
     this.invulnTimer = 400;
+    // Técnica Secreta Joestar - ao sofrer dano ganha bônus velocidade 5s (item comum)
+    if(this.hasJoestarTechnique) this.triggerJoestarTechnique();
     return true;
   }
   isAlive() { return this.hp > 0; }
@@ -9914,6 +10765,50 @@ class Player {
     if (this.hurtCooldown > 0) this.hurtCooldown -= dt;
     if (this.shootCooldown > 0) this.shootCooldown -= dt;
     if (this.spikeTimer > 0) this.spikeTimer -= dt;
+    // LASER - feedback timer e minigame timeout (modular)
+    if(this.laserFeedbackTimer>0){
+      this.laserFeedbackTimer-=dt;
+      if(this.laserFeedbackTimer<=0){
+        this.laserFeedbackTimer=0;
+        this.laserFeedback=null;
+      }
+    }
+    // Técnica Secreta Joestar - decrementa bônus 5s e gerencia partículas
+    if(this.hasJoestarTechnique && this.joestarTimer > 0){
+      this.joestarTimer -= dt;
+      this.joestarPulse += dt;
+      if(this.joestarTimer <= 0){
+        this.joestarTimer = 0;
+        this.joestarActive = false;
+        this.joestarPulse = 0;
+        const g = (typeof window!=='undefined' && window.game) ? window.game : null;
+        if(g){
+          for(let k=0;k<10;k++) g.particles.push(new Particle(this.x, this.y, randRange(-1.2,1.2), randRange(-1.2,0.6), 220, 'rgba(255,215,0,0.85)', 1.6));
+          if(g.showToast) g.showToast('💨 Técnica Joestar dissipada', 900);
+        }
+      } else {
+        this.joestarActive = true;
+        if(Math.random()<0.22){
+          const g = (typeof window!=='undefined' && window.game) ? window.game : null;
+          if(g) g.particles.push(new Particle(this.x+randRange(-8,8), this.y+randRange(-8,8), randRange(-0.5,0.5), randRange(-0.9,-0.2), 200, 'rgba(255,215,0,0.9)', 1.4));
+        }
+        // estrelinhas roxas flutuantes enquanto ativo (rastro JoJo)
+        if(Math.random()<0.16){
+          const g2 = (typeof window!=='undefined' && window.game) ? window.game : null;
+          if(g2){
+            const purple=['#c084fc','#a78bfa','#7c3aed','#d8b4fe','#9333ea'];
+            const col=purple[randInt(0,purple.length-1)];
+            const px=this.x+randRange(-12,12), py=this.y+randRange(-12,8);
+            g2.particles.push(new StarParticle(px, py, randRange(-0.4,0.4), randRange(-0.8,-0.2), 380, col, randRange(1.8,2.6), Math.random()<0.5?'★':'✦'));
+          }
+        }
+      }
+    } else {
+      if(this.hasJoestarTechnique && this.joestarActive && this.joestarTimer<=0){
+        this.joestarActive=false;
+        this.joestarPulse=0;
+      }
+    }
 
     // metralhadora: controle de aquecimento e superaquecimento (com upgrades)
     const _heatPerShot = this.weapon && this.weapon._heatPerShot !== undefined ? this.weapon._heatPerShot : METRALHADORA_HEAT_PER_SHOT;
@@ -9955,9 +10850,14 @@ class Player {
       if(this.isBastaoCharging){
         this.speed *= 0.72;
       }
-    } else if(this.weapon && this.weapon.isSword && !this.swordGuardianActive){
+     } else if(this.weapon && this.weapon.isSword && !this.swordGuardianActive){
       // Espada passiva: +8% agilidade quando equipada (mais útil para kiting) - Kinight beneficia
       this.speed = baseMove * 1.08;
+    }
+    // LASER: enquanto carrega, reduz levemente velocidade para sensação de concentração (feedback)
+    // Enquanto minigame ativo, mantém velocidade normal (foco é timing, não punir movimento)
+    if(this.isLaserCharging){
+      this.speed *= 0.78;
     }
     // ===== ESPADA Guardião Ágil - escudo + velocidade ao carregar (upgrade) =====
     if(this.weapon && this.weapon._swordGuardian){
@@ -10003,6 +10903,10 @@ class Player {
       this.speed *= JL_SPEED_FACTOR; // ~2.67 vs 3.0 base
     } else if(this.characterId==='kinight'){
       this.speed *= KINIGHT_SPEED_FACTOR; // ~2.58 vs 3.0 base (tanque pesado)
+    }
+    // ===== Técnica Secreta Joestar - bônus velocidade 5s quando ativo (item comum) =====
+    if(this.hasJoestarTechnique && this.joestarActive && this.joestarTimer > 0){
+      this.speed += JOESTAR_SPEED_BONUS;
     }
     // Motosserra - barra de cura por agressividade: decai se ficar idle
     if(this.motosserraCharge>0){
@@ -10051,6 +10955,11 @@ class Player {
     // Dev Raio Matemático - cancela se trocou arma
     if(this.isRayMatematicoCharging && !this.isRayMatematicoWeapon()){
       this.cancelRayMatematicoCharge();
+    }
+    // LASER - cancela se trocou arma (troca de arma cancela carregamento)
+    if((this.isLaserCharging || this.laserMinigameActive) && !this.isLaserWeapon()){
+      if(this.isLaserCharging) this.cancelLaserCharge();
+      if(this.laserMinigameActive) this.cancelLaserMinigame();
     }
     // Se bastão foi arremessado e projectile morreu sem callback (edge), recupera
     if(this.characterId==='jg' && !this.hasBastao && (!this.bastaoProjectile || this.bastaoProjectile.dead)){
@@ -10190,6 +11099,10 @@ class Player {
     if(this.isRayMatematicoCharging) return false;
     // Enquanto RayMatematico carrega, bloqueia tiro normal (gate 100% trata no Game loop)
     if(this.weapon && this.weapon.isRayMatematico && this.shootCooldown>0) return false;
+    // LASER: enquanto carrega ou minigame ativo, bloqueia tiro normal (fluxo carga→minigame→disparo)
+    if(this.isLaserCharging) return false;
+    if(this.laserMinigameActive) return false;
+    if(this.weapon && this.weapon.isLaser && this.shootCooldown>0) return false;
     return this.shootCooldown <= 0;
   }
    // Retorna array de Bullets/Swings/Fists para permitir cone, melee e projéteis especiais
@@ -10541,6 +11454,61 @@ class Player {
       if(Math.random()<0.14){
         ctx.fillStyle='rgba(180,210,255,0.85)';
         ctx.fillRect(sx+randRange(-6,6), sy+randRange(-6,6),1,1);
+      }
+    }
+    // ===== Técnica Secreta Joestar - aura fuga dourada (JoJo) quando ativa =====
+    if(this.hasJoestarTechnique && this.joestarActive && this.joestarTimer>0){
+      const pulseJ = 0.5 + Math.sin(this.animTime*0.014)*0.34;
+      const lifePct = clamp(this.joestarTimer / JOESTAR_DURATION,0,1);
+      ctx.fillStyle=`rgba(255,215,0,${0.10+pulseJ*0.08})`;
+      ctx.beginPath(); ctx.arc(this.x, this.y+bob, 28 + pulseJ*4, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle=`rgba(255,215,0,${0.32+pulseJ*0.18})`;
+      ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(this.x, this.y+bob, 21 + pulseJ*2.6,0,Math.PI*2); ctx.stroke();
+      ctx.strokeStyle=`rgba(124,58,237,${0.22+pulseJ*0.12})`;
+      ctx.lineWidth=1.2; ctx.setLineDash([4,3]);
+      ctx.beginPath(); ctx.arc(this.x, this.y+bob, 24 + pulseJ*3,0,Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
+      // estrelinhas roxas orbitando enquanto ativo (efeito pedido)
+      const starCount=7;
+      for(let a=0;a<starCount;a++){
+        const ang=(a/starCount)*Math.PI*2 + this.animTime*0.005 + pulseJ*0.45;
+        const rad=22 + Math.sin(this.animTime*0.006 + a*1.1)*2.8;
+        const sx=this.x + Math.cos(ang)*rad;
+        const sy=this.y+bob + Math.sin(ang)*rad;
+        const sAlpha=0.58 + Math.sin(this.animTime*0.009 + a*0.9)*0.30;
+        ctx.fillStyle=`rgba(168,85,247,${sAlpha})`;
+        ctx.font=`${7+Math.sin(this.animTime*0.012+a)*1.4}px sans-serif`; ctx.textAlign='center';
+        ctx.fillText(a%2===0?'★':'✦', sx, sy+2.5);
+        ctx.fillStyle=`rgba(255,255,255,${sAlpha*0.38})`;
+        ctx.beginPath(); ctx.arc(sx+0.8, sy-0.8, 0.7, 0, Math.PI*2); ctx.fill();
+        ctx.textAlign='left';
+      }
+      // rastro velocidade
+      if(Math.abs(this.vx)>0.3 || Math.abs(this.vy)>0.3){
+        ctx.fillStyle='rgba(255,215,0,0.14)';
+        ctx.fillRect(x - this.vx*0.5 -1, y - this.vy*0.5 + bob, this.w, this.h);
+        ctx.fillStyle='rgba(255,215,0,0.08)';
+        ctx.fillRect(x - this.vx*1.0 -1, y - this.vy*1.0 + bob, this.w, this.h);
+      }
+      ctx.fillStyle='rgba(255,255,255,0.92)';
+      ctx.font='6px monospace'; ctx.textAlign='center';
+      ctx.fillText('JOESTAR', this.x, this.y + bob - 26);
+      ctx.fillStyle= lifePct>0.5 ? '#ffd700' : lifePct>0.25 ? '#ff8c00' : '#ff3b30';
+      ctx.font='5px monospace';
+      ctx.fillText(`💨 ${(this.joestarTimer/1000).toFixed(1)}s`, this.x, this.y + bob - 18);
+      ctx.textAlign='left';
+      const bwJ=22, bhJ=2;
+      const bxJ=this.x - bwJ/2, byJ=y - 9 + bob;
+      ctx.fillStyle='rgba(0,0,0,0.58)'; ctx.fillRect(bxJ, byJ, bwJ, bhJ);
+      ctx.fillStyle= lifePct>0.5 ? '#ffd700' : lifePct>0.25 ? '#facc15' : '#ef4444';
+      ctx.fillRect(bxJ, byJ, bwJ*lifePct, bhJ);
+      if(Math.random()<0.18){
+        const ang = Math.atan2(this.vy||0, this.vx||1) + Math.PI + randRange(-0.4,0.4);
+        const px=this.x - Math.cos(ang)*4 + randRange(-3,3);
+        const py=this.y + bob - Math.sin(ang)*4 + randRange(-3,3);
+        ctx.fillStyle='rgba(255,215,0,0.85)';
+        ctx.fillRect(px, py, 1.5,1.5);
       }
     }
     // ===== ESPADA Guardião Ágil - aura ciana + indicador velocidade/escudo =====
@@ -11660,6 +12628,136 @@ class Player {
       ctx.fillStyle='rgba(255,255,255,0.92)'; ctx.font='5px monospace'; ctx.textAlign='center';
       ctx.fillText(pct>=0.995?'FOGUETE!':'LUVA '+Math.round(pct*100)+'%', this.x, by-2); ctx.textAlign='left';
     }
+    // ===================== LASER - SISTEMA DE CARREGAMENTO + MINIGAME + FEEDBACK =====================
+    // Interface modular: barra de carregamento, minigame de timing, zona verde, feedback PERFEITO!/ERROU!
+    // Valores configuráveis em LASER_CONFIG no topo.
+    // --- Barra de carregamento (enquanto segura) ---
+    if(this.isLaserCharging){
+      const prog = this.getLaserChargeProgress();
+      const bw=26, bh=5;
+      const bx=x+this.w/2 - bw/2;
+      const by=y - 13 + bob;
+      // Fundo escuro
+      ctx.fillStyle='rgba(0,0,0,0.68)'; ctx.fillRect(bx,by,bw,bh);
+      ctx.fillStyle='rgba(255,255,255,0.16)'; ctx.fillRect(bx+1,by+1,bw-2,bh-2);
+      // Cor dinâmica conforme progresso (configurável)
+      let fillCol;
+      if(prog < 0.45) fillCol = LASER_CONFIG.chargeBarColorLow;
+      else if(prog < 0.85) fillCol = LASER_CONFIG.chargeBarColorMid;
+      else if(prog < 0.99) fillCol = LASER_CONFIG.chargeBarColorHigh;
+      else fillCol = LASER_CONFIG.chargeBarColorFull;
+      // Flash quando 100% (pronto para minigame)
+      if(prog >= 0.99 && Math.floor(this.animTime/85)%2===0) fillCol = '#ffffff';
+      ctx.fillStyle=fillCol; ctx.fillRect(bx+1,by+1,(bw-2)*prog,bh-2);
+      // Borda brilhante quando alta carga
+      if(prog > 0.85){
+        ctx.strokeStyle = prog>=0.99 ? 'rgba(255,255,255,0.72)' : 'rgba(255,235,59,0.42)';
+        ctx.lineWidth=1; ctx.strokeRect(bx,by,bw,bh);
+      }
+      // Texto acima da barra
+      ctx.fillStyle='rgba(255,255,255,0.96)'; ctx.font='5px monospace'; ctx.textAlign='center';
+      if(prog >= 0.99) ctx.fillText('100%!', this.x, by-3);
+      else ctx.fillText(Math.round(prog*100)+'%', this.x, by-3);
+      ctx.textAlign='left';
+      // Partículas ao redor quando carregando alto
+      if(prog > 0.55 && Math.random()<0.32){
+        ctx.fillStyle = prog>0.85 ? '#ffffff' : fillCol;
+        const px=this.x+randRange(-10,10), py=y+randRange(-6,2)+bob;
+        ctx.fillRect(px,py,1,1);
+      }
+    }
+    // --- Minigame de timing (após 100% da barra) ---
+    if(this.laserMinigameActive && this.laserMinigame){
+      // Barra do minigame maior e destacada (centralizada sobre jogador, mas larga para leitura)
+      const bw=68, bh=10;
+      const bx=this.x - bw/2;
+      const by=y - 18 + bob;
+      // Fundo escuro com borda
+      ctx.fillStyle='rgba(0,0,0,0.78)'; ctx.fillRect(bx,by,bw,bh);
+      ctx.strokeStyle='rgba(255,255,255,0.18)'; ctx.lineWidth=1; ctx.strokeRect(bx,by,bw,bh);
+      // Zona verde destacada
+      const zone = this.laserMinigame.getZone();
+      const zx = bx + zone.start * bw;
+      const zw = zone.end * bw - zx + (bw - bw) + (bw * (zone.end-zone.start)); // simplificado
+      const greenW = bw * (zone.end - zone.start);
+      const greenX = bx + zone.start * bw;
+      ctx.fillStyle = LASER_CONFIG.zoneColor; // verde vibrante
+      ctx.fillRect(greenX, by+1, greenW, bh-2);
+      // brilho interno zona
+      ctx.fillStyle='rgba(255,255,255,0.22)'; ctx.fillRect(greenX+1, by+2, greenW-2, 2);
+      // borda da zona verde
+      ctx.strokeStyle='rgba(255,255,255,0.42)'; ctx.lineWidth=1; ctx.strokeRect(greenX, by+1, greenW, bh-2);
+      // Marcador que se movimenta (ping-pong)
+      const mpos = this.laserMinigame.getMarkerPos(); // 0..1
+      const mx = bx + mpos * (bw-4) + 2; // margem 2px
+      const isInGreen = this.laserMinigame.isInZone(mpos);
+      // marcador branco/vermelho
+      ctx.fillStyle = isInGreen ? '#ffffff' : '#ffeb3b';
+      if(isInGreen && Math.floor(this.animTime/90)%2===0) ctx.fillStyle='#ffeb3b';
+      ctx.fillRect(mx -1, by-1, 3, bh+2);
+      // brilho do marcador
+      ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.fillRect(mx, by,1, bh);
+      // Texto TIMING acima
+      ctx.fillStyle = isInGreen ? LASER_CONFIG.zoneColor : 'rgba(255,255,255,0.92)';
+      ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
+      ctx.fillText(isInGreen ? '● NA ZONA! ●' : 'TIMING!', this.x, by-4);
+      ctx.textAlign='left';
+      // Instrução
+      ctx.fillStyle='rgba(255,255,255,0.72)'; ctx.font='4px monospace'; ctx.textAlign='center';
+      ctx.fillText('Pressione [SETA] na zona verde!', this.x, by+bh+7);
+      ctx.textAlign='left';
+      // Timer visual (barra fina embaixo)
+      const timePct = clamp(this.laserMinigame.time / this.laserMinigame.duration,0,1);
+      const remain = 1 - timePct;
+      ctx.fillStyle='rgba(255,255,255,0.16)'; ctx.fillRect(bx, by+bh+2, bw, 2);
+      ctx.fillStyle = remain>0.5 ? '#4ade80' : remain>0.25 ? '#ffeb3b' : '#ff3b30';
+      ctx.fillRect(bx, by+bh+2, bw*remain, 2);
+    }
+    // --- Feedback visual PERFEITO! / ERROU! ---
+    if(this.laserFeedback && this.laserFeedbackTimer>0){
+      const fb = this.laserFeedback;
+      const alpha = clamp(this.laserFeedbackTimer / (fb.type==='perfect'? LASER_CONFIG.feedbackPerfectDuration : LASER_CONFIG.feedbackMissDuration),0,1);
+      const pulse = 0.82 + Math.sin(this.animTime*0.018)*0.18;
+      ctx.save();
+      ctx.globalAlpha = 0.92 * alpha;
+      if(fb.type==='perfect'){
+        // PERFEITO! - texto grande dourado com contorno e faíscas
+        ctx.fillStyle='rgba(0,0,0,0.42)'; ctx.fillRect(this.x - 42, y - 34 + bob, 84, 16);
+        ctx.strokeStyle=`rgba(255,215,0,${0.55+pulse*0.22})`; ctx.lineWidth=1.2; ctx.strokeRect(this.x - 42, y - 34 + bob, 84, 16);
+        ctx.fillStyle='#ffd700'; ctx.font='bold 9px "Press Start 2P"'; ctx.textAlign='center';
+        ctx.fillText('PERFEITO!', this.x, y - 24 + bob);
+        ctx.fillStyle='rgba(255,255,255,0.92)'; ctx.font='5px monospace'; ctx.textAlign='center';
+        ctx.fillText('LASER PODEROSO!', this.x, y - 18 + bob);
+        ctx.textAlign='left';
+        // faíscas douradas ao redor durante feedback
+        if(Math.random()<0.55){
+          ctx.fillStyle='#ffd700';
+          const px=this.x+randRange(-18,18), py=y+randRange(-28,-12)+bob;
+          ctx.fillRect(px,py,1.5,1.5);
+        }
+        if(Math.random()<0.32){
+          ctx.fillStyle='#ffffff';
+          const px2=this.x+randRange(-12,12), py2=y+randRange(-26,-14)+bob;
+          ctx.fillRect(px2,py2,1,1);
+        }
+      } else {
+        // ERROU! - texto ciano indicando teleguiado
+        ctx.fillStyle='rgba(0,0,0,0.42)'; ctx.fillRect(this.x - 36, y - 34 + bob, 72, 16);
+        ctx.strokeStyle=`rgba(122,242,255,${0.45+pulse*0.18})`; ctx.lineWidth=1.1; ctx.strokeRect(this.x - 36, y - 34 + bob, 72, 16);
+        ctx.fillStyle='#7af2ff'; ctx.font='bold 8px "Press Start 2P"'; ctx.textAlign='center';
+        ctx.fillText('ERROU!', this.x, y - 24 + bob);
+        ctx.fillStyle='rgba(255,255,255,0.88)'; ctx.font='5px monospace'; ctx.textAlign='center';
+        ctx.fillText('LASER TELEGUIADO', this.x, y - 18 + bob);
+        ctx.textAlign='left';
+        if(Math.random()<0.42){
+          ctx.fillStyle='rgba(122,242,255,0.82)';
+          const px=this.x+randRange(-14,14), py=y+randRange(-26,-12)+bob;
+          ctx.fillRect(px,py,1,1);
+        }
+      }
+      ctx.restore();
+      ctx.textAlign='left';
+    }
     // ===== Personagem - indicador de identidade e status =====
     if(this.characterId){
       // faixa de nome acima do jogador
@@ -12289,6 +13387,567 @@ class XShooter {
   getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
 }
 
+// ===================== MACACO (NOVO INIMIGO COLORIDO) =====================
+class Macaco {
+  constructor(x, y, colorKey=null){
+    this.x=x; this.y=y;
+    this.w=MACACO_SIZE; this.h=MACACO_SIZE;
+    this.hp=MACACO_HP; this.maxHp=MACACO_HP;
+    this.speed=MACACO_SPEED + randRange(-0.18,0.22);
+    this._baseSpeed=this.speed;
+    this.hitFlash=0; this.dead=false; this.anim=Math.random()*1000;
+    this.type='macaco';
+    this.collisionDamage=MACACO_DAMAGE;
+    this.variation=null;
+    this.damageCooldown=0;
+    this.slowTimer=0; this.slowFactor=1; this.stunTimer=0;
+    // Cor aleatória versátil (rosa, amarelo, vermelho, azul etc.)
+    const keys = MACACO_COLOR_KEYS;
+    this.colorKey = colorKey || keys[randInt(0, keys.length-1)];
+    const colDef = MACACO_COLORS[this.colorKey] || MACACO_COLORS.amarelo;
+    this.color = colDef.color;
+    this.glow = colDef.glow;
+    // Movimento: pulo ágil em direção ao jogador
+    this.jumpCooldown = randRange(600, MACACO_JUMP_COOLDOWN+300);
+    this.jumpTimer=0; // duração do pulo atual
+    this.isJumping=false;
+    this.jumpDir={x:0,y:0};
+    this.jumpPrep=0; // aviso antes do pulo
+    this.wanderAngle=Math.random()*Math.PI*2;
+  }
+  takeDamage(dmg){ this.hp-=dmg; this.hitFlash=160; if(this.hp<=0){ this.dead=true; return true;} return false; }
+  canDamage(){ return this.damageCooldown<=0; }
+  resetDamageCooldown(){ this.damageCooldown=ENEMY_DAMAGE_COOLDOWN; }
+  collidesWalls(nx,ny,walls){
+    const hw=this.w/2, hh=this.h/2, rx=nx-hw, ry=ny-hh;
+    for(const w of walls) if(rectCollide(rx,ry,this.w,this.h,w.x,w.y,w.w,w.h)) return true;
+    return false;
+  }
+  update(dt, player, walls){
+    this.anim+=dt;
+    if(this.hitFlash>0) this.hitFlash-=dt;
+    if(this.damageCooldown>0) this.damageCooldown-=dt;
+    if(this.stunTimer>0){ this.stunTimer-=dt; if(this.stunTimer<=0) this.stunTimer=0; return; }
+    let effSpeed=this._baseSpeed;
+    if(this.slowTimer>0){
+      this.slowTimer-=dt;
+      if(this.slowTimer<=0){ this.slowTimer=0; this.slowFactor=1; this.speed=this._baseSpeed; }
+      else effSpeed=this._baseSpeed*this.slowFactor;
+    } else this.speed=this._baseSpeed;
+    if(this.dead) return;
+    const d=dist(this.x,this.y,player.x,player.y);
+    // Pulo ágil quando detecta jogador
+    if(this.isJumping){
+      this.jumpTimer-=dt;
+      const nx=this.x + this.jumpDir.x*MACACO_JUMP_SPEED;
+      const ny=this.y + this.jumpDir.y*MACACO_JUMP_SPEED;
+      let hitWall=false;
+      if(this.collidesWalls(nx,this.y,walls)) hitWall=true; else this.x=nx;
+      if(this.collidesWalls(this.x,ny,walls)) hitWall=true; else this.y=ny;
+      this.x=clamp(this.x, WALL_THICK+this.w/2, CANVAS_W-WALL_THICK-this.w/2);
+      this.y=clamp(this.y, WALL_THICK+this.h/2, CANVAS_H-WALL_THICK-this.h/2);
+      if(this.jumpTimer<=0 || hitWall){
+        this.isJumping=false;
+        this.jumpTimer=0;
+        this.jumpCooldown= MACACO_JUMP_COOLDOWN + randRange(-180,220);
+      }
+      return;
+    }
+    if(this.jumpPrep>0){
+      this.jumpPrep-=dt;
+      if(this.jumpPrep<=0){
+        this.isJumping=true;
+        this.jumpTimer=MACACO_JUMP_DURATION;
+      }
+      return;
+    }
+    if(this.jumpCooldown>0) this.jumpCooldown-=dt;
+    if(d < MACACO_DETECT_RADIUS && this.jumpCooldown<=0){
+      // prepara pulo em direção ao jogador com leve jitter para não ser perfeito
+      const dir=normalize(player.x - this.x + randRange(-12,12), player.y - this.y + randRange(-12,12));
+      this.jumpDir=dir;
+      this.jumpPrep=180; // aviso de preparo (agachamento)
+      this.jumpCooldown=99999; // trava até pulo terminar
+      return;
+    }
+    // Wander / perseguição lenta quando não pula
+    let moveX=0, moveY=0;
+    if(d < MACACO_DETECT_RADIUS*0.9){
+      const dir=normalize(player.x - this.x, player.y - this.y);
+      moveX=dir.x*effSpeed*0.62;
+      moveY=dir.y*effSpeed*0.62;
+      // banana balançada visual já no draw
+    } else {
+      this.wanderAngle+=randRange(-0.04,0.04);
+      moveX=Math.cos(this.wanderAngle)*effSpeed*0.55;
+      moveY=Math.sin(this.wanderAngle)*effSpeed*0.55;
+    }
+    const nx=this.x+moveX, ny=this.y+moveY;
+    if(!this.collidesWalls(nx,this.y,walls)) this.x=nx;
+    if(!this.collidesWalls(this.x,ny,walls)) this.y=ny;
+    this.x=clamp(this.x, WALL_THICK+this.w/2, CANVAS_W-WALL_THICK-this.w/2);
+    this.y=clamp(this.y, WALL_THICK+this.h/2, CANVAS_H-WALL_THICK-this.h/2);
+  }
+  draw(ctx){
+    const x=this.x-this.w/2, y=this.y-this.h/2, bob=Math.sin(this.anim*0.010)*1.4;
+    const isFlash=this.hitFlash>0 && Math.floor(this.hitFlash/42)%2===0;
+    if(this.stunTimer>0){
+      const pulse=0.5+Math.sin(this.anim*0.015)*0.35;
+      ctx.fillStyle=`rgba(255,215,0,${0.18+pulse*0.12})`;
+      ctx.beginPath(); ctx.arc(this.x, this.y+bob, this.w*0.9+pulse*3,0,Math.PI*2); ctx.fill();
+    } else if(this.slowTimer>0){
+      ctx.fillStyle=`rgba(96,165,250,0.14)`;
+      ctx.beginPath(); ctx.arc(this.x, this.y+bob, this.w*0.85,0,Math.PI*2); ctx.fill();
+    } else {
+      // glow da cor escolhida (rosa, amarelo, vermelho, azul etc.)
+      const pulse=0.5+Math.sin(this.anim*0.012)*0.28;
+      ctx.fillStyle=this.glow;
+      ctx.beginPath(); ctx.arc(this.x, this.y+bob, this.w*0.95+pulse*2.2,0,Math.PI*2); ctx.fill();
+    }
+    drawVariationAura(ctx,this,bob);
+    if(this.jumpPrep>0){
+      // preparo: agachado + indicação
+      const p=1 - (this.jumpPrep/180);
+      ctx.fillStyle=`rgba(255,255,255,${0.18+p*0.18})`;
+      ctx.beginPath(); ctx.arc(this.x, this.y+bob, this.w*0.82+p*2,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle=`rgba(255,255,255,${0.55+p*0.25})`; ctx.lineWidth=1.2; ctx.setLineDash([4,3]);
+      ctx.beginPath(); ctx.arc(this.x, this.y+bob, 6+p*4,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.fillStyle='rgba(0,0,0,0.30)'; ctx.fillRect(x+2, y+this.h-3, this.w, 3);
+    // corpo macaco: base é cor escolhida, variações modificam
+    let base=this.color;
+    if(this.variation==='tank') base='#2a5a9a';
+    else if(this.variation==='brute') base='#7a1a10';
+    else if(this.variation==='elite') base='#5a1a9a';
+    ctx.fillStyle=isFlash?'#fff' : this.stunTimer>0?'#a1a1aa' : this.slowTimer>0?'#60a5fa' : this.isJumping?'#fff8a0' : base;
+    ctx.fillRect(x+2, y+6+bob, this.w-4, this.h-8);
+    // barriga clara
+    ctx.fillStyle=isFlash?'#ffeef2': this.stunTimer>0?'#6b7280':'#f0e8d8';
+    ctx.fillRect(x+6, y+10+bob, this.w-12, 6);
+    // orelhas
+    ctx.fillStyle=isFlash?'#fff': this.stunTimer>0?'#888':'#7a4a2d';
+    ctx.fillRect(x+1, y+4+bob, 4, 6); ctx.fillRect(x+this.w-5, y+4+bob, 4, 6);
+    ctx.fillStyle=isFlash?'#fff':'#ffccb0';
+    ctx.fillRect(x+2, y+6+bob, 2,3); ctx.fillRect(x+this.w-4, y+6+bob, 2,3);
+    // rosto
+    ctx.fillStyle='#f0d8b0'; ctx.fillRect(x+6, y+2+bob, this.w-12, 7);
+    // olhos
+    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+8, y+4+bob, 3,3); ctx.fillRect(x+15, y+4+bob, 3,3);
+    ctx.fillStyle='#fff'; ctx.fillRect(x+9, y+5+bob,1,1); ctx.fillRect(x+16, y+5+bob,1,1);
+    // boca macaco (sorriso)
+    ctx.fillStyle='#7a2a1a'; ctx.fillRect(x+10, y+8+bob, 6,1.5);
+    // rabo enrolado atrás
+    const tailX=x+this.w-2 + Math.sin(this.anim*0.018)*2.2;
+    ctx.fillStyle=isFlash?'#fff': this.color;
+    ctx.fillRect(tailX, y+12+bob, 4, 6);
+    ctx.fillStyle='#fff'; ctx.fillRect(tailX+1, y+13+bob, 2,2);
+    // banana na mão quando próximo do pulo
+    if(this.jumpPrep>0 || this.isJumping){
+      ctx.fillStyle='#ffeb3b'; ctx.fillRect(this.x - 3 + Math.sin(this.anim*0.02)*1, this.y+8+bob, 6,3);
+      ctx.fillStyle='#1a1200'; ctx.fillRect(this.x -2, this.y+9+bob, 4,1);
+    }
+    if(this.hp < this.maxHp){
+      const pct=clamp(this.hp/this.maxHp,0,1);
+      ctx.fillStyle='rgba(0,0,0,0.70)'; ctx.fillRect(x, y-7+bob, this.w,4);
+      ctx.fillStyle=pct>0.5?'#4ade80':pct>0.25?'#facc15':'#ef4444'; ctx.fillRect(x, y-7+bob, this.w*pct,4);
+    }
+    // label cor
+    ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(x+ this.w/2 -12, y-12+bob, 24, 5);
+    ctx.fillStyle=this.color; ctx.font='4px monospace'; ctx.textAlign='center';
+    ctx.fillText(this.colorKey.toUpperCase(), this.x, y-8+bob); ctx.textAlign='left';
+    drawVariationIcon(ctx,this,x,y,bob);
+  }
+  getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
+}
+
+// ===================== SALA SETCH - NPC E MINIGAME COPINHOS =====================
+// Sala Setch: tamanho equivalente a 2 salas normais (arena grande sem pilares centrais), temática misteriosa.
+// NPC Setch: personagem com chapéu, sorriso enigmático, guarda o jogo dos copinhos.
+// Minigame: 3 copos, bolinha escondida sob um, shuffle visual, jogador escolhe via 1/2/3 ou E/colisão.
+// Recompensa: aleatório entre melhoria para arma equipada ou Vida Cibernética (Bone Heart). Código organizado e modular.
+class SetchCupGame {
+  constructor(room){
+    this.room = room;
+    this.state = 'idle'; // idle, showing, shuffling, waiting, revealing
+    this.cups = []; // [{x,y, targetX}, ...] interpolação
+    this.ballIndex = 0; // 0..2 onde está a bolinha
+    this.shuffleMoves = 0;
+    this.shuffleMoveIndex = 0;
+    this.shuffleTimer = 0;
+    this.showTimer = 0;
+    this.revealTimer = 0;
+    this.result = null; // 'win' | 'lose' | null
+    this.rewardType = null; // 'upgrade' | 'cyber'
+    this.interactive = false;
+    this.anim = 0;
+    // Posições base: 3 copos igualmente espaçados na sala (arena grande 2x -> mais espaço)
+    const baseX = CANVAS_W/2;
+    const baseY = CANVAS_H/2 + 22;
+    const spacing = 88; // maior espaçamento para sala grande
+    for(let i=0;i<SETCH_CUP_COUNT;i++){
+      const x = baseX + (i-1)*spacing;
+      this.cups.push({ x: x, y: baseY, targetX: x, displayX: x, displayY: baseY, animOff: 0, revealed: false });
+    }
+    this.ballPos = { x: this.cups[0].x, y: this.cups[0].y };
+  }
+  start(){
+    // Sorteia onde está a bolinha
+    this.ballIndex = randInt(0, SETCH_CUP_COUNT-1);
+    this.state = 'showing';
+    this.showTimer = SETCH_SHOW_BALL_TIME;
+    this.shuffleMoveIndex = 0;
+    this.shuffleMoves = SETCH_SHUFFLE_MOVES;
+    this.shuffleTimer = 0;
+    this.revealTimer = 0;
+    this.result = null;
+    this.rewardType = null;
+    this.interactive = false;
+    // Revela todos para mostrar onde está (somente ballIndex mostra bolinha)
+    for(let i=0;i<this.cups.length;i++) this.cups[i].revealed = (i===this.ballIndex);
+    this.updateBallPosInstant();
+  }
+  updateBallPosInstant(){
+    if(this.ballIndex>=0 && this.ballIndex < this.cups.length){
+      this.ballPos.x = this.cups[this.ballIndex].x;
+      this.ballPos.y = this.cups[this.ballIndex].y + 14;
+    }
+  }
+  updateBallPosSmooth(dt){
+    const target = this.cups[this.ballIndex];
+    if(!target) return;
+    this.ballPos.x = lerp(this.ballPos.x, target.x, 0.22);
+    this.ballPos.y = lerp(this.ballPos.y, target.y+14, 0.22);
+  }
+  // Troca as posições lógicas de dois copos (shuffle)
+  shuffleSwap(a,b){
+    const cupA = this.cups[a];
+    const cupB = this.cups[b];
+    if(!cupA || !cupB) return;
+    // Troca posições x alvo
+    const tmpX = cupA.targetX;
+    cupA.targetX = cupB.targetX;
+    cupB.targetX = tmpX;
+    // Se a bolinha está em um dos dois, ela muda de copo
+    if(this.ballIndex===a) this.ballIndex = b;
+    else if(this.ballIndex===b) this.ballIndex = a;
+  }
+  update(dt){
+    this.anim+=dt;
+    // interpola displayX para targetX (movimento suave)
+    for(const c of this.cups){
+      c.displayX = lerp(c.displayX, c.targetX, 0.18);
+      c.animOff = Math.sin(this.anim*0.004 + c.displayX*0.01)*1.2;
+      c.displayY = c.y + c.animOff;
+    }
+    this.updateBallPosSmooth(dt);
+    if(this.state==='showing'){
+      this.showTimer-=dt;
+      if(this.showTimer<=0){
+        // Esconde bolinha, começa shuffle
+        for(const c of this.cups) c.revealed=false;
+        this.state='shuffling';
+        this.shuffleTimer = 120; // breve pausa antes do primeiro shuffle
+        this.shuffleMoveIndex=0;
+      }
+    } else if(this.state==='shuffling'){
+      this.shuffleTimer-=dt;
+      if(this.shuffleTimer<=0){
+        if(this.shuffleMoveIndex < this.shuffleMoves){
+          // escolhe 2 copos aleatórios para trocar
+          let a = randInt(0, SETCH_CUP_COUNT-1);
+          let b = randInt(0, SETCH_CUP_COUNT-1);
+          while(b===a) b = randInt(0, SETCH_CUP_COUNT-1);
+          this.shuffleSwap(a,b);
+          this.shuffleMoveIndex++;
+          this.shuffleTimer = SETCH_SHUFFLE_SPEED;
+        } else {
+          // shuffle terminou
+          this.state='waiting';
+          this.interactive=true;
+        }
+      }
+    } else if(this.state==='revealing'){
+      this.revealTimer-=dt;
+      if(this.revealTimer<=0){
+        // retorna a idle ou mantém resultado para nova interação
+        // Se ganhou, marca sala como vencida e aguarda coleta? Mantém resultado visível por um tempo
+        if(this.result==='win'){
+          this.state='finishedWin';
+        } else {
+          this.state='finishedLose';
+        }
+        // Após 2.5s volta a idle permitindo rejogar se perdeu
+        this.revealTimer=2500;
+      }
+    } else if(this.state==='finishedWin' || this.state==='finishedLose'){
+      this.revealTimer-=dt;
+      if(this.revealTimer<=0){
+        if(this.result==='lose'){
+          // permite jogar novamente após perder
+          this.state='idle';
+          this.result=null;
+          this.interactive=false;
+          for(const c of this.cups) c.revealed=false;
+        } else {
+          // venceu: mantém estado win mas não permite rejogar (isSetchCleared)
+          // Fica em finishedWin até sair da sala
+        }
+      }
+    }
+  }
+  // Chamada quando jogador escolhe um copo (0..2)
+  choose(index, player, game, room){
+    if(this.state!=='waiting' || !this.interactive) return {ok:false, reason:'not_waiting'};
+    this.interactive=false;
+    const isWin = (index===this.ballIndex);
+    this.result = isWin ? 'win' : 'lose';
+    this.state='revealing';
+    this.revealTimer = 1400; // mostra resultado
+    // Revela todos copos brevemente para mostrar onde estava
+    for(let i=0;i<this.cups.length;i++){
+      this.cups[i].revealed = true;
+    }
+    if(isWin){
+      // Sorteia recompensa: 50% upgrade compatível com arma equipada, 50% Vida Cibernética
+      const roll = Math.random();
+      let reward = (roll < SETCH_REWARD_UPGRADE_CHANCE) ? 'upgrade' : 'cyber';
+      // Se não pode dar vida cibernética (já no máximo), força upgrade
+      const canCyber = player.boneHearts < player.maxBoneHearts;
+      const hasUpgradeOption = this.getRandomUpgradeForPlayer(player);
+      if(!canCyber) reward='upgrade';
+      if(!hasUpgradeOption) reward='cyber';
+      if(!canCyber && !hasUpgradeOption) reward=null;
+      this.rewardType = reward;
+      if(reward==='upgrade'){
+        const upId = this.getRandomUpgradeForPlayer(player);
+        if(upId){
+          const ok = player.addUpgrade(upId);
+          if(ok){
+            const def = UPGRADE_MAP.get(upId);
+            if(game.showToast) game.showToast(`★ Setch: + ${def ? def.name : upId}! Upgrade para ${player.weapon.name}`, 2600);
+            if(game.particles){
+              for(let k=0;k<18;k++) game.particles.push(new Particle(room.npc.x, room.npc.y-12, randRange(-1.6,1.6), randRange(-1.6,0.4), 420, def && RARITY[def.rarity] ? RARITY[def.rarity].color : '#ffd700', 2.2));
+            }
+            room.setchRewardGiven = true;
+            room.setchCleared = true;
+          } else {
+            // fallback vida
+            this.giveCyberHeart(player, game, room);
+          }
+        } else {
+          this.giveCyberHeart(player, game, room);
+        }
+      } else if(reward==='cyber'){
+        this.giveCyberHeart(player, game, room);
+        room.setchRewardGiven = true;
+        room.setchCleared = true;
+      }
+      // Feedback partículas vitória
+      if(game.particles){
+        for(let k=0;k<22;k++) game.particles.push(new Particle(this.cups[index].displayX, this.cups[index].displayY-10, randRange(-1.8,1.8), randRange(-1.6,0.6), 420, '#ffd700', 2.4));
+      }
+      if(room) room.shake = 60;
+    } else {
+      // Perdeu: feedback, permite tentar novamente
+      if(game.showToast) game.showToast('Setch: Errou! Tente novamente... (E para rejogar)', 1500);
+      if(game.particles){
+        for(let k=0;k<10;k++) game.particles.push(new Particle(this.cups[index].displayX, this.cups[index].displayY-8, randRange(-1.2,1.2), randRange(-1,0.4), 240, '#ff3b30', 1.8));
+      }
+      // Mostra onde estava a bolinha já (revealing)
+    }
+    return {ok:true, win:isWin, reward:this.rewardType};
+  }
+  getRandomUpgradeForPlayer(player){
+    if(!player || !player.weapon) return null;
+    const curName = player.weapon.name;
+    // Tenta pegar upgrade compatível que ainda pode subir de nível
+    let pool = UPGRADE_DEFS.filter(u=>{
+      const compat = u.compatible || [u.weapon];
+      const isCompat = compat.includes(curName) || u.weapon==='ALL' || compat.includes('ALL') || u.weapon===curName;
+      if(!isCompat) return false;
+      if(player.canAddUpgrade) return player.canAddUpgrade(u.id);
+      return true;
+    });
+    if(pool.length===0){
+      // fallback: qualquer upgrade que pode adicionar
+      pool = UPGRADE_DEFS.filter(u=> player.canAddUpgrade ? player.canAddUpgrade(u.id) : false);
+    }
+    if(pool.length===0) return null;
+    // Prioriza raras um pouco para ser recompensador? 35% rara+
+    if(Math.random()<0.35){
+      const rarePool = pool.filter(u=> u.rarity==='RARA' || u.rarity==='MUITO_RARA');
+      if(rarePool.length) pool = rarePool;
+    }
+    return pool[randInt(0, pool.length-1)].id;
+  }
+  giveCyberHeart(player, game, room){
+    // Lógica igual ao CyberHeartItem mas direta
+    if(player.boneHearts >= player.maxBoneHearts){
+      if(game.showToast) game.showToast('Setch: Vida máxima! Mas ganhou ★ upgrade alternativo!', 1500);
+      const alt = this.getRandomUpgradeForPlayer(player);
+      if(alt) player.addUpgrade(alt);
+      return;
+    }
+    player.boneHearts += 1;
+    player.maxHp += 2;
+    player.hp = Math.min(player.maxHp, player.hp+2);
+    if(game.showToast) game.showToast('◆ Setch: +1 Vida Cibernética! [+2 HP recipiente cinza]', 2200);
+    if(game.particles){
+      for(let k=0;k<16;k++) game.particles.push(new Particle(room.npc.x, room.npc.y-10, randRange(-1.4,1.4), randRange(-1.4,0.6), 340, '#00e5ff', 2.2));
+    }
+    if(game.shake) game.shake = Math.max(game.shake, 65);
+  }
+  draw(ctx){
+    // Desenha mesa / base para sala grande
+    const tableY = CANVAS_H/2 + 58;
+    ctx.fillStyle='rgba(0,0,0,0.22)';
+    ctx.fillRect(CANVAS_W/2 - 160, tableY - 8, 320, 14);
+    ctx.fillStyle='#2a1e0a';
+    ctx.fillRect(CANVAS_W/2 - 158, tableY - 14, 316, 10);
+    ctx.fillStyle='#3a2a12';
+    ctx.fillRect(CANVAS_W/2 - 158, tableY - 14, 316, 3);
+    // Copos
+    for(let i=0;i<this.cups.length;i++){
+      const c = this.cups[i];
+      const x = c.displayX, y = c.displayY;
+      // sombra
+      ctx.fillStyle='rgba(0,0,0,0.22)'; ctx.beginPath(); ctx.ellipse(x, y+14, 16, 5,0,0,Math.PI*2); ctx.fill();
+      // Bolinha (se revelada ou estado showing/revealing)
+      const shouldShowBall = (this.state==='showing' || this.state==='revealing' || this.state==='finishedWin' || this.state==='finishedLose') && (i===this.ballIndex);
+      const showBallWhileShuffling = false; // esconde durante shuffle
+      if(shouldShowBall){
+        const ballX = (this.state==='showing' || this.state==='revealing' || this.state==='finishedWin' || this.state==='finishedLose') ? c.displayX : this.ballPos.x;
+        const ballY = (this.state==='showing' || this.state==='revealing' || this.state==='finishedWin' || this.state==='finishedLose') ? y+12 : this.ballPos.y;
+        // bolinha vermelha pulsante
+        const pulse=0.5+Math.sin(this.anim*0.014)*0.22;
+        ctx.fillStyle=`rgba(255,60,60,${0.18+pulse*0.12})`;
+        ctx.beginPath(); ctx.arc(ballX, ballY, 9+pulse*1.2,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#ff3b30'; ctx.beginPath(); ctx.arc(ballX, ballY, 7,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#ff8c42'; ctx.beginPath(); ctx.arc(ballX-1.5, ballY-1.5, 2.2,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(ballX-1, ballY-1.8, 1.2,0,Math.PI*2); ctx.fill();
+      }
+      // Corpo do copo (inverte para parecer copo de lado / de cima)
+      // Copo estilo cilindro: base escura, corpo claro, borda
+      ctx.fillStyle='#1a1205'; ctx.fillRect(x-16, y-2, 32, 4);
+      ctx.fillStyle='#6b4a1a'; ctx.fillRect(x-14, y-2, 28, 20);
+      ctx.fillStyle='#8a6d2b'; ctx.fillRect(x-12, y, 24, 2);
+      ctx.fillStyle='#3a2505'; ctx.fillRect(x-11, y+16, 22, 2);
+      // brilho
+      ctx.fillStyle='rgba(255,255,255,0.22)'; ctx.fillRect(x-10, y+2, 3, 10);
+      // Número do copo (1/2/3) na frente
+      ctx.fillStyle='rgba(255,215,0,0.92)'; ctx.font='7px "Press Start 2P"'; ctx.textAlign='center';
+      ctx.fillText(String(i+1), x, y+12); ctx.textAlign='left';
+      // Destaque quando interativo (hover/pode escolher)
+      if(this.state==='waiting' && this.interactive){
+        const pulseWait=0.5+Math.sin(this.anim*0.012+i*0.7)*0.32;
+        ctx.strokeStyle=`rgba(255,215,0,${0.32+pulseWait*0.18})`; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+        ctx.strokeRect(x-16, y-4, 32, 24); ctx.setLineDash([]);
+        // setinha acima
+        if(Math.floor(this.anim/400)%2===0){
+          ctx.fillStyle='rgba(255,255,255,0.92)'; ctx.font='8px monospace'; ctx.textAlign='center';
+          ctx.fillText('▼', x, y-10); ctx.textAlign='left';
+        }
+      }
+      // Quando revealing / win / lose, borda verde/vermelha
+      if(this.state==='revealing' || this.state==='finishedWin'){
+        if(this.result==='win' && i===this.ballIndex){
+          ctx.strokeStyle='rgba(74,222,128,0.92)'; ctx.lineWidth=2.2; ctx.strokeRect(x-16, y-4, 32, 24);
+        }
+      } else if(this.state==='revealing' || this.state==='finishedLose'){
+        if(this.result==='lose' && i===this.ballIndex){
+          // mostra onde estava
+          ctx.strokeStyle='rgba(74,222,128,0.62)'; ctx.lineWidth=1.8; ctx.setLineDash([5,3]);
+          ctx.strokeRect(x-16, y-4, 32, 24); ctx.setLineDash([]);
+        }
+      }
+    }
+    // Texto instrutivo
+    ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(CANVAS_W/2 - 140, CANVAS_H/2 + 82, 280, 18);
+    ctx.fillStyle='#fff'; ctx.font='6px "Press Start 2P"'; ctx.textAlign='center';
+    if(this.state==='idle'){
+      ctx.fillStyle='#ffd700'; ctx.fillText('PRESSIONE [E] PARA JOGAR', CANVAS_W/2, CANVAS_H/2 + 94);
+    } else if(this.state==='showing'){
+      ctx.fillText('MEMORIZE ONDE ESTÁ A BOLINHA...', CANVAS_W/2, CANVAS_H/2 + 94);
+    } else if(this.state==='shuffling'){
+      ctx.fillText('EMBARALHANDO...', CANVAS_W/2, CANVAS_H/2 + 94);
+    } else if(this.state==='waiting'){
+      ctx.fillStyle='#ffd700'; ctx.fillText('ESCOLHA O COPO: 1 / 2 / 3  OU [E] PERTO', CANVAS_W/2, CANVAS_H/2 + 94);
+    } else if(this.state==='revealing'){
+      if(this.result==='win') { ctx.fillStyle='#4ade80'; ctx.fillText('✓ ACERTOU! RECOMPENSA!', CANVAS_W/2, CANVAS_H/2 + 94); }
+      else { ctx.fillStyle='#ff6b6b'; ctx.fillText('✗ ERROU!','', CANVAS_W/2, CANVAS_H/2 + 94); ctx.fillText('✗ ERROU!', CANVAS_W/2, CANVAS_H/2 + 94); }
+    } else if(this.state==='finishedWin'){
+      ctx.fillStyle='#4ade80'; ctx.fillText('★ RECOMPENSA ENTREGUE ★', CANVAS_W/2, CANVAS_H/2 + 94);
+    } else if(this.state==='finishedLose'){
+      ctx.fillText('TENTE NOVAMENTE! [E] PARA REJOGAR', CANVAS_W/2, CANVAS_H/2 + 94);
+    }
+    ctx.textAlign='left';
+  }
+  // Verifica clique na posição do copo (para mouse)
+  hitTest(px,py){
+    for(let i=0;i<this.cups.length;i++){
+      const c=this.cups[i];
+      if(Math.abs(px - c.displayX) < 18 && Math.abs(py - c.displayY) < 18) return i;
+    }
+    return -1;
+  }
+}
+
+class SetchNPC {
+  constructor(x,y){
+    this.x=x; this.y=y;
+    this.w=SETCH_NPC_SIZE_W; this.h=SETCH_NPC_SIZE_H;
+    this.anim=Math.random()*1000;
+    this.interactRange=SETCH_INTERACT_RANGE;
+    this.wasNear=false;
+  }
+  update(dt,player){
+    this.anim+=dt;
+  }
+  isNear(player){
+    return dist(this.x,this.y,player.x,player.y) < this.interactRange;
+  }
+  draw(ctx){
+    const x=this.x-this.w/2, y=this.y-this.h/2, bob=Math.sin(this.anim*0.008)*1.6;
+    // sombra
+    ctx.fillStyle='rgba(0,0,0,0.32)'; ctx.fillRect(x+2, y+this.h-3, this.w, 4);
+    // aura misteriosa setch (roxo/dourado)
+    const pulse=0.5+Math.sin(this.anim*0.011)*0.30;
+    ctx.fillStyle=`rgba(168,85,247,${0.14+pulse*0.08})`;
+    ctx.beginPath(); ctx.arc(this.x, this.y+bob, this.w*0.92+pulse*3,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle=`rgba(255,215,0,${0.22+pulse*0.10})`; ctx.lineWidth=1.1; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.arc(this.x, this.y+bob, this.w*0.88,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+    // corpo - jaleco/manto escuro
+    ctx.fillStyle='#1a0f1e'; ctx.fillRect(x+3, y+10+bob, this.w-6, this.h-12);
+    ctx.fillStyle='#2a1a30'; ctx.fillRect(x+3, y+10+bob, this.w-6, 2);
+    // cinto dourado
+    ctx.fillStyle='#a16207'; ctx.fillRect(x+4, y+16+bob, this.w-8, 2);
+    ctx.fillStyle='rgba(255,255,255,0.18)'; ctx.fillRect(x+4, y+16+bob, this.w-8, 0.7);
+    // cabeça
+    ctx.fillStyle='#d9b99b'; ctx.fillRect(x+5, y+2+bob, this.w-10, 10);
+    // chapéu setch (cartola estilosa)
+    ctx.fillStyle='#0a0a0a'; ctx.fillRect(x+3, y-1+bob, this.w-6, 4);
+    ctx.fillRect(x+7, y-4+bob, this.w-14, 4);
+    ctx.fillStyle='#a16207'; ctx.fillRect(x+7, y+1+bob, this.w-14, 1.5);
+    // olhos (misteriosos, brilho)
+    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+8, y+6+bob, 3,3); ctx.fillRect(x+17, y+6+bob, 3,3);
+    ctx.fillStyle='#ffd700'; ctx.fillRect(x+8.5, y+7+bob, 1.5,1.5); ctx.fillRect(x+17.5, y+7+bob, 1.5,1.5);
+    ctx.fillStyle='#fff'; ctx.fillRect(x+9, y+7.5+bob,0.7,0.7); ctx.fillRect(x+18, y+7.5+bob,0.7,0.7);
+    // bigode estiloso
+    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+10, y+10+bob, 8,1);
+    ctx.fillStyle='#3a1a0a'; ctx.fillRect(x+9, y+11+bob, 10,0.7);
+    // mãos (segurando copo imaginário)
+    ctx.fillStyle='#d9b99b'; ctx.fillRect(x+1, y+12+bob, 4,5); ctx.fillRect(x+this.w-5, y+12+bob, 4,5);
+    // nome tag
+    ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(this.x-22, y-12+bob, 44, 8);
+    ctx.fillStyle='#ffd700'; ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
+    ctx.fillText('SETCH', this.x, y-6+bob); ctx.textAlign='left';
+    // hint
+    ctx.fillStyle='rgba(168,85,247,0.92)'; ctx.font='5px monospace'; ctx.textAlign='center';
+    ctx.fillText('COPINHOS', this.x, y-16+bob); ctx.textAlign='left';
+  }
+  getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
+}
+
 // ===================== ROOM =====================
 class Room {
   constructor(gx, gy, doors, isStart = false, seedRand, floor = 1) {
@@ -12330,6 +13989,13 @@ class Room {
     this.partyWavesRemaining = 0;
     this.partyWaveTimer = 0;
     this.partyConfetti = []; // decoração flutuante
+    this.isSetch = false; // Sala Setch (2x tamanho, NPC copinhos)
+    this.setchDefeated = false; // true quando venceu minigame (sala limpa)
+    this.setchStarted = false;
+    this.setchRewardGiven = false;
+    this.setchCleared = false; // venceu e ganhou recompensa
+    this.npc = null; // SetchNPC
+    this.cupGame = null; // SetchCupGame
     this.rareItemCollected = false;
     this.buildWalls(seedRand);
     if (!isStart) {
@@ -12338,6 +14004,7 @@ class Room {
       // espinhos apenas a partir da fase 3, e chance configurável (não bloqueia portas)
       if(this.floor===3 || this.floor===4) this.spawnSpikes(seedRand);
       if(this.floor===5 && this.type==='enemy' && seedRand()<0.18) this.spawnSpikes(seedRand); // poucos espinhos na fase 5 normal, mas boss arena sem
+      if(this.floor===6 && this.type==='enemy' && seedRand()<0.12) this.spawnSpikes(seedRand); // mineradora fase 6 poucos espinhos
     }
   }
 
@@ -12354,15 +14021,27 @@ class Room {
     if (this.doors.right) { add(CANVAS_W - t, 0, t, cy - dh/2); add(CANVAS_W - t, cy + dh/2, t, CANVAS_H - (cy + dh/2)); }
     else add(CANVAS_W - t, 0, t, CANVAS_H);
 
+    // Sala Setch (2x) : arena grande, sem pilares centrais para destacar tamanho duplo
+    if(this.isSetch){
+      // nenhum pilar central, mantém arena livre para copos e NPC
+      // adiciona apenas 2 pilares decorativos nas laterais para não ficar vazia demais
+      if(rng()<0.45){
+        add(140 - 18, CANVAS_H/2 - 40, 24, 80);
+        add(CANVAS_W-140 - 6, CANVAS_H/2 - 40, 24, 80);
+      }
+      return;
+    }
     // pilares com variação por fase
     let pillarChance = 0.5;
     if(this.floor===2) pillarChance=0.65;
     else if(this.floor===3) pillarChance=0.60;
     else if(this.floor===4) pillarChance=0.55;
+    else if(this.floor===6) pillarChance=0.62; // mineradora tem mais pedras/minérios
     if (!this.isStart && rng() < pillarChance) {
       let count = 1;
       if(this.floor===2) count=randInt(1,3);
       else if(this.floor===3) count=randInt(2,3);
+      else if(this.floor===6) count=randInt(2,3);
       else count=randInt(1,2);
       for (let i=0;i<count;i++) {
         let px, py, tries=0;
@@ -12375,17 +14054,19 @@ class Room {
   }
 
    spawnEnemies(rng) {
-    // Boss da escada não spawna inimigos normais (arena própria)
-    if(this.isBossStair) return;
-    if(this.isHacker) return;
-    if(this.isPartyHorde) return; // horda tem spawn próprio por ondas
-    // dificuldade escala com fase - Fase 4 mais difícil + DashEnemy
-    if(this.isMiniboss) return; // miniboss lida separado
-    let n;
-    if(this.floor===4) n = randInt(4,6);
-    else if(this.floor===3) n = randInt(4,6);
-    else if(this.floor===2) n = randInt(3,5);
-    else n = randInt(2,4);
+     // Boss da escada não spawna inimigos normais (arena própria)
+     if(this.isBossStair) return;
+     if(this.isHacker) return;
+     if(this.isSetch) return; // Sala Setch sem inimigos, só NPC
+     if(this.isPartyHorde) return; // horda tem spawn próprio por ondas
+     // dificuldade escala com fase - Fase 4 mais difícil + DashEnemy
+     if(this.isMiniboss) return; // miniboss lida separado
+     let n;
+     if(this.floor===6) n = randInt(5,7); // Mineradora Fase 6 mais inimigos
+     else if(this.floor===4) n = randInt(4,6);
+     else if(this.floor===3) n = randInt(4,6);
+     else if(this.floor===2) n = randInt(3,5);
+     else n = randInt(2,4);
     const cx = CANVAS_W/2, cy = CANVAS_H/2;
     for (let i=0;i<n;i++) {
       let x,y, tries=0;
@@ -12399,42 +14080,59 @@ class Room {
       } while (tries<20);
       let e;
       if(this.floor===4){
-        // Fase 4: X-Shooter 16% + dash 16% + kamikaze 16% + fugitive 14% + summoner 12% + resto chaser
+        // Fase 4: inclui Macaco 13%
         const roll = rng();
         const hasSummoner = this.enemies.some(en=>en.type==='summoner');
         if(!hasSummoner && roll < 0.12) e = new Summoner(x,y);
-        else if(roll < 0.28) e = new XShooter(x,y);
-        else if(roll < 0.44) e = new DashEnemy(x,y);
-        else if(roll < 0.60) e = new Kamikaze(x,y);
-        else if(roll < 0.74) e = new Fugitive(x,y);
+        else if(roll < 0.26) e = new XShooter(x,y);
+        else if(roll < 0.39) e = new Macaco(x,y); // 13%
+        else if(roll < 0.53) e = new DashEnemy(x,y);
+        else if(roll < 0.67) e = new Kamikaze(x,y);
+        else if(roll < 0.79) e = new Fugitive(x,y);
         else e = new Chaser(x,y);
       } else if(this.floor===3){
-        // Fase 3: X-Shooter 18% + summoner 20% + kamikaze 24% + fugitive 18% + resto chaser
+        // Fase 3: inclui Macaco 12%
         const roll = rng();
         const hasSummoner = this.enemies.some(en=>en.type==='summoner');
         if(!hasSummoner && roll < 0.20) e = new Summoner(x,y);
-        else if(roll < 0.38) e = new XShooter(x,y);
-        else if(roll < 0.62) e = new Kamikaze(x,y);
-        else if(roll < 0.80) e = new Fugitive(x,y);
+        else if(roll < 0.36) e = new XShooter(x,y);
+        else if(roll < 0.48) e = new Macaco(x,y); // 12%
+        else if(roll < 0.68) e = new Kamikaze(x,y);
+        else if(roll < 0.84) e = new Fugitive(x,y);
         else e = new Chaser(x,y);
       } else if(this.floor===2){
         const roll = rng();
-        if(roll < 0.26) e = new XShooter(x,y);
-        else if(roll < 0.56) e = new Fugitive(x,y);
+        if(roll < 0.22) e = new XShooter(x,y);
+        else if(roll < 0.34) e = new Macaco(x,y); // 12% já na fase 2
+        else if(roll < 0.58) e = new Fugitive(x,y);
         else e = new Chaser(x,y);
       } else if(this.floor===5){
-        // Fase 5 corredores (antes da escada) - também com X-Shooter
+        // Fase 5 corredores (antes da escada) - também com X-Shooter + Macaco colorido
         const roll = rng();
         const hasSummoner = this.enemies.some(en=>en.type==='summoner');
         if(!hasSummoner && roll < 0.10) e = new Summoner(x,y);
-        else if(roll < 0.28) e = new XShooter(x,y);
-        else if(roll < 0.44) e = new DashEnemy(x,y);
+        else if(roll < 0.24) e = new XShooter(x,y);
+        else if(roll < 0.38) e = new Macaco(x,y); // Macaco 14%
+        else if(roll < 0.52) e = new DashEnemy(x,y);
+        else if(roll < 0.68) e = new Kamikaze(x,y);
+        else if(roll < 0.82) e = new Fugitive(x,y);
+        else e = new Chaser(x,y);
+      } else if(this.floor===6){
+        // Fase 6 Mineradora de Coins - Macaco mais frequente + todos os tipos mineradora
+        const roll = rng();
+        const hasSummoner = this.enemies.some(en=>en.type==='summoner');
+        if(!hasSummoner && roll < 0.09) e = new Summoner(x,y);
+        else if(roll < 0.22) e = new Macaco(x,y); // 13% Macaco (destaque)
+        else if(roll < 0.34) e = new XShooter(x,y);
+        else if(roll < 0.46) e = new DashEnemy(x,y);
         else if(roll < 0.62) e = new Kamikaze(x,y);
         else if(roll < 0.78) e = new Fugitive(x,y);
         else e = new Chaser(x,y);
       } else {
-        // Fase 1
-        if (rng() < 0.18) e = new Fugitive(x,y);
+        // Fase 1 - Macaco pode aparecer raramente até na fase 1 (8%)
+        const rMac = rng();
+        if(rMac < 0.08) e = new Macaco(x,y);
+        else if (rng() < 0.18) e = new Fugitive(x,y);
         else e = new Chaser(x,y);
       }
       if (rng() < 0.22) { e.hp = (e.maxHp||2)+1; e.maxHp = e.hp; }
@@ -12584,6 +14282,16 @@ class Room {
         tryPlace(it);
       }
     }
+    // ===== LASER - nova arma carregável com timing (média-rara) =====
+    // Spawn balanceado: 3.8% normal, 7.5% treasure - média-rara para testar mecânica sem flood
+    const laserChance = this.type==='treasure' ? 0.075 : 0.038;
+    if(rng() < laserChance && !this.isRare && !this.isMiniboss && !this.isBossStair && !this.isHacker && !this.isPartyHorde && this.items.length < 4){
+      if(!this.items.some(it=> it.weaponType && it.weaponType.toLowerCase()==='laser')){
+        const it=new WeaponItem(randRange(140, CANVAS_W-140), randRange(100, CANVAS_H-100), 'laser');
+        it.spawnDelay=200;
+        tryPlace(it);
+      }
+    }
     // ===== ITENS ESPECIAIS (E) - Sistema modular =====
     // Chance balanceada: ~5% por sala normal, 10% em treasure, inclui Flecha Stand incomum + Power Star raro
     // Flecha Stand é incomum: aparece com boa frequência para testar, mas não toda sala
@@ -12645,6 +14353,15 @@ class Room {
       const hasDillian = (typeof window!=='undefined' && window.game && window.game.player) ? window.game.player.hasDillianShield : false;
       if(!hasDillian && !this.items.some(it=> it.type==='escudo_dillian')){
         const it = new EscudoDillianItem(randRange(140, CANVAS_W-140), randRange(100, CANVAS_H-100));
+        tryPlace(it);
+      }
+    }
+    // Técnica Secreta Joestar - passivo comum (JoJo) - ao sofrer dano ganha velocidade 5s
+    const joestarChance = this.type==='treasure' ? JOESTAR_SPAWN_TREASURE : JOESTAR_SPAWN_CHANCE;
+    if(rng() < joestarChance && !this.isRare && !this.isMiniboss && !this.isBossStair && !this.isPartyHorde && this.items.length < 4){
+      const hasJoestar = (typeof window!=='undefined' && window.game && window.game.player) ? window.game.player.hasJoestarTechnique : false;
+      if(!hasJoestar && !this.items.some(it=> it.type==='joestar_tecnica')){
+        const it = new JoestarTecnicaItem(randRange(140, CANVAS_W-140), randRange(100, CANVAS_H-100));
         tryPlace(it);
       }
     }
@@ -12944,6 +14661,37 @@ class Room {
     this.spawnPartyWave(rng);
     return true;
   }
+  // ===================== SALA SETCH (2x TAMANHO) =====================
+  makeSetchRoom(rng){
+    if(this.isStart || this.isExit || this.isRare || this.isMiniboss || this.isBossStair || this.isHacker || this.isPartyHorde || this.isSetch) return false;
+    this.isSetch = true;
+    this.isSetchRoom = true; // alias
+    this.type = 'setch';
+    this.setchDefeated = false;
+    this.setchStarted = false;
+    this.setchRewardGiven = false;
+    this.setchCleared = false;
+    // Limpa inimigos e spikes para arena NPC (2x tamanho limpo)
+    this.spikes = [];
+    this.enemies = [];
+    this.items = [];
+    // Reconstrói paredes para arena grande sem pilares centrais (double size visual)
+    this.walls = this.walls.filter(w => {
+      const wx=w.x+w.w/2, wy=w.y+w.h/2;
+      if(dist(wx,wy, CANVAS_W/2, CANVAS_H/2) < 120) return false;
+      return true;
+    });
+    // Adiciona 2 pilares laterais decorativos para indicar tamanho duplo (bordas)
+    const add=(x,y,w,h)=> this.walls.push({x,y,w,h});
+    add(90, CANVAS_H/2 - 50, 22, 90);
+    add(CANVAS_W-112, CANVAS_H/2 - 50, 22, 90);
+    // Cria NPC Setch no topo da sala (centro-topo)
+    this.npc = new SetchNPC(CANVAS_W/2, CANVAS_H/2 - 62);
+    // Cria minigame de copos
+    this.cupGame = new SetchCupGame(this);
+    // Marca sala como ainda não limpa (precisa vencer minigame para considerar limpa)
+    return true;
+  }
   spawnPartyWave(rng){
     if(this.partyWavesRemaining <= 0) return;
     const n = randInt(PARTY_HORDE_ENEMIES_MIN, PARTY_HORDE_ENEMIES_MAX);
@@ -13111,6 +14859,10 @@ class Room {
       // Festa horda: só limpa após todas as ondas + sem inimigos
       return this.partyHordeDefeated && this.enemies.length === 0;
     }
+    if(this.isSetch){
+      // Sala Setch: limpa apenas após vencer o minigame (ou se já recompensado)
+      return this.setchCleared || this.setchRewardGiven;
+    }
     return this.enemies.length === 0;
   }
   // para fase: só considera limpa se inimigos zero (itens podem ficar)
@@ -13150,6 +14902,11 @@ class Room {
         }
       }
       if(this._partyNextWaveFlash>0) this._partyNextWaveFlash-=dt;
+    }
+    // ===================== SETCH - NPC e copos =====================
+    if(this.isSetch){
+      if(this.npc) this.npc.update(dt, player);
+      if(this.cupGame) this.cupGame.update(dt);
     }
     // atualiza spikes (anim)
     for(const s of this.spikes) s.update(dt);
@@ -13213,6 +14970,7 @@ class Room {
       else if (e.type==='summoner') e.update(dt, player, this.walls, pendingSummons, this.enemies);
       else if (e.type==='miniboss') e.update(dt, player, this.walls, enemyBulletsOut, pendingSummons, this.enemies, globalParticles);
       else if (e.type==='dash') e.update(dt, player, this.walls);
+      else if (e.type==='macaco') e.update(dt, player, this.walls);
       else e.update(dt, player, this.walls);
     }
     // Motosserra sangramento: aplica DoT serragem
@@ -13252,8 +15010,9 @@ class Room {
         if(Math.random()<0.45) this.explosions.push({x:randRange(CANVAS_W*0.2,CANVAS_W*0.8), y:randRange(CANVAS_H*0.25,CANVAS_H*0.85), radius:8, life:220, max:220, isHackerGlitch:true});
       }
     }
-    // Corrupted Stair portal (bloqueada antes, desbloqueia após Boss Escada)
-    if(this.isBossStair){
+    // Corrupted Stair portal (bloqueada antes, desbloqueia após Boss Escada) - DESATIVADA se Hacker foi movido para Fase 6 (HACKER_FLOOR===6)
+    // Quando Hacker está na Fase 6 (Mineradora), a vitória da Fase 5 leva diretamente à Fase 6 via portal normal, sem sala secreta
+    if(this.isBossStair && HACKER_FLOOR!==6){
       if(!this.corruptedStair){
         this.corruptedStair={x:CANVAS_W/2, y:CANVAS_H/2+42, w:HACKER_CORRUPTED_STAIR_SIZE_W, h:HACKER_CORRUPTED_STAIR_SIZE_H, active:false, locked:true, anim:0};
       }
@@ -13284,6 +15043,9 @@ class Room {
           }
         }
       }
+    } else if(this.isBossStair && HACKER_FLOOR===6){
+      // Garante que não sobrou corruptedStair residual quando Hacker é boss da Fase 6
+      this.corruptedStair = null;
     }
     // injeta invocados (limitado, com vida reduzida)
     for(const ne of pendingSummons){
@@ -14001,6 +15763,21 @@ class Room {
             ctx.fillRect(x+28, y+32, 6, 4);
           }
         }
+        // Mineradora Fase 6: moedas espalhadas no chão (decor)
+        if (theme.id===6) {
+          const hash6 = (x*7919 + y*131071) % 100;
+          if (hash6 < 9) {
+            ctx.fillStyle='rgba(255,183,0,0.18)';
+            ctx.beginPath(); ctx.arc(x+16, y+16, 5,0,Math.PI*2); ctx.fill();
+            ctx.fillStyle='#ffb700'; ctx.beginPath(); ctx.arc(x+16, y+16, 3.5,0,Math.PI*2); ctx.fill();
+            ctx.fillStyle='#fff'; ctx.font='5px monospace'; ctx.textAlign='center';
+            ctx.fillText('$', x+16, y+18); ctx.textAlign='left';
+          } else if (hash6 < 13) {
+            ctx.fillStyle='rgba(0,0,0,0.12)';
+            ctx.fillRect(x+20, y+24, 10, 5);
+            ctx.fillStyle='rgba(255,255,255,0.08)'; ctx.fillRect(x+22, y+26, 6,1);
+          }
+        }
       }
     }
     // centro start
@@ -14391,6 +16168,56 @@ class Room {
         ctx.fillText('ARENA FECHADA', CANVAS_W/2, CANVAS_H-20); ctx.textAlign='left';
       }
     }
+    // ===================== SALA SETCH (2x TAMANHO) - decoração dupla + NPC + COPOS =====================
+    if(this.isSetch){
+      const isCleared = this.isCleared();
+      const t=Date.now()*0.004;
+      // Fundo sala Setch: tom roxo-escuro / madeira misteriosa 2x
+      ctx.fillStyle = isCleared ? 'rgba(40,25,60,0.08)' : 'rgba(60,30,90,0.16)';
+      ctx.fillRect(WALL_THICK, WALL_THICK, CANVAS_W-WALL_THICK*2, CANVAS_H-WALL_THICK*2);
+      // Borda dupla indicando 2x tamanho
+      ctx.strokeStyle = isCleared ? 'rgba(168,85,247,0.30)' : 'rgba(168,85,247,0.52)';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10,6]);
+      ctx.strokeRect(WALL_THICK+4, WALL_THICK+4, CANVAS_W-WALL_THICK*8, CANVAS_H-WALL_THICK*8);
+      ctx.setLineDash([]);
+      // Borda interna 2x (segundo retângulo)
+      ctx.strokeStyle = 'rgba(255,215,0,0.18)';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(WALL_THICK+10, WALL_THICK+10, CANVAS_W-WALL_THICK*20, CANVAS_H-WALL_THICK*20);
+      // Estrelas flutuantes misteriosas
+      for(let i=0;i<6;i++){
+        const px = CANVAS_W/2 + Math.cos(t + i*1.05)* (90 + i*14);
+        const py = CANVAS_H/2-10 + Math.sin(t*0.8 + i*0.9)* (34 + i*7);
+        ctx.fillStyle=`rgba(168,85,247,${0.28 + Math.sin(t*2+i)*0.18})`;
+        ctx.fillRect(px, py, 2,2);
+      }
+      // Faixa superior "SALA SETCH • 2X"
+      ctx.fillStyle='rgba(0,0,0,0.28)'; ctx.fillRect(CANVAS_W/2 - 90, WALL_THICK+6, 180, 18);
+      ctx.fillStyle = isCleared ? 'rgba(74,222,128,0.95)' : 'rgba(255,215,0,0.95)';
+      ctx.font='8px "Press Start 2P"'; ctx.textAlign='center';
+      ctx.fillText(isCleared?'✓ SETCH ✓':'◉ SALA SETCH ◉', CANVAS_W/2, WALL_THICK+18); ctx.textAlign='left';
+      ctx.fillStyle='rgba(255,255,255,0.72)'; ctx.font='5px monospace'; ctx.textAlign='center';
+      ctx.fillText('2× TAMANHO • NPC COPINHOS', CANVAS_W/2, WALL_THICK+26); ctx.textAlign='left';
+      // Área 2x indicação no chão: ladrilhos maiores
+      ctx.fillStyle='rgba(168,85,247,0.06)';
+      ctx.fillRect(CANVAS_W/2 - 150, CANVAS_H/2 - 30, 300, 80);
+      ctx.strokeStyle='rgba(168,85,247,0.12)'; ctx.lineWidth=1; ctx.setLineDash([6,4]);
+      ctx.strokeRect(CANVAS_W/2 - 150, CANVAS_H/2 - 30, 300, 80); ctx.setLineDash([]);
+      // Desenha NPC e copos (se existem)
+      if(this.npc) this.npc.draw(ctx);
+      if(this.cupGame) this.cupGame.draw(ctx);
+      // Hint se não venceu e está perto
+      if(!this.setchCleared && this.npc && this.cupGame && this.cupGame.state==='idle'){
+        ctx.fillStyle='rgba(0,0,0,0.62)'; ctx.fillRect(CANVAS_W/2 - 92, CANVAS_H/2 + 100, 184, 14);
+        ctx.fillStyle='#ffd700'; ctx.font='6px monospace'; ctx.textAlign='center';
+        ctx.fillText('[E] CONVERSE COM SETCH', CANVAS_W/2, CANVAS_H/2 + 109); ctx.textAlign='left';
+      }
+      if(this.setchCleared){
+        ctx.fillStyle='rgba(74,222,128,0.88)'; ctx.font='6px monospace'; ctx.textAlign='center';
+        ctx.fillText('✓ JOGO VENCIDO • PORTAS LIBERADAS', CANVAS_W/2, CANVAS_H-12); ctx.textAlign='left';
+      }
+    }
 
     // rastros de fogo (desenha no chão, sob itens)
     for(const f of this.fires) f.draw(ctx);
@@ -14414,10 +16241,14 @@ class Room {
       else if(ex.isShieldPush) targetR=145;
       else if(ex.isShieldBlock) targetR=36;
       else if(ex.isFarmarAura || ex.isFarmarAuraEnd) targetR=FARMAR_AURA_RADIUS;
+      else if(ex.isJoestar) targetR=42;
+      else if(ex.isJoestarStars) targetR=58;
       else if(ex.isBossStairDeath) targetR=96;
       else if(ex.isHackerDeath) targetR=96;
       else if(ex.isHackerGlitch) targetR=36;
       else if(ex.isMinibossDeath) targetR=80;
+      else if(ex.isLaserPerfect) targetR=26;
+      else if(ex.isLaserHoming) targetR=20;
       const r = 14 + (1-alpha)* (targetR - 14);
       if(ex.isFlameSword){
         ctx.strokeStyle=`rgba(255,90,0,${alpha*0.60})`;
@@ -14723,6 +16554,84 @@ class Room {
           ctx.lineWidth=1.2; ctx.setLineDash([4,3]);
           ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.75,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
         }
+      } else if(ex.isJoestar){
+        // Técnica Secreta Joestar - explosão fuga dourada JoJo (anel + estrelinhas velocidade)
+        ctx.strokeStyle=`rgba(255,215,0,${alpha*0.68})`;
+        ctx.lineWidth=3.2;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle=`rgba(255,215,0,${alpha*0.16})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle=`rgba(124,58,237,${alpha*0.42})`;
+        ctx.lineWidth=1.4; ctx.setLineDash([4,3]);
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.78,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle=`rgba(255,255,255,${alpha*0.38})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.45,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle=`rgba(255,215,0,${alpha*0.95})`;
+        ctx.font='11px monospace'; ctx.textAlign='center';
+        ctx.fillText('💨', ex.x, ex.y+3); ctx.textAlign='left';
+        if(alpha>0.5){
+          ctx.fillStyle=`rgba(124,58,237,${alpha*0.55})`;
+          ctx.font='7px monospace'; ctx.textAlign='center';
+          ctx.fillText('JOESTAR', ex.x, ex.y-10); ctx.textAlign='left';
+        }
+      } else if(ex.isJoestarStars){
+        // Estrelinhas roxas - segundo anel Joestar (efeito pedido)
+        ctx.strokeStyle=`rgba(168,85,247,${alpha*0.62})`;
+        ctx.lineWidth=2.8;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle=`rgba(168,85,247,${alpha*0.14})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle=`rgba(216,180,254,${alpha*0.38})`;
+        ctx.lineWidth=1.2; ctx.setLineDash([4,3]);
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.72, 0, Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+        // 8 estrelas roxas orbitando
+        for(let a=0;a<8;a++){
+          const ang=(a/8)*Math.PI*2 + (1-alpha)*1.2;
+          const sx=ex.x+Math.cos(ang)*r*0.62, sy=ex.y+Math.sin(ang)*r*0.62;
+          const starAlpha=alpha*0.92;
+          ctx.fillStyle=`rgba(216,180,254,${starAlpha})`;
+          ctx.font=`${6+alpha*2}px sans-serif`; ctx.textAlign='center';
+          ctx.fillText(a%2===0?'★':'✦', sx, sy+2); ctx.textAlign='left';
+          ctx.fillStyle=`rgba(255,255,255,${starAlpha*0.55})`;
+          ctx.beginPath(); ctx.arc(sx, sy, 0.9, 0, Math.PI*2); ctx.fill();
+        }
+        ctx.fillStyle=`rgba(216,180,254,${alpha*0.95})`;
+        ctx.font='7px monospace'; ctx.textAlign='center';
+        ctx.fillText('★', ex.x, ex.y+3); ctx.textAlign='left';
+      } else if(ex.isLaserPerfect){
+        // Laser perfeito - explosão vermelha intensa impacto forte
+        ctx.strokeStyle=`rgba(255,26,46,${alpha*0.72})`;
+        ctx.lineWidth=4.2;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle=`rgba(255,26,46,${alpha*0.16})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle=`rgba(255,255,255,${alpha*0.42})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.48, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle=`rgba(255,215,0,${alpha*0.32})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.22, 0, Math.PI*2); ctx.fill();
+        if(alpha>0.45){
+          ctx.strokeStyle=`rgba(255,255,255,${alpha*0.55})`;
+          ctx.lineWidth=1.4; ctx.setLineDash([4,3]);
+          ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.72,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+          ctx.fillStyle=`rgba(255,255,255,${alpha*0.92})`; ctx.font='9px "Press Start 2P"'; ctx.textAlign='center';
+          ctx.fillText('★', ex.x, ex.y+3); ctx.textAlign='left';
+        }
+      } else if(ex.isLaserHoming){
+        // Laser teleguiado - explosão ciana suave curva
+        ctx.strokeStyle=`rgba(122,242,255,${alpha*0.62})`;
+        ctx.lineWidth=3.2;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle=`rgba(122,242,255,${alpha*0.14})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle=`rgba(255,255,255,${alpha*0.32})`;
+        ctx.lineWidth=1.2; ctx.setLineDash([4,3]);
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.68,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle=`rgba(122,242,255,${alpha*0.42})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.38,0,Math.PI*2); ctx.fill();
+        if(alpha>0.45){
+          ctx.fillStyle=`rgba(255,255,255,${alpha*0.72})`; ctx.font='7px monospace'; ctx.textAlign='center';
+          ctx.fillText('◉', ex.x, ex.y+2); ctx.textAlign='left';
+        }
       } else {
         // kamikaze padrão (variação brutal/elite = mais vermelho/intenso)
         const isBruteKamikaze = ex.isKamikazeVariation==='brute' || ex.isKamikazeVariation==='elite';
@@ -14896,7 +16805,8 @@ class MapGenerator {
   generate() {
     const rng = this.rng;
     let targetRooms;
-    if(this.floor===5) targetRooms = 11 + Math.floor(rng()*4); // 11-14 Fase 5 maior + boss escada
+    if(this.floor===6) targetRooms = 13 + Math.floor(rng()*4); // 13-16 Fase 6 Mineradora maior + Hacker
+    else if(this.floor===5) targetRooms = 11 + Math.floor(rng()*4); // 11-14 Fase 5 maior + boss escada
     else if(this.floor===4) targetRooms = 10 + Math.floor(rng()*4); // 10-13 Fase 4 maior + miniboss
     else if(this.floor===3) targetRooms = 9 + Math.floor(rng()*4); // 9-12 mais difícil
     else if(this.floor===2) targetRooms = 8 + Math.floor(rng()*4); // 8-11
@@ -14960,19 +16870,29 @@ class MapGenerator {
       exitRoom.exitPortal = null;
       exitRoom.isExit = false; // vitória cuida do portal
     }
+    // Fase 6: Mineradora de Coins - Boss Hacker movido para cá (obrigatória)
+    if(this.floor===HACKER_FLOOR && exitRoom){
+      exitRoom.makeHackerRoom(rng);
+      // Marca como boss da fase 6 (Hacker é o boss final da Mineradora)
+      exitRoom.isHackerBoss = true;
+      exitRoom.isHacker = true;
+      exitRoom.hackerLocked = false; // já é arena principal, não bloqueada
+      exitRoom.exitPortal = null;
+      exitRoom.isExit = false;
+    }
     // Sala rara especial: chance configurável rareRoomChance por andar (não start/exit)
     if(rng() < rareRoomChance){
-      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isPartyHorde);
+      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch);
       if(candidates.length){
         // escolhe uma sala aleatória não-start/exit, prefere que não seja já sobrecarregada
         const rc = candidates[Math.floor(rng()*candidates.length)];
         rc.makeRareRoom(rng);
       }
     }
-    // Sala Miniboss: pode aparecer em QUALQUER fase exceto 5 (35% chance, configurável MINIBOSS_ROOM_CHANCE)
-    // Fase 5 tem boss próprio, não gera miniboss
-    if(this.floor!==5 && rng() < MINIBOSS_ROOM_CHANCE){
-      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isPartyHorde);
+    // Sala Miniboss: pode aparecer em QUALQUER fase exceto 5 e 6 (35% chance, configurável MINIBOSS_ROOM_CHANCE)
+    // Fase 5 e 6 têm boss próprio (Stair / Hacker), não gera miniboss
+    if(this.floor!==5 && this.floor!==HACKER_FLOOR && rng() < MINIBOSS_ROOM_CHANCE){
+      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch);
       if(candidates.length){
         // prefere sala com 1 porta (dead end) para arena mais isolada
         let pool=candidates;
@@ -14982,9 +16902,9 @@ class MapGenerator {
         rc.makeMinibossRoom(rng);
       }
     }
-    // Sala de Festa (Horda) — pode aparecer em qualquer fase 1-5 (20%)
+    // Sala de Festa (Horda) — pode aparecer em qualquer fase 1-6 (20%)
     if(rng() < PARTY_HORDE_CHANCE){
-      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isPartyHorde);
+      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch);
       if(candidates.length){
         let pool=candidates;
         const twoDoors=candidates.filter(r=> Object.values(r.doors).filter(Boolean).length===2);
@@ -14993,12 +16913,28 @@ class MapGenerator {
         rc.makePartyHordeRoom(rng);
       }
     }
+    // Sala Setch (2x tamanho) - pode aparecer aleatoriamente na Fase 5 ou 6 (24% cada)
+    if(SETCH_ROOM_FLOORS.includes(this.floor) && rng() < SETCH_ROOM_CHANCE){
+      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch);
+      // prefere sala mais distante do start com pelo menos 2 portas para espaço
+      if(candidates.length){
+        const distant = candidates.filter(r=> Math.abs(r.gx-2)+Math.abs(r.gy-2) >= SETCH_ROOM_MIN_DISTANCE);
+        let pool = distant.length ? distant : candidates;
+        // Se Mineradora (fase 6) quer temática: prioriza dead end para arena grande
+        if(this.floor===6){
+          const deadEnds=pool.filter(r=> Object.values(r.doors).filter(Boolean).length===1);
+          if(deadEnds.length && rng()<0.6) pool=deadEnds;
+        }
+        const rc = pool[Math.floor(rng()*pool.length)];
+        rc.makeSetchRoom(rng);
+      }
+    }
 
     // Garante um Shotgun por fase em sala aleatória não-start não-exit (se ainda não spawnou natural)
     // Fase 3 pode ter shotgun também, mas garante apenas se não houver shotgun nem rare/miniboss (já tem item)
     const hasShotgun = rooms.some(r=>r.items.some(it=>it.type==='shotgun'));
-    if(!hasShotgun && !rooms.some(r=>r.isRare || r.isMiniboss || r.isBossStair || r.isPartyHorde)){
-      const candidates = rooms.filter(r=>!r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isPartyHorde);
+    if(!hasShotgun && !rooms.some(r=>r.isRare || r.isMiniboss || r.isBossStair || r.isHacker || r.isPartyHorde || r.isSetch)){
+      const candidates = rooms.filter(r=>!r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch);
       if(candidates.length){
         const rc = candidates[Math.floor(rng()*candidates.length)];
         if(rc.items.length<2){
@@ -15020,7 +16956,7 @@ class MapGenerator {
     // Garante uma arma CARREGADA por andar (arma comum) se ainda não houver, reforçando característica comum
     const hasCarregada = rooms.some(r=>r.items.some(it=> it.type==='carregada' || it.weaponType==='carregada'));
     if(!hasCarregada){
-      const candidates = rooms.filter(r=>!r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isPartyHorde);
+      const candidates = rooms.filter(r=>!r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch);
       if(candidates.length){
         // tenta colocar em sala que ainda tem espaço, evita lotar
         const filtered = candidates.filter(r=> r.items.length < 2);
@@ -15043,7 +16979,7 @@ class MapGenerator {
     // Garante pelo menos um Item Especial (E) por andar para testar mecânica (inclui Power Star raro na Fase 5)
     const hasSpecial = rooms.some(r=> r.items.some(it=> it.isSpecialPickup));
     if(!hasSpecial){
-      const candidates = rooms.filter(r=>!r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isPartyHorde);
+      const candidates = rooms.filter(r=>!r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch);
       if(candidates.length){
         const filtered = candidates.filter(r=> r.items.length < 3);
         const pool = filtered.length ? filtered : candidates;
@@ -15168,7 +17104,7 @@ class Game {
     this.selectedCharacterId = null; // escolhido no seletor
     this.seed = 0;
     this.floor = 1;
-    this.maxFloor = 5; // FASE 5 Boss da Sala da Escada (FINAL) + Hacker secreto
+    this.maxFloor = 6; // FASE 6 Mineradora de Coins - Boss Hacker (FINAL) • 5 Escada + 6 Mineradora
     this.roomsExplored = 0;
     this.enemiesDefeated = 0;
     this.lastTime = 0;
@@ -15203,6 +17139,9 @@ class Game {
     this.luvaBar = document.getElementById('luvaBar');
     this.luvaFill = document.getElementById('luvaFill');
     this.luvaLabel = document.getElementById('luvaLabel');
+    this.laserBar = document.getElementById('laserBar');
+    this.laserFill = document.getElementById('laserFill');
+    this.laserLabel = document.getElementById('laserLabel');
     this.upgradeHud = document.getElementById('upgradeHud');
     this.upgradeList = document.getElementById('upgradeList');
     // HUD Itens Especiais (E + cooldown)
@@ -15331,6 +17270,24 @@ class Game {
         if(hudBottom && hudBottom!==toggleTarget) hudBottom.classList.toggle('collapsed', isCollapsed);
       });
     }
+    // Setch: clique nos copos para escolher (mouse)
+    if(this.canvas){
+      this.canvas.addEventListener('click', (e)=>{
+        if(!this.isInSetchRoom()) return;
+        const room=this.currentRoom;
+        if(!room || !room.cupGame) return;
+        if(room.cupGame.state!=='waiting' || !room.cupGame.interactive) return;
+        const rect=this.canvas.getBoundingClientRect();
+        const scaleX=CANVAS_W/rect.width;
+        const scaleY=CANVAS_H/rect.height;
+        const x=(e.clientX - rect.left)*scaleX;
+        const y=(e.clientY - rect.top)*scaleY;
+        const idx=room.cupGame.hitTest(x,y);
+        if(idx!==-1){
+          this.trySetchChoice(idx);
+        }
+      });
+    }
   }
   showCharacterSelect(){
     if(this.characterScreen){
@@ -15441,6 +17398,10 @@ class Game {
     if(p.hasDoubleShot) passives.push('✦ Tiro Duplo (NORMAL x2)');
     if(p.hasNoclip) passives.push('◈ Noclip (imune a espinhos)');
     if(p.hasDillianShield) passives.push('🛡️ Escudo do Dillian (Dream Shield orbitante)');
+    if(p.hasJoestarTechnique){
+      if(p.joestarActive && p.joestarTimer>0) passives.push(`💨 Técnica Secreta Joestar (ATIVO ${(p.joestarTimer/1000).toFixed(1)}s +${JOESTAR_SPEED_BONUS.toFixed(2)} vel)`);
+      else passives.push('💨 Técnica Secreta Joestar (ao sofrer dano +vel 5s)');
+    }
     if(p.farmarAuraActive) passives.push('67 Aura ativa (dano+empurrão)');
     if(p.hasBastao===false && p.characterId==='jg') passives.push('🏏 Sem bastão (lento)');
     else if(p.hasBastao && p.characterId==='jg') passives.push('🏏 Com bastão (rápido)');
@@ -15536,6 +17497,7 @@ class Game {
     if(this.player.hasDoubleShot) items.push({icon:'✦', name:'Tiro Duplo', desc:'NORMAL dispara 2 projéteis lado a lado', badge:'MELHORIA', color:'#5a8fd4'});
     if(this.player.hasNoclip) items.push({icon:'◈', name:'Noclip', desc:'Atravessa espinhos sem dano (incomum)', badge:'PASSIVO', color:'#7c5cff'});
     if(this.player.hasDillianShield) items.push({icon:'🛡️', name:'Escudo do Dillian', desc:'Um escudo para um cavaleiro paciente — orbita, causa pouco dano e bloqueia projéteis (Dream Shield)', badge:'PASSIVO', color:'#cfe0ff'});
+    if(this.player.hasJoestarTechnique) items.push({icon:'💨', name:'Técnica Secreta Joestar', desc:`Passivo comum JoJo - ao sofrer dano ganha +${JOESTAR_SPEED_BONUS.toFixed(2)} velocidade por 5s (fuga)`, badge:'COMUM', color:'#ffd700'});
     // Especial equipado
     if(this.player.equippedSpecial){
       const sp=this.player.equippedSpecial;
@@ -15617,6 +17579,7 @@ class Game {
     this.gameContainer.classList.remove('phase3');
     this.gameContainer.classList.remove('phase4');
     this.gameContainer.classList.remove('phase5');
+    this.gameContainer.classList.remove('phase6');
     this.hideBossDialog();
   }
   resizeCanvas(){ const dpr=Math.min(window.devicePixelRatio||1,2); }
@@ -15636,7 +17599,7 @@ class Game {
     this.totalEnemiesDefeated = 0;
     // reset completo do jogador (armas, passivos, melhorias) - Bone Heart: reseta recipientes cinza
     // Inclui suporte a BASTAO no weaponUpgrades modular
-    this.player.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], RAIO_MATEMATICO:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], ALL:[], SPECIAL:[] };
+    this.player.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], RAIO_MATEMATICO:[], LASER:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], ALL:[], SPECIAL:[] };
     this.player.obtainedUpgrades = new Set();
     this.player.upgradeLevels = new Map();
     // Aplica personagem de forma modular (não duplica lógica, prepara para novos)
@@ -15650,6 +17613,10 @@ class Game {
     this.player.dillianShieldAngle = 0;
     if(this.player.dillianShieldHitTimers) this.player.dillianShieldHitTimers.clear();
     else this.player.dillianShieldHitTimers = new Map();
+    this.player.hasJoestarTechnique = false;
+    this.player.joestarTimer = 0;
+    this.player.joestarActive = false;
+    this.player.joestarPulse = 0;
     this.player._hasSwiftBoots = false;
     this.player.speed = PLAYER_SPEED;
     this.player.baseSpeed = PLAYER_SPEED;
@@ -15832,15 +17799,15 @@ class Game {
         if(wasHackerVictory){
           title.textContent='⭐ HACKER ANIQUILADO ⭐';
           title.style.color='#00ff88';
-          const bossPhaseName = (FLOOR_THEMES[5] && FLOOR_THEMES[5].name.trim()) || 'VÍRUS SOMBRIO';
-          const allPhases = [1,2,3,4,5].map(i=> (FLOOR_THEMES[i] && FLOOR_THEMES[i].name.trim()) || '').join(', ').replace(/, ([^,]*)$/, ' e $1');
-          stats.innerHTML=`você derrotou o criador da escuridão os erros pararam você pode continuar a fazer seu codigo<br><br><span style="color:#00ff88;font-size:13px;letter-spacing:0.8px">Dark Vírus neutralizado • Hacker expurgado</span><br><br>Você venceu o <b>Boss da Escada</b> e o <b>Hacker</b> em <b>Cyber Requiem</b> e estabilizou o <b>${bossPhaseName}</b>!<br>Atos dominados: ${allPhases} + <b>Sala Corrompida</b>!<br><b>${this.roomsExplored}</b> salas finais • <b>${this.totalEnemiesDefeated + this.enemiesDefeated}</b> inimigos • Arma: ${this.player.weapon.name}${this.player.hasFlameTrail?' 🔥':''} ${this.player.powerStarActive?'⭐':''} ${this.player.weapon.hasPochita?' 🪚':''}<br>Seed ${this.seed}<br><span style="color:#8a8198;font-size:12px">Código limpo. O sistema respira novamente.</span>`;
+          const bossPhaseName = (FLOOR_THEMES[HACKER_FLOOR] && FLOOR_THEMES[HACKER_FLOOR].name.trim()) || (FLOOR_THEMES[6] && FLOOR_THEMES[6].name.trim()) || 'MINERADORA DE COINS';
+          const allPhases = [1,2,3,4,5,6].map(i=> (FLOOR_THEMES[i] && FLOOR_THEMES[i].name.trim()) || '').join(', ').replace(/, ([^,]*)$/, ' e $1');
+          stats.innerHTML=`você derrotou o criador da escuridão os erros pararam você pode continuar a fazer seu codigo<br><br><span style="color:#00ff88;font-size:13px;letter-spacing:0.8px">Dark Vírus neutralizado • Hacker expurgado na Mineradora</span><br><br>Você venceu o <b>Boss da Escada</b> e o <b>Hacker</b> em <b>Cyber Requiem</b> e estabilizou o <b>${bossPhaseName}</b>!<br>Atos dominados: ${allPhases}!<br><b>${this.roomsExplored}</b> salas finais • <b>${this.totalEnemiesDefeated + this.enemiesDefeated}</b> inimigos • Arma: ${this.player.weapon.name}${this.player.hasFlameTrail?' 🔥':''} ${this.player.powerStarActive?'⭐':''} ${this.player.weapon.hasPochita?' 🪚':''}<br>Seed ${this.seed}<br><span style="color:#8a8198;font-size:12px">Código limpo. O sistema respira novamente.</span>`;
         } else if(wasBossVictory || this.floor===5){
           title.textContent='⭐ REQUIEM CONSUMADO ⭐';
           title.style.color='#ffd700';
           // Cyber Requiem: nomes dos atos
           const bossPhaseName = (FLOOR_THEMES[5] && FLOOR_THEMES[5].name.trim()) || 'VÍRUS SOMBRIO';
-          const allPhases = [1,2,3,4,5].map(i=> (FLOOR_THEMES[i] && FLOOR_THEMES[i].name.trim()) || '').join(', ').replace(/, ([^,]*)$/, ' e $1');
+          const allPhases = [1,2,3,4,5,6].map(i=> (FLOOR_THEMES[i] && FLOOR_THEMES[i].name.trim()) || '').join(', ').replace(/, ([^,]*)$/, ' e $1');
           stats.innerHTML=`Sistema purificado com sucesso!<br><span style="color:#ffd700;font-size:15px;letter-spacing:1px">O mundo cibernético está seguro.</span><br><br>Você venceu o <b>Boss da Escada</b> em <b>Cyber Requiem</b> e estabilizou o <b>${bossPhaseName}</b>!<br>Atos dominados: ${allPhases}!<br><b>${this.roomsExplored}</b> salas finais • <b>${this.totalEnemiesDefeated + this.enemiesDefeated}</b> inimigos • Arma: ${this.player.weapon.name}${this.player.hasFlameTrail?' 🔥':''} ${this.player.powerStarActive?'⭐':''}<br>Seed ${this.seed}<br><span style="color:#00ff88;font-size:11px">Dica: Existe uma escada corrompida após o Boss da Escada... Enfrente o Hacker!</span><br><span style="color:#8a8198;font-size:12px">Mundo cibernético estabilizado. Até a próxima incursão.</span>`;
         } else {
           title.textContent='RÉQUIEM PARCIAL!';
@@ -15870,10 +17837,12 @@ class Game {
     this.gameContainer.classList.remove('phase3');
     this.gameContainer.classList.remove('phase4');
     this.gameContainer.classList.remove('phase5');
+    this.gameContainer.classList.remove('phase6');
     if(this.floor===2) this.gameContainer.classList.add('phase2');
     else if(this.floor===3) this.gameContainer.classList.add('phase3');
     else if(this.floor===4) this.gameContainer.classList.add('phase4');
     else if(this.floor===5) this.gameContainer.classList.add('phase5');
+    else if(this.floor===6) this.gameContainer.classList.add('phase6');
   }
   // ===== BOSS FASE 5 - Diálogo "Você quer desistir?" =====
   showBossDialog(){
@@ -16077,6 +18046,76 @@ class Game {
   // Requisitos: só considera arma dentro de WEAPON_SWAP_RANGE, que não esteja equipada,
   // e que não cause duplicação no inventário (primária/secundária)
   // Modular por personagem: JG/Kinight bloqueiam troca na hora do swap (mantém hint para feedback)
+  // ===================== SETCH - INTERAÇÃO NPC =====================
+  isInSetchRoom(){ return !!(this.currentRoom && this.currentRoom.isSetch); }
+  trySetchInteraction(){
+    if(!this.isInSetchRoom()) return false;
+    const room=this.currentRoom;
+    if(!room.npc || !room.cupGame) return false;
+    if(room.setchCleared) return false; // já venceu, não precisa mais jogar
+    const cg=room.cupGame;
+    const npc=room.npc;
+    const nearNPC = dist(this.player.x, this.player.y, npc.x, npc.y) < SETCH_INTERACT_RANGE + 18;
+    // Estado idle: E perto do NPC inicia o jogo
+    if(cg.state==='idle'){
+      if(!nearNPC) {
+        this.showToast('Chegue mais perto de Setch para jogar [E]', 1100);
+        return true; // consome E para não ativar especial por engano
+      }
+      cg.start();
+      this.showToast('Setch: Onde está a bolinha? Memorize!', 1500);
+      // partículas início
+      for(let k=0;k<10;k++) this.particles.push(new Particle(npc.x, npc.y-8, randRange(-1.2,1.2), randRange(-1.2,0.6), 280, '#a78bfa', 1.8));
+      return true;
+    }
+    // Se já está em showing/shuffling, E não faz nada (espera)
+    if(cg.state==='showing' || cg.state==='shuffling'){
+      this.showToast('Setch: Aguarde o embaralhamento...', 900);
+      return true;
+    }
+    // Se está esperando escolha, E perto de um copo escolhe o mais próximo
+    if(cg.state==='waiting' && cg.interactive){
+      // Se jogador está perto de um copo específico, escolhe o mais próximo, senão mostra hint
+      let bestIdx=-1, bestDist=999;
+      for(let i=0;i<cg.cups.length;i++){
+        const c=cg.cups[i];
+        const d=dist(this.player.x, this.player.y, c.displayX, c.displayY);
+        if(d < bestDist){ bestDist=d; bestIdx=i; }
+      }
+      if(bestDist < 64){
+        const res=cg.choose(bestIdx, this.player, this, room);
+        return true;
+      } else {
+        this.showToast('Aproxime-se do copo e pressione E, ou pressione 1/2/3', 1200);
+        return true;
+      }
+    }
+    // Se perdeu e está em finishedLose, E rejoga
+    if(cg.state==='finishedLose'){
+      cg.start();
+      this.showToast('Setch: De novo! Memorize...', 1400);
+      return true;
+    }
+    if(cg.state==='finishedWin'){
+      this.showToast('Setch: Você já venceu! Portas liberadas ✓', 1300);
+      return true;
+    }
+    if(cg.state==='revealing'){
+      this.showToast('Aguarde a revelação...', 800);
+      return true;
+    }
+    return false;
+  }
+  trySetchChoice(index){
+    if(!this.isInSetchRoom()) return false;
+    const room=this.currentRoom;
+    if(!room.cupGame) return false;
+    const cg=room.cupGame;
+    if(cg.state!=='waiting' || !cg.interactive) return false;
+    if(index<0 || index>=cg.cups.length) return false;
+    const res=cg.choose(index, this.player, this, room);
+    return res.ok;
+  }
   findNearbyWeapon(){
     if(!this.currentRoom || !this.currentRoom.items) return null;
     let best=null, bestDist=WEAPON_SWAP_RANGE+1;
@@ -16180,6 +18219,9 @@ class Game {
     // cancela cargas se estiver carregando
     if(this.player.isCharging) this.player.cancelCharge();
     if(this.player.isSwordCharging) this.player.cancelSwordCharge();
+    if(this.player.isLaserCharging) this.player.cancelLaserCharge();
+    if(this.player.laserMinigameActive) this.player.cancelLaserMinigame();
+    if(this.player.isRayMatematicoCharging) this.player.cancelRayMatematicoCharge();
     // limpa fist se trocando enquanto está ativo
     if(this.player.activeFist && !this.player.activeFist.dead){
       // força retorno imediato ao trocar de arma
@@ -16198,6 +18240,7 @@ class Game {
     else if(nl==='luva' || nl==='luva_foguete') wKey='LUVA';
     else if(nl==='bastao') wKey='BASTAO';
     else if(nl==='motosserra') wKey='MOTOSSERRA';
+    else if(nl==='laser') wKey='LASER';
     else if(nl==='raio_matematico') wKey='RAIO_MATEMATICO';
     else wKey='NORMAL';
     // Bloqueio modular por personagem já filtrado em findNearbyWeapon, mas reforça aqui
@@ -16241,6 +18284,7 @@ class Game {
         nearby.type = oldSecName.toLowerCase();
         nearby.isRaio = oldSecName==='RAIO';
         nearby.isRayMatematico = oldSecName==='RAIO_MATEMATICO';
+        nearby.isLaser = oldSecName==='LASER';
         nearby.isMini = oldSecName==='METRALHADORA';
         nearby.isNormal = oldSecName==='NORMAL';
         nearby.isCarregada = oldSecName==='CARREGADA';
@@ -16252,6 +18296,7 @@ class Game {
         nearby.isMotosserra = oldSecName==='MOTOSSERRA';
         if(nearby.isRaio) nearby.w = nearby.h = ITEM_SIZE_RAIO;
         else if(nearby.isRayMatematico) nearby.w = nearby.h = 22;
+        else if(nearby.isLaser) nearby.w = nearby.h = ITEM_SIZE_LASER;
         else if(nearby.isMini) nearby.w = nearby.h = 22;
         else if(nearby.isNormal) nearby.w = nearby.h = 20;
         else if(nearby.isCarregada) nearby.w = nearby.h = 20;
@@ -16275,6 +18320,7 @@ class Game {
     if(oldName==='SHOTGUN') oldWeaponConfig={...WEAPON_SHOTGUN};
     else if(oldName==='RAIO') oldWeaponConfig={...WEAPON_RAIO};
     else if(oldName==='RAIO_MATEMATICO') oldWeaponConfig={...WEAPON_RAIO_MATEMATICO};
+    else if(oldName==='LASER') oldWeaponConfig={...WEAPON_LASER};
     else if(oldName==='METRALHADORA') oldWeaponConfig={...WEAPON_METRALHADORA};
     else if(oldName==='CARREGADA') oldWeaponConfig={...WEAPON_CARREGADA};
     else if(oldName==='BAZUCA') oldWeaponConfig={...WEAPON_BAZUCA};
@@ -16313,6 +18359,7 @@ class Game {
     // atualiza todas as flags para refletir a nova arma no chão (evita estado inconsistente)
     nearby.isRaio = oldName==='RAIO';
     nearby.isRayMatematico = oldName==='RAIO_MATEMATICO';
+    nearby.isLaser = oldName==='LASER';
     nearby.isMini = oldName==='METRALHADORA';
     nearby.isNormal = oldName==='NORMAL';
     nearby.isCarregada = oldName==='CARREGADA';
@@ -16325,6 +18372,7 @@ class Game {
     // atualiza tamanho conforme nova arma (variável fácil de ajustar)
     if(nearby.isRaio) nearby.w = nearby.h = ITEM_SIZE_RAIO;
     else if(nearby.isRayMatematico) nearby.w = nearby.h = 22;
+    else if(nearby.isLaser) nearby.w = nearby.h = ITEM_SIZE_LASER;
     else if(nearby.isMini) nearby.w = nearby.h = 22;
     else if(nearby.isNormal) nearby.w = nearby.h = 20;
     else if(nearby.isCarregada) nearby.w = nearby.h = 20;
@@ -16338,7 +18386,7 @@ class Game {
 
     // partículas e toast
     this.showToast(`↔ ${oldName} → ${newWeapon.name} [Q]`, 1300);
-    const col = newWeapon.name==='RAIO'?'#00e5ff': newWeapon.name==='RAIO_MATEMATICO'?'#7af2ff': newWeapon.name==='METRALHADORA'?'#ff3b30': newWeapon.name==='CARREGADA'?'#a78bfa': newWeapon.name==='SHOTGUN'?'#ff8c42': newWeapon.name==='ESPADA'?'#e8e8e8': newWeapon.name==='LUVA'?'#ff3b30': newWeapon.name==='MOTOSSERRA'?'#ff3b30': newWeapon.name==='BASTAO'?'#facc15':'#ffeb3b';
+    const col = newWeapon.name==='RAIO'?'#00e5ff': newWeapon.name==='RAIO_MATEMATICO'?'#7af2ff': newWeapon.name==='LASER'?'#ff1a2e': newWeapon.name==='METRALHADORA'?'#ff3b30': newWeapon.name==='CARREGADA'?'#a78bfa': newWeapon.name==='SHOTGUN'?'#ff8c42': newWeapon.name==='ESPADA'?'#e8e8e8': newWeapon.name==='LUVA'?'#ff3b30': newWeapon.name==='MOTOSSERRA'?'#ff3b30': newWeapon.name==='BASTAO'?'#facc15':'#ffeb3b';
     for(let k=0;k<10;k++) this.particles.push(new Particle(this.player.x, this.player.y, randRange(-1.9,1.9), randRange(-1.9,0.7), 300, col, 2));
     for(let k=0;k<8;k++) this.particles.push(new Particle(nearby.x, nearby.y, randRange(-1.5,1.5), randRange(-1.5,0.8), 320, '#ffffff', 2));
     return true;
@@ -16384,50 +18432,83 @@ class Game {
     // - consumeJustPressed + validação de distância/spawnDelay evita spam e duplicação.
     // - Validação centralizada em trySpecialSwapOrPickup (simula validação servidor).
     if(this.input.consumeJustPressed('e')){
-      // Ash: E troca arma (motosserra ↔ secundária), não usa especiais
-      if(this.player.characterId==='ash'){
-        if(this.player.secondaryWeapon){
-          const ok=this.player.swapWeapon();
-          if(ok){
-            this.showToast(`↔ MOTOSSERRA ↔ ${this.player.weapon.name} [E]`, 1300);
-            for(let k=0;k<9;k++) this.particles.push(new Particle(this.player.x, this.player.y, randRange(-1.4,1.4), randRange(-1.4,0.6), 280, '#ff3b30', 2));
-          }
+      // Prioridade SETCH: se estiver na Sala Setch, E interage com NPC / copos primeiro
+      if(this.isInSetchRoom()){
+        const didSetch=this.trySetchInteraction();
+        if(didSetch) {
+          // consumiu E para Setch, não processa Ash/special
         } else {
-          this.showToast('Ash: sem segunda arma! Pegue uma com [Q] perto do chão', 1300);
-        }
-      } else {
-        const didInteraction=this.trySpecialSwapOrPickup();
-        if(!didInteraction){
-          // Não havia item para interagir (ou falhou por já equipado mesmo), tenta ativar habilidade
-          // Mas se havia item próximo e falhou por already-equipped, já consumiu E e não ativa (prioriza interação)
-          const nearbySpecial=this.findNearbySpecialPickup();
-          if(!nearbySpecial){
-            const res = this.player.tryUseSpecial(this);
-            if(res.ok){
-              const sp = this.player.equippedSpecial;
-              // Para Flecha Stand, mostra habilidade sorteada dinamicamente
-              let abilityName='';
-              if(sp.id==='flecha_stand' && sp.currentAbility) abilityName=` → ${sp.currentAbility.name}`;
-              this.showToast(`✦ ${sp.name}${abilityName} ativada!`, 1600);
-            } else {
-              if(res.reason==='no_item'){
-                this.showToast('Sem item especial equipado [E]', 1100);
-              } else if(res.reason==='cooldown'){
-                const secs = Math.ceil(res.remaining/1000);
-                const spName=this.player.equippedSpecial.id==='flecha_stand' && this.player.equippedSpecial.currentAbility ? `${this.player.equippedSpecial.name} (${this.player.equippedSpecial.currentAbility.name})` : this.player.equippedSpecial.name;
-                this.showToast(`${spName} em recarga: ${secs}s`, 1000);
-              } else if(res.reason==='active'){
-                this.showToast(`${this.player.equippedSpecial.name} já está ativo!`, 1000);
+          // fallback raro (trySetch retornou false apesar de estar na sala) -> cai no fluxo normal
+          if(this.player.characterId==='ash'){
+            if(this.player.secondaryWeapon){
+              const ok=this.player.swapWeapon();
+              if(ok){
+                this.showToast(`↔ MOTOSSERRA ↔ ${this.player.weapon.name} [E]`, 1300);
+                for(let k=0;k<9;k++) this.particles.push(new Particle(this.player.x, this.player.y, randRange(-1.4,1.4), randRange(-1.4,0.6), 280, '#ff3b30', 2));
               }
+            } else {
+              this.showToast('Ash: sem segunda arma! Pegue uma com [Q] perto do chão', 1300);
             }
           } else {
-            // Havia item próximo mas didInteraction falso por already-equipped já tratado dentro de trySpecialSwapOrPickup
-            // Se for outro caso (ex: spawnDelay), não faz nada para evitar ativar por engano
+            const didInteraction=this.trySpecialSwapOrPickup();
+            if(!didInteraction){
+              const nearbySpecial=this.findNearbySpecialPickup();
+              if(!nearbySpecial){
+                const res = this.player.tryUseSpecial(this);
+                if(res.ok){
+                  const sp = this.player.equippedSpecial;
+                  let abilityName='';
+                  if(sp.id==='flecha_stand' && sp.currentAbility) abilityName=` → ${sp.currentAbility.name}`;
+                  this.showToast(`✦ ${sp.name}${abilityName} ativada!`, 1600);
+                } else {
+                  if(res.reason==='no_item'){ this.showToast('Sem item especial equipado [E]', 1100); }
+                  else if(res.reason==='cooldown'){ const secs=Math.ceil(res.remaining/1000); const spName=this.player.equippedSpecial.id==='flecha_stand' && this.player.equippedSpecial.currentAbility ? `${this.player.equippedSpecial.name} (${this.player.equippedSpecial.currentAbility.name})` : this.player.equippedSpecial.name; this.showToast(`${spName} em recarga: ${secs}s`, 1000); }
+                  else if(res.reason==='active'){ this.showToast(`${this.player.equippedSpecial.name} já está ativo!`, 1000); }
+                }
+              }
+            }
+          }
+        }
+      } else {
+        // Fluxo normal fora da Sala Setch
+        if(this.player.characterId==='ash'){
+          if(this.player.secondaryWeapon){
+            const ok=this.player.swapWeapon();
+            if(ok){
+              this.showToast(`↔ MOTOSSERRA ↔ ${this.player.weapon.name} [E]`, 1300);
+              for(let k=0;k<9;k++) this.particles.push(new Particle(this.player.x, this.player.y, randRange(-1.4,1.4), randRange(-1.4,0.6), 280, '#ff3b30', 2));
+            }
+          } else {
+            this.showToast('Ash: sem segunda arma! Pegue uma com [Q] perto do chão', 1300);
+          }
+        } else {
+          const didInteraction=this.trySpecialSwapOrPickup();
+          if(!didInteraction){
+            const nearbySpecial=this.findNearbySpecialPickup();
+            if(!nearbySpecial){
+              const res = this.player.tryUseSpecial(this);
+              if(res.ok){
+                const sp = this.player.equippedSpecial;
+                let abilityName='';
+                if(sp.id==='flecha_stand' && sp.currentAbility) abilityName=` → ${sp.currentAbility.name}`;
+                this.showToast(`✦ ${sp.name}${abilityName} ativada!`, 1600);
+              } else {
+                if(res.reason==='no_item'){ this.showToast('Sem item especial equipado [E]', 1100); }
+                else if(res.reason==='cooldown'){ const secs=Math.ceil(res.remaining/1000); const spName=this.player.equippedSpecial.id==='flecha_stand' && this.player.equippedSpecial.currentAbility ? `${this.player.equippedSpecial.name} (${this.player.equippedSpecial.currentAbility.name})` : this.player.equippedSpecial.name; this.showToast(`${spName} em recarga: ${secs}s`, 1000); }
+                else if(res.reason==='active'){ this.showToast(`${this.player.equippedSpecial.name} já está ativo!`, 1000); }
+              }
+            }
           }
         }
       }
     }
 
+    // Sala Setch: teclas 1/2/3 escolhem copo quando em espera
+    if(this.isInSetchRoom()){
+      if(this.input.consumeJustPressed('1')) this.trySetchChoice(0);
+      if(this.input.consumeJustPressed('2')) this.trySetchChoice(1);
+      if(this.input.consumeJustPressed('3')) this.trySetchChoice(2);
+    }
     // troca de armas Q: só permite troca quando há arma próxima válida (requisito)
     // - Se não houver arma próxima, não faz nada (evita troca indevida)
     // - Reutiliza objeto existente (evita criação infinita)
@@ -16728,6 +18809,87 @@ class Game {
             }
             this.shake = 55 + progBefore*45;
             if(progBefore >= 0.99) this.showToast(`★ TIRO CARREGADO MÁXIMO! Dano ${dmgBefore.toFixed(1)}`, 1200);
+          }
+        }
+      }
+    } else if(w && w.isLaser){
+      // ===================== LASER CARREGÁVEL + TIMING MINIGAME (modular) =====================
+      // Fluxo completo: Atacar → carregar barra → 100% → minigame (marcador + zona verde) → apertar ataque → laser correspondente
+      const isLaserMinigame = this.player.laserMinigameActive;
+      if(isLaserMinigame){
+        // Minigame ativo: atualiza marcador e verifica timeout
+        const state = this.player.updateLaserMinigame(dt);
+        if(state === 'timeout'){
+          // Tempo esgotou sem apertar -> miss (teleguiado)
+          const dir = this.player._laserMinigameDir || this.player.lastDir;
+          const proj = this.player.fireHomingLaser(dir);
+          this.bullets.push(proj);
+          playLaserEffects(this, 'homing', this.player.x, this.player.y, normalize(dir.x, dir.y));
+          this.showToast('⏱ Tempo! Laser teleguiado disparado!', 1400);
+          try{ playWeaponSound('RAIO', false); }catch(e){}
+        } else {
+          // Ainda ativo: verifica se jogador apertou botão de ataque no timing correto
+          // Detecção do timing: apertar qualquer seta enquanto marcador estiver na zona verde
+          const justPressedShoot = this.input.consumeJustPressed('ArrowUp') || this.input.consumeJustPressed('ArrowDown') || this.input.consumeJustPressed('ArrowLeft') || this.input.consumeJustPressed('ArrowRight') || this.input.consumeJustPressed(' ') || this.input.consumeJustPressed('z');
+          // Também detecta segurar seta novamente como tentativa (usa getShootVector + justPressed alternativa)
+          // Para compatibilidade com quem segura seta, também verifica se shootVec existe e é um novo pressionar (usamos justPressed acima, se não houver, verifica transição de não segurar para segurar)
+          let pressDetected = justPressedShoot;
+          // Fallback: se jogador segura seta durante minigame, considera como tentativa no frame que aperta (isDown mas não justPressed) - detecta via isLaserMinigame e qualquer isDown com debounce
+          // Usa shootVec existência como indicador, mas só dispara se timing dentro da zona? Para não spammar, exige justPressed.
+          // Se não houve justPressed mas shootVec existe e é o primeiro frame após entrar no minigame, não dispara.
+          if(pressDetected){
+            const isPerfect = this.player.checkLaserTiming();
+            const dir = this.player._laserMinigameDir || this.player.lastDir || shootVec || {x:1,y:0};
+            const proj = isPerfect ? this.player.firePerfectLaser(dir) : this.player.fireHomingLaser(dir);
+            this.bullets.push(proj);
+            if(isPerfect){
+              playLaserEffects(this, 'perfect', this.player.x, this.player.y, normalize(dir.x, dir.y));
+              this.showToast('★ PERFEITO! Laser poderoso disparado!', 1500);
+              try{ playWeaponSound('RAIO', true); }catch(e){}
+            } else {
+              playLaserEffects(this, 'homing', this.player.x, this.player.y, normalize(dir.x, dir.y));
+              this.showToast('Laser teleguiado disparado!', 1300);
+              try{ playWeaponSound('RAIO', false); }catch(e){}
+            }
+          } else {
+            // Efeito visual contínuo do minigame (partículas sutis na barra)
+            if(Math.random()<0.18){
+              this.particles.push(new Particle(this.player.x + randRange(-8,8), this.player.y - 14 + randRange(-2,2), randRange(-0.3,0.3), randRange(-0.6,-0.1), 160, this.player.laserMinigame.isInZone(this.player.laserMinigame.getMarkerPos()) ? '#4ade80' : '#ffeb3b', 1.2));
+            }
+          }
+        }
+      } else {
+        // Não está em minigame: comportamento de carregamento
+        if(shootVec){
+          if(!this.player.isLaserCharging){
+            if(this.player.canShoot()){
+              this.player.startLaserCharge(shootVec);
+            }
+          } else {
+            const prog = this.player.updateLaserCharge(dt, shootVec);
+            // Enquanto carrega, mostra visual progressivo
+            if(Math.random() < 0.16 + prog*0.20){
+              const col = prog < 0.5 ? '#ff3b30' : prog < 0.85 ? '#ff8c42' : '#ffeb3b';
+              this.particles.push(new Particle(this.player.x + shootVec.x*10 + randRange(-2,2), this.player.y + shootVec.y*10 + randRange(-2,2), randRange(-0.3,0.3), randRange(-0.7,0.1), 150, prog>0.85?'#ffffff':col, 1.4));
+            }
+            if(prog > 0.88 && Math.random()<0.20) this.shake=Math.max(this.shake, 12);
+            // Se durante este update atingiu 100% e entrou no minigame, já mostra toast
+            if(this.player.laserMinigameActive){
+              this.showToast('◎ 100%! Minigame iniciado — acerte a zona verde!', 1500);
+              for(let k=0;k<8;k++) this.particles.push(new Particle(this.player.x, this.player.y-8, randRange(-1.2,1.2), randRange(-1.2,0.4), 220, '#ffeb3b', 2));
+              this.shake=Math.max(this.shake, 18);
+            }
+          }
+        } else {
+          // Soltou botão antes de 100% -> cancela carga (não inicia minigame)
+          if(this.player.isLaserCharging){
+            const progBefore = this.player.getLaserChargeProgress();
+            this.player.cancelLaserCharge();
+            // feedback leve se cancelou com >20%
+            if(progBefore>0.22){
+              this.showToast(`◯ Carga ${Math.round(progBefore*100)}% cancelada — segure até 100%!`, 900);
+              for(let k=0;k<3;k++) this.particles.push(new Particle(this.player.x, this.player.y, randRange(-0.7,0.7), randRange(-0.7,0.3), 140, 'rgba(255,235,59,0.66)', 1.2));
+            }
           }
         }
       }
@@ -17810,6 +19972,75 @@ class Game {
         this.luvaBar.style.boxShadow='none';
       }
     }
+    // barra laser - carregamento + minigame timing (modular: LASER_CONFIG)
+    if(this.laserBar && this.laserFill){
+      if(this.player.weapon && this.player.weapon.isLaser){
+        this.laserBar.style.display='flex';
+        if(this.player.laserMinigameActive && this.player.laserMinigame){
+          // Minigame ativo: mostra zona verde e marcador no HUD (compacto)
+          const mg = this.player.laserMinigame;
+          const mpos = mg.getMarkerPos();
+          const zone = mg.getZone();
+          const isInGreen = mg.isInZone(mpos);
+          const pct = clamp(mpos*100, 0, 100);
+          this.laserFill.style.width = pct+'%';
+          // Cor depende se está na zona
+          this.laserFill.style.background = isInGreen ? 'linear-gradient(90deg,#4ade80,#ffffff)' : 'linear-gradient(90deg,#ff3b30,#ffeb3b)';
+          if(this.laserLabel){
+            const remain = Math.ceil((mg.duration - mg.time)/1000);
+            this.laserLabel.textContent = isInGreen ? `◎ ZONA VERDE! ${remain}s` : `TIMING ${pct.toFixed(0)}% • zona ${Math.round(zone.start*100)}-${Math.round(zone.end*100)}%`;
+          }
+          this.laserBar.style.boxShadow = isInGreen ? '0 0 8px rgba(74,222,128,0.55)' : '0 0 6px rgba(255,235,59,0.35)';
+          // mostra HUD como sempre ativo quando minigame
+        } else if(this.player.isLaserCharging){
+          const prog = this.player.getLaserChargeProgress();
+          const pct = clamp(prog*100, 0, 100);
+          this.laserFill.style.width = pct+'%';
+          if(pct>=99){
+            this.laserFill.style.background = 'linear-gradient(90deg,#ffeb3b,#ffffff)';
+            if(this.laserLabel) this.laserLabel.textContent = '100% • MINIGAME!';
+            this.laserBar.style.boxShadow='0 0 10px rgba(255,255,255,0.55)';
+          } else if(pct>60){
+            this.laserFill.style.background = 'linear-gradient(90deg,#ff8c42,#ffeb3b)';
+            if(this.laserLabel) this.laserLabel.textContent = `LASER ${pct.toFixed(0)}% • segure...`;
+            this.laserBar.style.boxShadow=pct>85?'0 0 6px rgba(255,235,59,0.32)':'none';
+          } else {
+            this.laserFill.style.background = 'linear-gradient(90deg,#ff3b30,#ff8c42)';
+            if(this.laserLabel) this.laserLabel.textContent = `LASER ${pct.toFixed(0)}% • carregando...`;
+            this.laserBar.style.boxShadow='none';
+          }
+        } else {
+          // Idle: mostra se está pronta para carregar
+          this.laserFill.style.width = '0%';
+          if(this.player.shootCooldown>0){
+            this.laserFill.style.background='linear-gradient(90deg,#333,#555)';
+            if(this.laserLabel) this.laserLabel.textContent='RECARREGANDO...';
+          } else {
+            this.laserFill.style.background='linear-gradient(90deg,#ff3b30,#ff6b35)';
+            if(this.laserLabel) this.laserLabel.textContent='PRONTA • segure seta para carregar';
+          }
+          this.laserBar.style.boxShadow='none';
+          // Mostra feedback PERFEITO!/ERROU! no HUD laser quando ativo
+          if(this.player.laserFeedback && this.player.laserFeedbackTimer>0){
+            const fb=this.player.laserFeedback;
+            if(fb.type==='perfect'){
+              this.laserFill.style.background='linear-gradient(90deg,#ffd700,#ffffff)';
+              this.laserFill.style.width='100%';
+              if(this.laserLabel) this.laserLabel.textContent='★ PERFEITO! Dano '+LASER_CONFIG.perfectDamage;
+              this.laserBar.style.boxShadow='0 0 10px rgba(255,215,0,0.55)';
+            } else {
+              this.laserFill.style.background='linear-gradient(90deg,#7af2ff,#ffffff)';
+              this.laserFill.style.width='100%';
+              if(this.laserLabel) this.laserLabel.textContent='TELEGUIADO Dano '+LASER_CONFIG.homingDamage;
+              this.laserBar.style.boxShadow='0 0 8px rgba(122,242,255,0.42)';
+            }
+          }
+        }
+      } else {
+        this.laserBar.style.display='none';
+        this.laserBar.style.boxShadow='none';
+      }
+    }
     // melhorias por arma (mostra raridade, nome, nível, compatíveis) - com níveis até 3
     if(this.upgradeHud && this.upgradeList){
       const wName = this.player.weapon ? this.player.weapon.name : null;
@@ -17925,6 +20156,34 @@ class Game {
           this.hudFloor.textContent = locked ? `◉ BOSS ESCADA${hpTxt} - FASE ${this.floor}` : `◉ BOSS ESCADA - FASE ${this.floor}`;
           this.hudFloor.className = 'hud-floor phase5';
         }
+      } else if(this.currentRoom && this.currentRoom.isSetch){
+        const locked = !this.currentRoom.isCleared();
+        if(this.currentRoom.setchCleared){
+          this.hudFloor.textContent = `✓ SALA SETCH VENCIDA! - FASE ${this.floor} (2×)`;
+          this.hudFloor.className = 'hud-floor rare';
+        } else {
+          const cg=this.currentRoom.cupGame;
+          let stateTxt='';
+          if(cg){
+            if(cg.state==='showing') stateTxt=' MEMORIZE!';
+            else if(cg.state==='shuffling') stateTxt=' EMBARALHANDO...';
+            else if(cg.state==='waiting') stateTxt=' ESCOLHA 1/2/3!';
+            else if(cg.state==='revealing') stateTxt= cg.result==='win' ? ' ✓ ACERTOU!' : ' ✗ ERROU!';
+          }
+          this.hudFloor.textContent = locked ? `◉ SALA SETCH${stateTxt} - FASE ${this.floor} (2×)` : `◉ SALA SETCH - FASE ${this.floor}`;
+          this.hudFloor.className = 'hud-floor party';
+        }
+      } else if(this.currentRoom && this.currentRoom.isHacker){
+        const hacker=this.currentRoom.enemies.find(e=> e.type==='hacker');
+        const locked = !this.currentRoom.isCleared() && !this.currentRoom.hackerDefeated;
+        if(this.currentRoom.hackerDefeated){
+          this.hudFloor.textContent = `✓ HACKER ANIQUILADO - FASE ${this.floor}`;
+          this.hudFloor.className = 'hud-floor rare';
+        } else {
+          const pct=hacker? ` ${Math.ceil(hacker.hp)}/${hacker.maxHp} HP` : '';
+          this.hudFloor.textContent = locked ? `◉ HACKER ${hacker?hacker.getPhaseName():''}${pct} - FASE ${this.floor}` : `◉ HACKER - FASE ${this.floor}`;
+          this.hudFloor.className = 'hud-floor phase6';
+        }
       } else if(this.currentRoom && this.currentRoom.isMiniboss){
         const locked = !this.currentRoom.isCleared();
         this.hudFloor.textContent = locked ? `◉ MINIBOSS - FASE ${this.floor}` : `✓ MINIBOSS VENCIDO - FASE ${this.floor}`;
@@ -17939,6 +20198,7 @@ class Game {
         else if(this.floor===3) this.hudFloor.classList.add('phase3');
         else if(this.floor===4) this.hudFloor.classList.add('phase4');
         else if(this.floor===5) this.hudFloor.classList.add('phase5');
+        else if(this.floor===6) this.hudFloor.classList.add('phase6');
       }
     }
     if(this.hudWeapon){
@@ -18171,8 +20431,8 @@ class Game {
       ctx.fillStyle='#fff'; ctx.font='7px "Press Start 2P"'; ctx.textAlign='center'; ctx.fillText(this.player.dashCooldown<=0?'DASH PRONTO':'DASH...', CANVAS_W -77, 20); ctx.textAlign='left';
       // info arma no canvas (canto levemente) + personagem
       const wn=this.player.weapon.name;
-      let wLabel = wn==='SHOTGUN' ? 'SHOTGUN [5x]' : wn==='RAIO' ? 'RAIO ⚡ [pierce]' : wn==='RAIO_MATEMATICO' ? 'LAZER CODIFICADO [Brimstone]' : wn==='CARREGADA' ? 'CARREGADA [carga]' : wn==='BAZUCA' ? 'BAZUCA 💥 [área]' : wn==='METRALHADORA' ? 'METRALHADORA [temp]' : wn==='ESPADA' ? 'ESPADA ⚔️ [combo+onda]' : wn==='LUVA' ? 'LUVA 🥊 x2 [dual]' : wn==='MOTOSSERRA' ? 'MOTOSSERRA 🪚 [curto reto + cura]' : wn==='BASTAO' ? 'BASTÃO 🏏 [gira/retorna]' : 'NORMAL';
-      let wColor = wn==='SHOTGUN' ? 'rgba(255,140,66,0.9)' : wn==='RAIO' ? 'rgba(0,229,255,0.95)' : wn==='RAIO_MATEMATICO' ? 'rgba(184,255,251,0.96)' : wn==='CARREGADA' ? 'rgba(167,139,250,0.95)' : wn==='BAZUCA' ? 'rgba(255,59,48,0.95)' : wn==='METRALHADORA' ? 'rgba(255,59,48,0.95)' : wn==='ESPADA' ? 'rgba(220,220,230,0.95)' : wn==='LUVA' ? 'rgba(255,60,60,0.95)' : wn==='MOTOSSERRA' ? 'rgba(255,42,26,0.96)' : wn==='BASTAO' ? 'rgba(250,204,21,0.95)' : 'rgba(255,235,59,0.85)';
+      let wLabel = wn==='SHOTGUN' ? 'SHOTGUN [5x]' : wn==='RAIO' ? 'RAIO ⚡ [pierce]' : wn==='RAIO_MATEMATICO' ? 'LAZER CODIFICADO [Brimstone]' : wn==='LASER' ? 'LASER ◉ [carga→timing]' : wn==='CARREGADA' ? 'CARREGADA [carga]' : wn==='BAZUCA' ? 'BAZUCA 💥 [área]' : wn==='METRALHADORA' ? 'METRALHADORA [temp]' : wn==='ESPADA' ? 'ESPADA ⚔️ [combo+onda]' : wn==='LUVA' ? 'LUVA 🥊 x2 [dual]' : wn==='MOTOSSERRA' ? 'MOTOSSERRA 🪚 [curto reto + cura]' : wn==='BASTAO' ? 'BASTÃO 🏏 [gira/retorna]' : 'NORMAL';
+      let wColor = wn==='SHOTGUN' ? 'rgba(255,140,66,0.9)' : wn==='RAIO' ? 'rgba(0,229,255,0.95)' : wn==='RAIO_MATEMATICO' ? 'rgba(184,255,251,0.96)' : wn==='LASER' ? 'rgba(255,26,46,0.96)' : wn==='CARREGADA' ? 'rgba(167,139,250,0.95)' : wn==='BAZUCA' ? 'rgba(255,59,48,0.95)' : wn==='METRALHADORA' ? 'rgba(255,59,48,0.95)' : wn==='ESPADA' ? 'rgba(220,220,230,0.95)' : wn==='LUVA' ? 'rgba(255,60,60,0.95)' : wn==='MOTOSSERRA' ? 'rgba(255,42,26,0.96)' : wn==='BASTAO' ? 'rgba(250,204,21,0.95)' : 'rgba(255,235,59,0.85)';
       // nome do personagem removido em cima durante o jogo (HUD)
       if(this.player.characterId){
         if(this.player.characterId==='jg' && !this.player.hasBastao) wLabel += ' • SEM BASTÃO';

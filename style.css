@@ -572,6 +572,7 @@ html, body {
 #gameContainer.phase3 { border-color: #1e3a32; box-shadow: var(--shadow), 0 0 28px rgba(0,255,136,0.16); }
 #gameContainer.phase4 { border-color: #3a1a4a; box-shadow: var(--shadow), 0 0 28px rgba(217,70,239,0.18); }
 #gameContainer.phase5 { border-color: #5a3a18; box-shadow: var(--shadow), 0 0 32px rgba(255,215,0,0.22); }
+#gameContainer.phase6 { border-color: #6b5210; box-shadow: var(--shadow), 0 0 32px rgba(255,183,0,0.28); }
 #gameContainer.hidden { display: none; }
 #gameContainer:not(.hidden) { display: block; }
 #gameCanvas {
@@ -684,6 +685,7 @@ html, body {
 .hud-floor.phase3 { color: #00ff88; background: rgba(0,255,136,0.10); border-color: rgba(0,255,136,0.28); }
 .hud-floor.phase4 { color: #d946ef; background: rgba(217,70,239,0.12); border-color: rgba(217,70,239,0.32); box-shadow: 0 0 10px rgba(217,70,239,0.22); }
 .hud-floor.phase5 { color: #ffd700; background: rgba(255,215,0,0.14); border-color: rgba(255,215,0,0.42); box-shadow: 0 0 12px rgba(255,215,0,0.32); animation: rarePulse 1.4s infinite alternate; }
+.hud-floor.phase6 { color: #ffb700; background: rgba(255,183,0,0.14); border-color: rgba(255,183,0,0.42); box-shadow: 0 0 12px rgba(255,183,0,0.32); animation: rarePulse 1.4s infinite alternate; }
 .hud-floor.party { color: #ff6b9d; background: rgba(255,107,157,0.14); border-color: rgba(255,107,157,0.38); box-shadow: 0 0 12px rgba(255,107,157,0.28); animation: rarePulse 1.2s infinite alternate; }
 .hud-floor.rare { color: #ffd700; background: rgba(255,215,0,0.16); border-color: rgba(255,215,0,0.38); animation: rarePulse 1.2s infinite alternate; }
 @keyframes rarePulse { from{box-shadow:0 0 6px rgba(255,215,0,0.2);} to{box-shadow:0 0 12px rgba(255,215,0,0.4);} }
