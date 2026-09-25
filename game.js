@@ -1,6 +1,6 @@
 /* 
-  Cyber Requiem - Roguelike 2D Completo v6.1 - Mineradora Fase 6 + Macaco + Sala Setch 2x + Hacker movido
-  Arquitetura: Game, Player, Chaser, Fugitive, Kamikaze, Summoner, Bullet, Room, MapGenerator, Particle, InputHandler, Item/HealingItem/WeaponItem/FlameTrailItem/SwiftBootsItem/DoubleShotItem, FirePatch, Spike, Macaco, SetchNPC/SetchCupGame
+  Cyber Requiem - Roguelike 2D Completo v6.1 - Mineradora Fase 6 + Bored Ape NFT (BAYC) + Sala Setch 2x + Hacker movido
+  Arquitetura: Game, Player, Chaser, Fugitive, Kamikaze, Summoner, Bullet, Room, MapGenerator, Particle, InputHandler, Item/HealingItem/WeaponItem/FlameTrailItem/SwiftBootsItem/DoubleShotItem, FirePatch, Spike, BoredApe/Macaco (NFT), SetchNPC/SetchCupGame
   Controles: WASD mover, Setas atirar 8 direções (segurar = carregar CARREGADA), Shift dash, Q troca com arma no chão próxima (58px, hint, sem duplicação)
   Novidades v5.1: Arma comum CARREGADA com mecânica de carregamento (segurar seta carrega dano 1→4, barra roxa, cancela ao trocar) + Q troca robusta (reutiliza objeto, sem duplicação/desaparecimento/infinito, hint)
   Novidades v5: HUD topo compacto, Q troca com arma no chão (sem duplicação), Tiro Duplo lado a lado (WEAPON_NORMAL melhorada), Metralhadora rara com aquecimento (TEMP bar) e redução velocidade
@@ -1619,6 +1619,32 @@ const UPGRADE_VALUES = {
   LASER_INCOMUM_DANO_PERFECT: 0.22, // +22% dano perfeito
   LASER_RARA_ZONA_SIZE: 0.35,       // +35% tamanho zona verde (mais fácil)
   LASER_MUITO_RARA_DANO_HOMING: 0.30, // +30% dano teleguiado + perfura
+  // ===== EXPANSÃO FASE 6 - ARMAS ÚNICAS EXCLUSIVAS (mais melhorias balanceadas, requisito) =====
+  // ESPADA (Kinight) - novos
+  ESPADA_COMUM_TEMPERA_COOLDOWN: 0.15,      // -15% cooldown leve
+  ESPADA_INCOMUM_VINGATIVA_DANO: 0.22,     // +22% heavyDamage
+  ESPADA_RARA_VENTO_PLUS_RANGE: 0.28,      // +28% range onda / alcance pesado
+  ESPADA_MUITO_RARA_AVALON_DANO: 0.35,     // +35% dano total
+  ESPADA_MUITO_RARA_AVALON_HEAL: 0.5,
+  // BASTÃO (JG) - novos
+  BASTAO_INCOMUM_BUMERANGUE_SPEED: 0.18,   // +18% throwSpeed
+  BASTAO_INCOMUM_BUMERANGUE_RANGE: 0.14,   // +14% throwRange
+  BASTAO_RARA_MOMENTO_DANO: 0.30,          // +30% throwDamage
+  BASTAO_RARA_MOMENTO_COOLDOWN: 0.16,       // -16% heavyCooldown
+  BASTAO_MUITO_RARA_TORNADO_DANO: 0.38,    // +38% dano + pierce 2
+  BASTAO_MUITO_RARA_TORNADO_PIERCE: 2,
+  // MOTOSSERRA (Ash) - novos balanceados
+  MOTOSSERRA_COMUM_AFIACAO_DANO: 0.16,     // +16% dano tick
+  MOTOSSERRA_INCOMUM_SANGRIA_FACTOR: 0.55, // +55% bleed dmg
+  MOTOSSERRA_RARA_FOME_AREA: 0.18,         // +18% areaW/H
+  MOTOSSERRA_RARA_FOME_HEAL: 0.6,          // +0.6 heal em abate
+  MOTOSSERRA_MUITO_RARA_INFERNAL_RANGE: 0.30, // +30% range/angle
+  MOTOSSERRA_MUITO_RARA_INFERNAL_DANO: 0.32,
+  // RAIO MATEMÁTICO / LAZER CODIFICADO (Dev) - novos
+  RAIO_MAT_COMUM_FOCO_SIZE: 0.16,          // +16% beamWidth/size
+  RAIO_MAT_INCOMUM_NUCLEO_DANO: 0.28,      // +28% dano
+  RAIO_MAT_RARA_PRISMA_RANGE: 0.18,        // +18% range
+  RAIO_MAT_MUITO_RARA_BIFURCACAO_EXTRA: 1, // +1 projétil extra / chain
 };
 // Caps para evitar infinito/exagerado
 const UPGRADE_CAPS = {
@@ -1825,7 +1851,7 @@ const UPGRADE_DEFS = [
   // Alcance aumentado - todas as armas
   { id:'alcance_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO'], rarity:'COMUM', name:'Mira Alongada', desc:'Alcance +15% / +30% / +50%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.ALCANCE, apply:(w, level)=>{
       const v = UPGRADE_LEVEL_VALUES.ALCANCE[level-1] || 0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE};
       const base = baseMap[w.name] ? baseMap[w.name].range : (w.range||60);
       // aplica nível atual (não cumulativo, sobrescreve)
       const factor = 1 + v;
@@ -1834,14 +1860,14 @@ const UPGRADE_DEFS = [
   // Recarga rápida - todas
   { id:'recarga_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO'], rarity:'COMUM', name:'Recarga Ágil', desc:'Recarga -10% / -20% / -30%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.RECARGA, apply:(w, level)=>{
       const v = UPGRADE_LEVEL_VALUES.RECARGA[level-1] || 0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE};
       const base = baseMap[w.name] ? baseMap[w.name].cooldown : (w.cooldown||600);
       w.cooldown = Math.max(Math.round(base * (1 - v)), Math.round(base * UPGRADE_CAPS.MIN_COOLDOWN_FACTOR));
   }},
   // Cadência aumentada - todas (similar recarga, mas para cadência)
   { id:'cadencia_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO'], rarity:'COMUM', name:'Gatilho Veloz', desc:'Cadência -8% / -15% / -25%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.CADENCIA, apply:(w, level)=>{
       const v = UPGRADE_LEVEL_VALUES.CADENCIA[level-1] || 0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE};
       const base = baseMap[w.name] ? baseMap[w.name].cooldown : (w.cooldown||600);
       // cadência é mesmo que recarga mas com valores menores
       w.cooldown = Math.max(Math.round(base * (1 - v)), Math.round(base * UPGRADE_CAPS.MIN_COOLDOWN_FACTOR));
@@ -1849,14 +1875,14 @@ const UPGRADE_DEFS = [
   // Dano aumentado - todas
   { id:'dano_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO'], rarity:'COMUM', name:'Munição Potente', desc:'Dano +15% / +30% / +50%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.DANO, apply:(w, level)=>{
       const v = UPGRADE_LEVEL_VALUES.DANO[level-1] || 0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE};
       const base = baseMap[w.name] ? baseMap[w.name].damage : (w.damage||1.5);
       w.damage = Math.min(base * (1 + v), base * UPGRADE_CAPS.MAX_DANO_FACTOR);
   }},
   // Projétil mais rápido - todas
   { id:'velocidade_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO'], rarity:'COMUM', name:'Propulsor Leve', desc:'Vel. projétil +10% / +20% / +35%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.VELOCIDADE, apply:(w, level)=>{
       const v = UPGRADE_LEVEL_VALUES.VELOCIDADE[level-1] || 0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE};
       const base = baseMap[w.name] ? baseMap[w.name].bulletSpeed : (w.bulletSpeed||8);
       w.bulletSpeed = Math.min(base * (1 + v), base * UPGRADE_CAPS.MAX_BULLET_SPEED_FACTOR);
   }},
@@ -1945,24 +1971,24 @@ const UPGRADE_DEFS = [
   // ===== NOVAS MELHORIAS GERAIS (balanceadas, todas as armas) =====
   { id:'geral_comum_poder', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO'], rarity:'COMUM', name:'Núcleo de Poder', desc:'+12% dano (todas)', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.DANO, apply:(w, level)=>{
       const v=[0.12,0.24,0.36][level-1]||0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE};
       const base=baseMap[w.name]?baseMap[w.name].damage:(w.damage||1);
       w.damage=Math.min(base*(1+v), base*UPGRADE_CAPS.MAX_DANO_FACTOR);
   }},
   { id:'geral_comum_alcance', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO'], rarity:'COMUM', name:'Mira Estabilizadora', desc:'+15% alcance (todas)', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.ALCANCE, apply:(w, level)=>{
       const v=UPGRADE_LEVEL_VALUES.ALCANCE[level-1]||0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE};
       const base=baseMap[w.name]?baseMap[w.name].range:(w.range||60);
       w.range=Math.min(base*(1+v), base*UPGRADE_CAPS.MAX_RANGE_FACTOR);
   }},
   { id:'geral_incomum_recarga', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO'], rarity:'INCOMUM', name:'Recarga Quântica', desc:'-15% recarga (todas)', maxLevel:3, levelValues: [0.15,0.28,0.40], apply:(w, level)=>{
       const v=[0.15,0.28,0.40][level-1]||0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE};
       const base=baseMap[w.name]?baseMap[w.name].cooldown:(w.cooldown||600);
       w.cooldown=Math.max(Math.round(base*(1-v)), Math.round(base*UPGRADE_CAPS.MIN_COOLDOWN_FACTOR));
   }},
   { id:'geral_rara_critico', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO'], rarity:'RARA', name:'Sobrecarga Prismática', desc:'+28% dano raro (todas)', apply:(w)=>{
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE};
       const base=baseMap[w.name]?baseMap[w.name].damage:(w.damage||1);
       w.damage=Math.min(w.damage*1.28, base*UPGRADE_CAPS.MAX_DANO_FACTOR);
   }},
@@ -2060,6 +2086,103 @@ const UPGRADE_DEFS = [
   { id:'sobremesa', weapon:'RAIO_MATEMATICO', compatible:['RAIO_MATEMATICO'], rarity:'COMUM', name:'Sobremesa', desc:'A cada 25% de carga dispara mini lazer teleguiado (pouco dano, segue inimigo)', maxLevel:1, apply:(w)=>{
       w._sobremesa = true;
       // Não altera dano/speed base, apenas ativa flag - lógica de disparo fica no Game loop
+  }},
+  // ===== NOVAS MELHORIAS EXCLUSIVAS - ESPADA (Kinight) =====
+  { id:'espada_comum_tempera', weapon:'ESPADA', rarity:'COMUM', name:'Têmpera Rápida', desc:'-15% intervalo leve', apply:(w)=>{
+      const base=WEAPON_ESPADA.cooldown;
+      w.cooldown = Math.max(Math.round(w.cooldown * (1-UPGRADE_VALUES.ESPADA_COMUM_TEMPERA_COOLDOWN)), Math.round(base*UPGRADE_CAPS.MIN_COOLDOWN_FACTOR));
+  }},
+  { id:'espada_incomum_vingativa', weapon:'ESPADA', rarity:'INCOMUM', name:'Lâmina Vingativa', desc:'+22% dano pesado', apply:(w)=>{
+      const base=WEAPON_ESPADA.heavyDamage;
+      w.heavyDamage = Math.min(w.heavyDamage * (1+UPGRADE_VALUES.ESPADA_INCOMUM_VINGATIVA_DANO), base*UPGRADE_CAPS.MAX_DANO_FACTOR);
+      w.damage = Math.min(w.damage * 1.10, WEAPON_ESPADA.damage*UPGRADE_CAPS.MAX_DANO_FACTOR);
+  }},
+  { id:'espada_rara_vento_plus', weapon:'ESPADA', rarity:'RARA', name:'Vento Cortante+', desc:'+28% alcance onda pesado e +15% leve', apply:(w)=>{
+      const baseR=WEAPON_ESPADA.range, baseHR=WEAPON_ESPADA.heavyRange;
+      w.range = Math.min(w.range * 1.15, baseR*UPGRADE_CAPS.MAX_RANGE_FACTOR);
+      w.heavyRange = Math.min(w.heavyRange * (1+UPGRADE_VALUES.ESPADA_RARA_VENTO_PLUS_RANGE), baseHR*UPGRADE_CAPS.MAX_RANGE_FACTOR);
+      if(w._swordWaveRange) w._swordWaveRange = Math.round(w._swordWaveRange*1.28);
+      else if(WEAPON_ESPADA.baseWaveRange) w._swordWaveRange = Math.round(WEAPON_ESPADA.baseWaveRange*1.28);
+      if(w._swordWaveSpeed) w._swordWaveSpeed = Math.min(w._swordWaveSpeed*1.12, 14);
+  }},
+  { id:'espada_muito_rara_avalon', weapon:'ESPADA', rarity:'MUITO_RARA', name:'Avalon - Lâmina da Luz', desc:'+35% dano total (luz)', apply:(w)=>{
+      const base=WEAPON_ESPADA.damage, baseHD=WEAPON_ESPADA.heavyDamage;
+      w.damage = Math.min(w.damage * (1+UPGRADE_VALUES.ESPADA_MUITO_RARA_AVALON_DANO), base*UPGRADE_CAPS.MAX_DANO_FACTOR);
+      w.heavyDamage = Math.min(w.heavyDamage * (1+UPGRADE_VALUES.ESPADA_MUITO_RARA_AVALON_DANO), baseHD*UPGRADE_CAPS.MAX_DANO_FACTOR);
+      w._avalonHeal = (w._avalonHeal||0) + UPGRADE_VALUES.ESPADA_MUITO_RARA_AVALON_HEAL;
+      w._avalonGlow = 'rgba(255,230,160,0.32)';
+  }},
+  // ===== NOVAS MELHORIAS EXCLUSIVAS - BASTÃO (JG) =====
+  { id:'bastao_incomum_bumerangue', weapon:'BASTAO', rarity:'INCOMUM', name:'Bumerangue Amarelo', desc:'+18% vel. e +14% alcance arremesso', apply:(w)=>{
+      const baseS=WEAPON_BASTAO.throwSpeed, baseR=WEAPON_BASTAO.throwRange;
+      w.throwSpeed = Math.min(w.throwSpeed * (1+UPGRADE_VALUES.BASTAO_INCOMUM_BUMERANGUE_SPEED), baseS*UPGRADE_CAPS.MAX_BULLET_SPEED_FACTOR);
+      w.throwRange = Math.min(w.throwRange * (1+UPGRADE_VALUES.BASTAO_INCOMUM_BUMERANGUE_RANGE), baseR*UPGRADE_CAPS.MAX_RANGE_FACTOR);
+      w.heavyRange = w.throwRange;
+      w._returnBonus = (w._returnBonus||0) + 0.12;
+  }},
+  { id:'bastao_rara_momento', weapon:'BASTAO', rarity:'RARA', name:'Momento Angular', desc:'+30% dano arremesso e -16% cooldown pesado', apply:(w)=>{
+      const baseD=WEAPON_BASTAO.throwDamage||WEAPON_BASTAO.heavyDamage;
+      const baseC=WEAPON_BASTAO.heavyCooldown||520;
+      w.throwDamage = Math.min((w.throwDamage||baseD) * (1+UPGRADE_VALUES.BASTAO_RARA_MOMENTO_DANO), baseD*UPGRADE_CAPS.MAX_DANO_FACTOR);
+      w.heavyDamage = w.throwDamage;
+      w.heavyCooldown = Math.max(Math.round((w.heavyCooldown||baseC) * (1-UPGRADE_VALUES.BASTAO_RARA_MOMENTO_COOLDOWN)), 340);
+  }},
+  { id:'bastao_muito_rara_tornado', weapon:'BASTAO', rarity:'MUITO_RARA', name:'Tornado Dourado', desc:'+38% dano melee/arremesso + perfura 2', apply:(w)=>{
+      const baseD=WEAPON_BASTAO.damage;
+      w.damage = Math.min(w.damage * (1+UPGRADE_VALUES.BASTAO_MUITO_RARA_TORNADO_DANO), baseD*UPGRADE_CAPS.MAX_DANO_FACTOR);
+      w.throwDamage = Math.min((w.throwDamage||w.heavyDamage) * (1+UPGRADE_VALUES.BASTAO_MUITO_RARA_TORNADO_DANO), baseD*UPGRADE_CAPS.MAX_DANO_FACTOR);
+      w.heavyDamage = w.throwDamage;
+      w.pierce = Math.max(w.pierce||0, UPGRADE_VALUES.BASTAO_MUITO_RARA_TORNADO_PIERCE);
+      w._tornado = true;
+  }},
+  // ===== NOVAS MELHORIAS EXCLUSIVAS - MOTOSSERRA (Ash) =====
+  { id:'motosserra_comum_afiacao2', weapon:'MOTOSSERRA', rarity:'COMUM', name:'Afiação Dupla', desc:'+16% dano motosserra', apply:(w)=>{
+      const base=WEAPON_MOTOSSERRA.damage;
+      w.damage = Math.min(w.damage * (1+UPGRADE_VALUES.MOTOSSERRA_COMUM_AFIACAO_DANO), base*UPGRADE_CAPS.MAX_DANO_FACTOR);
+      w.heavyDamage = w.damage;
+  }},
+  { id:'motosserra_incomum_sangria', weapon:'MOTOSSERRA', rarity:'INCOMUM', name:'Sangria Profunda', desc:'+55% dano sangramento', apply:(w)=>{
+      w.bleed = (w.bleed||0.7) * (1+UPGRADE_VALUES.MOTOSSERRA_INCOMUM_SANGRIA_FACTOR);
+      w.bleedTicks = Math.min((w.bleedTicks||2)+1, 5);
+  }},
+  { id:'motosserra_rara_fome', weapon:'MOTOSSERRA', rarity:'RARA', name:'Fome Infernal', desc:'+18% área e +12% dano', apply:(w)=>{
+      const baseR=WEAPON_MOTOSSERRA.range, baseW=WEAPON_MOTOSSERRA.areaW, baseH=WEAPON_MOTOSSERRA.areaH, baseD=WEAPON_MOTOSSERRA.damage;
+      w.range = Math.min(w.range * (1+UPGRADE_VALUES.MOTOSSERRA_RARA_FOME_AREA), baseR*UPGRADE_CAPS.MAX_RANGE_FACTOR);
+      w.areaW = Math.min((w.areaW||baseW) * (1+UPGRADE_VALUES.MOTOSSERRA_RARA_FOME_AREA), baseW*1.7);
+      w.areaH = Math.min((w.areaH||baseH) * (1+UPGRADE_VALUES.MOTOSSERRA_RARA_FOME_AREA), baseH*1.7);
+      w.damage = Math.min(w.damage * 1.12, baseD*UPGRADE_CAPS.MAX_DANO_FACTOR);
+      w._fomeHeal = (w._fomeHeal||0) + UPGRADE_VALUES.MOTOSSERRA_RARA_FOME_HEAL;
+  }},
+  { id:'motosserra_muito_rara_infernal', weapon:'MOTOSSERRA', rarity:'MUITO_RARA', name:'Motor Infernal', desc:'+30% alcance/ângulo e +32% dano (Ash)', apply:(w)=>{
+      const baseR=WEAPON_MOTOSSERRA.range, baseD=WEAPON_MOTOSSERRA.damage;
+      w.range = Math.min(w.range * (1+UPGRADE_VALUES.MOTOSSERRA_MUITO_RARA_INFERNAL_RANGE), baseR*UPGRADE_CAPS.MAX_RANGE_FACTOR);
+      w.meleeAngle = Math.min(w.meleeAngle * 1.30, 185);
+      w.damage = Math.min(w.damage * (1+UPGRADE_VALUES.MOTOSSERRA_MUITO_RARA_INFERNAL_DANO), baseD*UPGRADE_CAPS.MAX_DANO_FACTOR);
+      w._infernal = true;
+      w.tickInterval = Math.max(70, Math.round((w.tickInterval||110)*0.88));
+  }},
+  // ===== NOVAS MELHORIAS EXCLUSIVAS - RAIO MATEMÁTICO / LAZER CODIFICADO (Dev) =====
+  { id:'raio_mat_comum_foco_beam', weapon:'RAIO_MATEMATICO', rarity:'COMUM', name:'Foco de Lente', desc:'+16% largura do feixe', apply:(w)=>{
+      const baseS=WEAPON_RAIO_MATEMATICO.bulletSize||9, baseW=WEAPON_RAIO_MATEMATICO.beamWidth||20;
+      w.bulletSize = Math.min(w.bulletSize * (1+UPGRADE_VALUES.RAIO_MAT_COMUM_FOCO_SIZE), baseS*1.8);
+      w.beamWidth = Math.min((w.beamWidth||baseW) * (1+UPGRADE_VALUES.RAIO_MAT_COMUM_FOCO_SIZE), baseW*1.6);
+      w._raySizeBonus = (w._raySizeBonus||0)+UPGRADE_VALUES.RAIO_MAT_COMUM_FOCO_SIZE;
+  }},
+  { id:'raio_mat_incomum_nucleo2', weapon:'RAIO_MATEMATICO', rarity:'INCOMUM', name:'Núcleo Supercarregado+', desc:'+28% dano feixe', apply:(w)=>{
+      const base=WEAPON_RAIO_MATEMATICO.damage;
+      w.damage = Math.min(w.damage * (1+UPGRADE_VALUES.RAIO_MAT_INCOMUM_NUCLEO_DANO), base*UPGRADE_CAPS.MAX_DANO_FACTOR);
+  }},
+  { id:'raio_mat_rara_prisma', weapon:'RAIO_MATEMATICO', rarity:'RARA', name:'Prisma Codificado', desc:'+18% alcance e +12% dano', apply:(w)=>{
+      const baseR=WEAPON_RAIO_MATEMATICO.range, baseD=WEAPON_RAIO_MATEMATICO.damage;
+      w.range = Math.min(w.range * (1+UPGRADE_VALUES.RAIO_MAT_RARA_PRISMA_RANGE), baseR*UPGRADE_CAPS.MAX_RANGE_FACTOR);
+      w.damage = Math.min(w.damage * 1.12, baseD*UPGRADE_CAPS.MAX_DANO_FACTOR);
+      w._prisma = true;
+  }},
+  { id:'raio_mat_muito_rara_bifurcacao', weapon:'RAIO_MATEMATICO', rarity:'MUITO_RARA', name:'Bifurcação Quântica', desc:'Feixe bifurca: +1 raio lateral (50% dano)', apply:(w)=>{
+      w._bifurcacao = true;
+      w._bifurcacaoExtra = (w._bifurcacaoExtra||0) + UPGRADE_VALUES.RAIO_MAT_MUITO_RARA_BIFURCACAO_EXTRA;
+      const base=WEAPON_RAIO_MATEMATICO.damage;
+      w.damage = Math.min(w.damage*1.14, base*UPGRADE_CAPS.MAX_DANO_FACTOR);
   }},
 ];
 // Mapa rápido id -> def e weapon -> lista
@@ -2179,7 +2302,9 @@ const FLOOR6_MINERADORA_COIN_CHANCE = 0.52; // 52% coins decorativos na fase 6
 const FLOOR6_MINERADORA_EXTRA_COINS = 0; // futuro: moedas coletáveis
 const HACKER_FLOOR = 6; // Boss Hacker movido para Fase 6 (Mineradora de Coins)
 
-// ===================== MACACO (NOVO INIMIGO COLORIDO) =====================
+// ===================== BORED APE NFT (BAYC) - REFERÊNCIA NFT (ANTIGO MACACO) =====================
+// Inimigo Macaco renomeado para Bored Ape (BAYC) - referência direta à coleção NFT Bored Ape Yacht Club
+// Mantém compatibilidade: MACACO_* são aliases para BORED_APE_*/APE_NFT_*
 const MACACO_SIZE = 26;
 const MACACO_HP = 3;
 const MACACO_SPEED = 1.82;
@@ -2188,6 +2313,17 @@ const MACACO_JUMP_COOLDOWN = 900; // ms entre pulos
 const MACACO_JUMP_SPEED = 5.2; // velocidade do pulo rápido
 const MACACO_JUMP_DURATION = 220; // ms pulando
 const MACACO_DAMAGE = 1;
+// Aliases NFT
+const BORED_APE_SIZE = MACACO_SIZE;
+const BORED_APE_HP = MACACO_HP;
+const BORED_APE_SPEED = MACACO_SPEED;
+const BORED_APE_DETECT_RADIUS = MACACO_DETECT_RADIUS;
+const BORED_APE_JUMP_COOLDOWN = MACACO_JUMP_COOLDOWN;
+const BORED_APE_JUMP_SPEED = MACACO_JUMP_SPEED;
+const BORED_APE_JUMP_DURATION = MACACO_JUMP_DURATION;
+const BORED_APE_DAMAGE = MACACO_DAMAGE;
+const APE_NFT_SIZE = MACACO_SIZE;
+const APE_NFT_HP = MACACO_HP;
 const MACACO_COLORS = {
   rosa:    { color:'#ff6b9d', glow:'rgba(255,107,157,0.22)', icon:'🐒'},
   amarelo: { color:'#ffcc00', glow:'rgba(255,204,0,0.22)', icon:'🐒'},
@@ -2198,8 +2334,14 @@ const MACACO_COLORS = {
   laranja: { color:'#ff8c42', glow:'rgba(255,140,66,0.22)', icon:'🐒'},
   ciano:   { color:'#00e5ff', glow:'rgba(0,229,255,0.22)', icon:'🐒'}
 };
+const BORED_APE_COLORS = MACACO_COLORS;
+const APE_NFT_COLORS = MACACO_COLORS;
 const MACACO_COLOR_KEYS = Object.keys(MACACO_COLORS);
-const MACACO_SPAWN_FLOORS = [2,3,4,5,6]; // pode aparecer em várias fases
+const BORED_APE_COLOR_KEYS = MACACO_COLOR_KEYS;
+const APE_NFT_COLOR_KEYS = MACACO_COLOR_KEYS;
+const MACACO_SPAWN_FLOORS = [6]; // apenas Fase 6 Mineradora de Coins (requisito: macacos só na fase 6)
+const BORED_APE_SPAWN_FLOORS = MACACO_SPAWN_FLOORS;
+const APE_NFT_SPAWN_FLOORS = MACACO_SPAWN_FLOORS;
 
 // ===================== SALA SETCH (2x TAMANHO) =====================
 const SETCH_ROOM_CHANCE = 0.24; // 24% por andar quando elegível (Fase 5 ou 6)
@@ -2704,6 +2846,252 @@ function playLaserEffects(game, type, x, y, dir){
   }
 }
 
+// ===================== CHICOTE DO INDIANA - WHIP PROJECTILE (GRAPPLE + VENTO) =====================
+// Classe do chicote: ponta viaja, detecta parede, atordoa inimigos na frente, puxa jogador e explode.
+// Arquitetura modular: ChicoteWhip controla voo/visual; Player controla puxão; explosão/empurrão modular.
+// - Ataque longo chicote couro com efeitos de vento
+// - Se acertar parede: puxa personagem até parede (CHICOTE_PULL_SPEED)
+// - Inimigo na frente atordoado (CHICOTE_PULL_STUN) e dano moderado (WEAPON_CHICOTE.damage)
+// - Ao encostar na parede: explosão área CHICOTE_EXPLOSION_RADIUS que empurra (CHICOTE_EXPLOSION_PUSH) e atordoa 1.5s (CHICOTE_STUN_DURATION)
+class ChicoteWhip {
+  constructor(x, y, dirX, dirY, config){
+    this.x = x; this.y = y; // posição inicial (player)
+    this.startX = x; this.startY = y;
+    this.dirX = dirX; this.dirY = dirY;
+    this.speed = config.bulletSpeed ?? WEAPON_CHICOTE.bulletSpeed;
+    this.range = config.range ?? WEAPON_CHICOTE.range;
+    this.damage = config.damage ?? WEAPON_CHICOTE.damage;
+    this.size = config.bulletSize ?? WEAPON_CHICOTE.bulletSize;
+    this.color = config.color ?? WEAPON_CHICOTE.color;
+    this.whipColor = config.whipColor ?? WEAPON_CHICOTE.whipColor;
+    this.windColor = config.windColor ?? WEAPON_CHICOTE.windColor;
+    this.traveled = 0;
+    this.tipX = x; this.tipY = y;
+    this.latched = false;
+    this.latchX = null; this.latchY = null;
+    this.dead = false;
+    this.isChicoteWhip = true;
+    this.isWhip = true;
+    this.life = 900; // ms máximo do chicote visível
+    this.windTrail = []; // partículas vento ao longo do chicote
+    this.owner = 'player';
+    this.hitEnemies = new Set();
+  }
+  // Verifica colisão do tip com parede
+  checkWallCollision(x, y, walls){
+    for(const w of walls) if(circleRectCollide(x, y, this.size+2, w.x, w.y, w.w, w.h)) return true;
+    return false;
+  }
+  // Distância ponto à linha segmentada (para detectar inimigos à frente)
+  distToSegment(px, py, x1, y1, x2, y2){
+    const l2 = (x2-x1)*(x2-x1)+(y2-y1)*(y2-y1);
+    if(l2===0) return dist(px,py,x1,y1);
+    let t = ((px-x1)*(x2-x1)+(py-y1)*(y2-y1))/l2;
+    t=Math.max(0,Math.min(1,t));
+    const projX=x1+t*(x2-x1), projY=y1+t*(y2-y1);
+    return dist(px,py,projX,projY);
+  }
+  update(dt, walls, enemies, player, game){
+    if(this.dead) return false;
+    this.life -= dt;
+    if(this.life<=0 && !this.latched){ this.dead=true; return false; }
+    // Se já latchado, mantém tip no latch e atualiza vento
+    if(this.latched){
+      // vento sutil enquanto puxa
+      if(Math.random()<0.55 && game && game.particles){
+        const midX=(player.x+this.latchX)/2 + randRange(-8,8);
+        const midY=(player.y+this.latchY)/2 + randRange(-6,6);
+        game.particles.push(new Particle(midX,midY, this.dirX*randRange(0.6,1.4)+randRange(-0.5,0.5), this.dirY*randRange(0.6,1.4)+randRange(-0.5,0.5), 220, 'rgba(180,220,255,0.55)', 1.6));
+      }
+      // se player chegou perto do latch, explode
+      if(dist(player.x,player.y,this.latchX,this.latchY)<18){
+        this.doExplosion(player, game, enemies);
+        this.dead=true;
+        return false;
+      }
+      // se player está puxando mas morreu latch tempo excessivo, cancela
+      if(this.life<=0){ this.dead=true; if(player.isChicotePulling) player.cancelChicotePull(); return false; }
+      return true;
+    }
+    // voo da ponta
+    const dx=this.dirX*this.speed;
+    const dy=this.dirY*this.speed;
+    this.tipX+=dx; this.tipY+=dy;
+    this.traveled+=Math.hypot(dx,dy);
+    // trilha de vento
+    this.windTrail.push({x:this.tipX, y:this.tipY, life:180});
+    if(this.windTrail.length>10) this.windTrail.shift();
+    for(const t of this.windTrail) t.life-=dt;
+    this.windTrail=this.windTrail.filter(t=>t.life>0);
+    if(game && game.particles && Math.random()<0.45){
+      game.particles.push(new Particle(this.tipX, this.tipY, randRange(-0.8,0.8), randRange(-0.8,0.4), 180, this.windColor, 1.4));
+    }
+    // colisão parede?
+    if(this.checkWallCollision(this.tipX, this.tipY, walls)){
+      this.latched=true;
+      this.latchX=this.tipX - this.dirX*6;
+      this.latchY=this.tipY - this.dirY*6;
+      this.life=1100; // tempo extra para puxão
+      // Atordoa/dano inimigos na frente (linha player->latch)
+      this.hitEnemiesInLine(player, enemies, game);
+      // Inicia puxão do player
+      if(player && typeof player.startChicotePull==='function'){
+        player.startChicotePull(this.latchX, this.latchY, this);
+      }
+      // partículas latch
+      if(game && game.particles){
+        for(let k=0;k<10;k++) game.particles.push(new Particle(this.latchX,this.latchY, randRange(-1.4,1.4), randRange(-1.4,0.6), 260, '#8b4513', 2));
+        for(let k=0;k<6;k++) game.particles.push(new Particle(this.latchX,this.latchY, randRange(-0.8,0.8), -0.9, 200, 'rgba(180,220,255,0.85)', 1.4));
+      }
+      if(game) game.shake=Math.max(game.shake||0, 55);
+      return true;
+    }
+    // se excedeu alcance sem parede: chicoteia no ar (whip attack) - ainda causa dano em linha
+    if(this.traveled >= this.range){
+      // sem parede, faz chicote no ar: dano/atordoa inimigos ao longo da linha até max range
+      this.hitEnemiesInLine(player, enemies, game, true);
+      // efeito vento final
+      if(game && game.particles){
+        for(let k=0;k<8;k++) game.particles.push(new Particle(this.tipX,this.tipY, randRange(-1.2,1.2), randRange(-0.8,0.5), 200, 'rgba(180,220,255,0.65)', 1.6));
+      }
+      this.dead=true;
+      return false;
+    }
+    // Ainda voando: também pode acertar inimigos no caminho para dano vento (pequeno tick)
+    // Não para no inimigo, apenas marca; dano principal já no latch ou no final
+    return true;
+  }
+  hitEnemiesInLine(player, enemies, game, isAirWhip=false){
+    if(!enemies || !enemies.length) return;
+    const x1=player.x, y1=player.y;
+    const x2=isAirWhip ? this.tipX : (this.latchX ?? this.tipX);
+    const y2=isAirWhip ? this.tipY : (this.latchY ?? this.tipY);
+    for(const e of enemies){
+      if(e.dead) continue;
+      if(this.hitEnemies.has(e)) continue;
+      const d=this.distToSegment(e.x,e.y,x1,y1,x2,y2);
+      if(d < e.w*0.62+8){ // dentro do chicote
+        this.hitEnemies.add(e);
+        const died=e.takeDamage(this.damage);
+        e.stunTimer=Math.max(e.stunTimer||0, isAirWhip ? CHICOTE_PULL_STUN : CHICOTE_PULL_STUN);
+        e.stunVisual=true;
+        e.hitFlash=Math.max(e.hitFlash||0, 160);
+        // knock leve para trás (frente)
+        const ang=Math.atan2(e.y - y1, e.x - x1);
+        e.x+=Math.cos(ang)*4;
+        e.y+=Math.sin(ang)*4;
+        if(game && game.particles){
+          for(let k=0;k<5;k++) game.particles.push(new Particle(e.x,e.y, randRange(-1.2,1.2), randRange(-1,0.4), 240, '#a0522d', 1.8));
+          for(let k=0;k<3;k++) game.particles.push(new Particle(e.x, e.y-10+randRange(-4,4), randRange(-0.4,0.4), -0.7, 220, '#ffff99', 1.2));
+          if(died) for(let k=0;k<10;k++){ const a=Math.random()*Math.PI*2; game.particles.push(new Particle(e.x,e.y, Math.cos(a)*randRange(1.2,3), Math.sin(a)*randRange(1.2,3), 280, '#8b4513', 2)); }
+        }
+        if(game) game.shake=Math.max(game.shake||0, 45);
+      }
+    }
+  }
+  doExplosion(player, game, enemies){
+    const cx=this.latchX ?? player.x, cy=this.latchY ?? player.y;
+    if(!game || !game.currentRoom) return;
+    const room=game.currentRoom;
+    room.explosions.push({x:cx, y:cy, radius:14, life:420, max:420, isChicoteExplosion:true});
+    // Partículas explosão vento + poeira
+    if(game.particles){
+      for(let k=0;k<18;k++){ const a=Math.random()*Math.PI*2; const sp=randRange(2,5); game.particles.push(new Particle(cx,cy, Math.cos(a)*sp, Math.sin(a)*sp, 380, ['#a0522d','#8b4513','#f4e4bc','#ffffff'][randInt(0,3)], 3)); }
+      for(let k=0;k<12;k++) game.particles.push(new Particle(cx,cy, randRange(-1.4,1.4), randRange(-1.6,0.6), 300, 'rgba(180,220,255,0.75)', 2));
+      for(let k=0;k<8;k++) game.particles.push(new Particle(cx+randRange(-6,6), cy+randRange(-6,6), randRange(-0.6,0.6), randRange(-0.8,-0.2), 220, 'rgba(255,255,255,0.65)', 1.4));
+    }
+    if(game) game.shake=Math.max(game.shake||0, 95);
+    // Empurra e atordoa inimigos na área 96 por 1.5s (requisito)
+    if(enemies){
+      for(const e of enemies){
+        if(e.dead) continue;
+        const d=dist(cx,cy,e.x,e.y);
+        if(d < CHICOTE_EXPLOSION_RADIUS){
+          const ang=Math.atan2(e.y - cy, e.x - cx) || Math.random()*Math.PI*2;
+          const falloff=1 - Math.min(d/CHICOTE_EXPLOSION_RADIUS,1);
+          const push=CHICOTE_EXPLOSION_PUSH * (0.55+falloff*0.9);
+          e.x+=Math.cos(ang)*push;
+          e.y+=Math.sin(ang)*push;
+          e.stunTimer=Math.max(e.stunTimer||0, CHICOTE_STUN_DURATION);
+          e.stunVisual=true;
+          e.hitFlash=Math.max(e.hitFlash||0, 180);
+          // evita parede
+          let onWall=false;
+          for(const w of room.walls) if(rectCollide(e.x - e.w/2, e.y - e.h/2, e.w, e.h, w.x,w.y,w.w,w.h)){ onWall=true; break; }
+          if(onWall){ e.x-=Math.cos(ang)*push*0.5; e.y-=Math.sin(ang)*push*0.5; }
+          e.x=clamp(e.x, WALL_THICK+e.w/2, CANVAS_W-WALL_THICK-e.w/2);
+          e.y=clamp(e.y, WALL_THICK+e.h/2, CANVAS_H-WALL_THICK-e.h/2);
+          if(game.particles){
+            for(let k=0;k<4;k++) game.particles.push(new Particle(e.x,e.y, Math.cos(ang)*randRange(0.6,1.4), Math.sin(ang)*randRange(0.6,1.4), 240, 'rgba(180,220,255,0.65)', 1.8));
+          }
+        }
+      }
+    }
+    // Player invuln breve após impacto
+    player.invulnTimer=Math.max(player.invulnTimer, 180);
+    if(game && game.showToast) game.showToast('💥 Impacto Chicote! Área atordoada 1.5s', 1400);
+  }
+  draw(ctx, player){
+    // Desenha chicote como linha couro segmentada com vento
+    const x1=player.x, y1=player.y;
+    const x2=this.latched ? this.latchX : this.tipX;
+    const y2=this.latched ? this.latchY : this.tipY;
+    // vento ao longo do chicote (faixa azul clara)
+    ctx.strokeStyle='rgba(180,220,255,0.18)';
+    ctx.lineWidth=10;
+    ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    ctx.strokeStyle='rgba(180,220,255,0.28)';
+    ctx.lineWidth=5;
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    // chicote couro segmentado com ondulação leve
+    const segs=10;
+    const wave=2.2;
+    ctx.strokeStyle=this.whipColor;
+    ctx.lineWidth=3.2;
+    ctx.lineCap='round';
+    ctx.beginPath();
+    for(let i=0;i<=segs;i++){
+      const t=i/segs;
+      const x=lerp(x1,x2,t) + Math.sin(t*Math.PI*2 + Date.now()*0.012)*wave*(1-t);
+      const y=lerp(y1,y2,t) + Math.cos(t*Math.PI*2 + Date.now()*0.013)*wave*0.6*(1-t);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    // brilho couro
+    ctx.strokeStyle='rgba(255,228,180,0.55)';
+    ctx.lineWidth=0.9;
+    ctx.beginPath();
+    for(let i=0;i<=segs;i++){
+      const t=i/segs;
+      const x=lerp(x1,x2,t) + Math.sin(t*Math.PI*2 + Date.now()*0.012)*wave*(1-t);
+      const y=lerp(y1,y2,t) + Math.cos(t*Math.PI*2 + Date.now()*0.013)*wave*0.6*(1-t);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    // ponta
+    ctx.fillStyle='#3a1a0a';
+    ctx.beginPath(); ctx.arc(x2,y2,4,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#ffd700';
+    ctx.beginPath(); ctx.arc(x2,y2,1.6,0,Math.PI*2); ctx.fill();
+    if(this.latched){
+      // indicador latch
+      ctx.strokeStyle='rgba(255,255,255,0.65)';
+      ctx.lineWidth=1.2; ctx.setLineDash([4,3]);
+      ctx.beginPath(); ctx.arc(x2,y2,10,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle='rgba(255,255,255,0.22)';
+      ctx.beginPath(); ctx.arc(x2,y2,14,0,Math.PI*2); ctx.fill();
+    }
+    // trilha vento na ponta
+    for(const tr of this.windTrail){
+      const a=clamp(tr.life/180,0,1);
+      ctx.fillStyle=`rgba(180,220,255,${a*0.22})`;
+      ctx.beginPath(); ctx.arc(tr.x,tr.y,3*a,0,Math.PI*2); ctx.fill();
+    }
+  }
+  getRect(){ return {x:this.tipX-this.size, y:this.tipY-this.size, w:this.size*2, h:this.size*2}; }
+}
+
 // --- Nova Arma Muito Rara: BAZUCA ---
 const WEAPON_BAZUCA = {
   name: 'BAZUCA',
@@ -2884,6 +3272,45 @@ const MOTOSSERRA_SAW_SPIN_SPEED = 0.72; // AFINADO: ainda mais rápida
 const MOTOSSERRA_HIT_PARTICLES = 6; // AFINADO: ligeiramente menos poluído, mais nítido
 const MOTOSSERRA_VIBRATE_AMP = 1.6; // AFINADO: tremor refinado menos caótico
 const MOTOSSERRA_RECOIL_AMP = 1.0; // AFINADO: recuo sutil preciso
+
+// ===================== CHICOTE DO INDIANA (RARO - INDIANA JONES) =====================
+// Arma rara estilo Indiana Jones: ataque longo com chicote + grapple em parede + explosão + stun.
+// Mecânica: Chicote longo dano moderado; se acertar parede puxa jogador até lá; inimigo na frente é atordoado; ao encostar na parede explode área empurrando/atordoando 1.5s.
+// Visual: chicote couro marrom com efeitos de vento; jogador ganha chapéu de couro ao equipar.
+// Configurável: todas as constantes abaixo são balanceáveis. Modular: WEAPON_CHICOTE + ChicoteWhip + IndianaNPC.
+const WEAPON_CHICOTE = {
+  name: 'CHICOTE',
+  displayName: 'CHICOTE DO INDIANA',
+  cooldown: 540,      // intervalo entre chicoteadas (balanceado: grapple não spam)
+  range: 360,         // alcance longo do chicote
+  damage: 2.6,        // dano moderado (1.3 corações) - pedido moderado
+  count: 1,
+  spread: 0,
+  bulletSpeed: 15.5,  // velocidade da ponta do chicote (rápido)
+  bulletSize: 4,
+  color: '#8b4513',   // couro marrom
+  glow: 'rgba(139,69,19,0.22)',
+  whipColor: '#a0522d',
+  windColor: 'rgba(180,220,255,0.45)',
+  isWhip: true,
+  isChicote: true,
+  isIndianaWhip: true
+};
+const ITEM_SIZE_CHICOTE = 22;
+// Constantes balanceáveis do Chicote (todas editáveis, arquitetura modular)
+const CHICOTE_PULL_SPEED = 9.8;        // velocidade puxão até parede (px por frame, configurável)
+const CHICOTE_PULL_STUN = 700;         // stun no inimigo diretamente à frente durante o chicoteio (ms)
+const CHICOTE_STUN_DURATION = 1500;    // 1.5s atordoamento pós explosão (requisito)
+const CHICOTE_EXPLOSION_RADIUS = 96;   // raio da explosão ao encostar na parede
+const CHICOTE_EXPLOSION_PUSH = 18;     // força de empurrão da explosão
+const CHICOTE_WIND_PARTICLES = 5;      // partículas de vento por tick do chicote
+const CHICOTE_DAMAGE_MODERADO = 2.6;   // alias para clareza
+const CHICOTE_SPAWN_CHANCE = 0.025;    // 2.5% por sala normal (raro mas aparece em todas fases)
+const CHICOTE_SPAWN_TREASURE = 0.055;  // 5.5% em sala tesouro
+const CHICOTE_HAT_BONUS = true;        // flag chapeu (usado em Player)
+const CHICOTE_INTERACT_RANGE = 64;     // alcance interação Indiana NPC
+const INDIANA_NPC_SIZE_W = 28;
+const INDIANA_NPC_SIZE_H = 34;
 
 // ===================== DEV - LAZER CODIFICADO (ex-RAIO MATEMÁTICO) - Brimstone Isaac =====================
 // Arma exclusiva do Dev: agora é LAZER CODIFICADO estilo Brimstone de The Binding of Isaac.
@@ -3084,6 +3511,7 @@ const CHARACTER_HOOKS = {
       return player.characterDef ? player.characterDef.speedWithoutBastao : JG_SPEED_WITHOUT_BASTAO;
     },
     canEquipWeapon(player, weaponName){
+      if(weaponName==='CHICOTE') return true; // Chicote é exceção - todos podem usar (rara + Indiana 100%)
       // JG lock: só Bastão para não duplicar e manter exclusivo
       const allowed = CHARACTER_DEFS.jg.allowedWeapons;
       return allowed.includes(weaponName);
@@ -3091,6 +3519,7 @@ const CHARACTER_HOOKS = {
   },
   kinight: {
     canEquipWeapon(player, weaponName){
+      if(weaponName==='CHICOTE') return true; // Chicote é exceção - todos podem usar
       const allowed = CHARACTER_DEFS.kinight.allowedWeapons;
       return allowed.includes(weaponName);
     }
@@ -3170,7 +3599,7 @@ function applyCharacterToPlayer(player, characterId){
   player.cyberHp = 0;
   player.maxCyberHp = CYBER_HEART_MAX_CYBER;
   // Arma inicial - inclui RAIO_MATEMATICO exclusivo Dev e LASER
-  const wMap = { NORMAL: WEAPON_NORMAL, SHOTGUN: WEAPON_SHOTGUN, RAIO: WEAPON_RAIO, METRALHADORA: WEAPON_METRALHADORA, CARREGADA: WEAPON_CARREGADA, BAZUCA: WEAPON_BAZUCA, ESPADA: WEAPON_ESPADA, LUVA: WEAPON_LUVA, BASTAO: WEAPON_BASTAO, MOTOSSERRA: WEAPON_MOTOSSERRA, LASER: WEAPON_LASER, RAIO_MATEMATICO: WEAPON_RAIO_MATEMATICO };
+  const wMap = { NORMAL: WEAPON_NORMAL, SHOTGUN: WEAPON_SHOTGUN, RAIO: WEAPON_RAIO, METRALHADORA: WEAPON_METRALHADORA, CARREGADA: WEAPON_CARREGADA, BAZUCA: WEAPON_BAZUCA, ESPADA: WEAPON_ESPADA, LUVA: WEAPON_LUVA, BASTAO: WEAPON_BASTAO, MOTOSSERRA: WEAPON_MOTOSSERRA, LASER: WEAPON_LASER, RAIO_MATEMATICO: WEAPON_RAIO_MATEMATICO, CHICOTE: WEAPON_CHICOTE };
   // limpa upgrades anteriores? Mantém? No startGame já reseta, mas aqui reconstrói com upgrades se houver
   // Starter weapon com upgrades vinculados (se já houver upgrades coletados, buildUpgraded)
   if(def.starterWeapon && wMap[def.starterWeapon]){
@@ -3200,20 +3629,17 @@ function applyCharacterToPlayer(player, characterId){
     if(!player.secondaryWeapon) player.secondaryWeapon = null;
     player.weapon = player.primaryWeapon;
   }
-  // Special inicial
+  // Special inicial: se tem starter, equipa; senão limpa qualquer especial da partida anterior (fix bug: item especial persistia entre partidas)
   if(def.starterSpecial){
     const sp = createSpecialItem(def.starterSpecial);
     if(sp) player.equipSpecial(sp);
     else player.equippedSpecial = null;
   } else {
-    // limpa se não tem starter mas mantém se for troca? No apply inicial limpa
-    if(player.equippedSpecial && player.equippedSpecial.id === 'farmar_aura' && characterId!=='jl'){
-      player.equippedSpecial = null;
-    }
-    if(player.equippedSpecial && player.equippedSpecial.id === 'oli_xadrez' && characterId!=='oli'){
-      player.equippedSpecial = null;
-    }
+    // Personagem sem especial inicial: garante que não carrega item da partida anterior (ex: neutro/JG/Kinight/Ash/Dev)
+    player.equippedSpecial = null;
   }
+  // Ao trocar de personagem, reseta redução de cooldown e flags de especiais ativos
+  // (será recalculado via equipSpecial se necessário, e upgrades já foram resetados em startGame)
   // Limpa flags de espada/guardião etc que possam vazar
   player.swordGuardianActive=false; player.swordGuardianCharges=0; player.swordGuardianTimer=0;
   // Dev - Raio Matemático flags
@@ -3249,6 +3675,7 @@ function playWeaponSound(type, heavy=false){
     if(type==='ESPADA') freq = heavy? 180 : 520;
     else if(type==='LUVA') freq = 220;
     // MARTELO/LANCA/ARCO/MACHADO removidos
+    else if(type==='CHICOTE') freq = heavy? 340 : 620;
     else if(type==='SHOTGUN') freq=180;
     else if(type==='RAIO') freq=720;
     else if(type==='RAIO_MATEMATICO') freq = heavy? 480 : 660;
@@ -8397,6 +8824,7 @@ class WeaponItem extends Item {
     const isMotosserra = low==='motosserra' || low===WEAPON_MOTOSSERRA.name.toLowerCase();
     const isRayMatematico = low==='raio_matematico' || low===WEAPON_RAIO_MATEMATICO.name.toLowerCase();
     const isLaser = low==='laser' || low===WEAPON_LASER.name.toLowerCase();
+    const isChicote = low==='chicote' || low==='chicote_do_indiana' || low===WEAPON_CHICOTE.name.toLowerCase();
     const isMartelo = false;
     const isLanca = false;
     const isArco = false;
@@ -8413,6 +8841,7 @@ class WeaponItem extends Item {
     else if(isBastao) size = ITEM_SIZE_BASTAO;
     else if(isMotosserra) size = ITEM_SIZE_MOTOSSERRA;
     else if(isLaser) size = ITEM_SIZE_LASER;
+    else if(isChicote) size = ITEM_SIZE_CHICOTE;
     // martelo/lanca/arco/machado removidos
     super(x, y, size, size, weaponType);
     this.weaponType = weaponType;
@@ -8427,6 +8856,7 @@ class WeaponItem extends Item {
     this.isMotosserra = isMotosserra;
     this.isRayMatematico = isRayMatematico;
     this.isLaser = isLaser;
+    this.isChicote = isChicote;
     this.isMartelo = isMartelo;
     this.isLanca = isLanca;
     this.isArco = isArco;
@@ -8681,11 +9111,40 @@ class WeaponItem extends Item {
       ctx.fillStyle='#ffcc00'; ctx.font='4px "Press Start 2P"'; ctx.textAlign='center';
       ctx.fillText('LASER', x, y+s/2+10); ctx.textAlign='left';
       ctx.fillStyle=`rgba(255,255,255,${0.6+Math.sin(this.anim*5)*0.3})`; const rlx=x+Math.cos(this.anim*1.6)*5; ctx.fillRect(rlx, y-6, 2,1.5);
+    } else if(this.isChicote){
+      // CHICOTE DO INDIANA - ícone no chão (couro marrom enrolado + vento)
+      const x=this.x, y=this.y + this.bob, s=this.w;
+      const pulse=0.5+Math.sin(this.anim*2.2)*0.32;
+      ctx.fillStyle='rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.ellipse(x, y+s*0.5, s*0.5, 4,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle=`rgba(139,69,19,${0.20+pulse*0.12})`; ctx.beginPath(); ctx.arc(x,y,s*0.78+pulse*3,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#3a1a0a'; ctx.fillRect(x - s/2+1, y-6, s-2, 12);
+      ctx.fillStyle='#1e0f04'; ctx.fillRect(x - s/2+2, y-5, s-4, 10);
+      // chicote enrolado marrom com faixa dourada
+      ctx.fillStyle='#8b4513'; ctx.fillRect(x - s/2+3, y-2, s-6, 4);
+      ctx.fillStyle='#a0522d'; ctx.fillRect(x - s/2+4, y-1, s-8, 2);
+      ctx.fillStyle='#d2a679'; ctx.fillRect(x - s/2+4, y, s-8, 1);
+      // espiral chicote
+      ctx.strokeStyle='rgba(160,82,45,0.92)'; ctx.lineWidth=1.4;
+      ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI*1.6); ctx.stroke();
+      ctx.strokeStyle='rgba(210,166,121,0.75)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.arc(x, y, 2.2, 0, Math.PI*1.2); ctx.stroke();
+      // brilho vento ao redor
+      ctx.fillStyle=`rgba(180,220,255,${0.45+pulse*0.22})`;
+      if(Math.floor(this.anim*4)%2===0) ctx.fillRect(x+5, y-5, 2,1.5);
+      ctx.fillStyle='rgba(255,255,255,0.85)';
+      ctx.fillRect(x-4, y+2, 1.2,1.2);
+      // chapéu mini hint (indica que ganha chapéu)
+      ctx.fillStyle='#8b4513'; ctx.fillRect(x -6, y-8, 12, 2);
+      ctx.fillRect(x -4, y-10, 8, 3);
+      ctx.fillStyle='#3a1a0a'; ctx.fillRect(x -5, y-9, 10, 0.8);
+      // texto
+      ctx.fillStyle='#d2a679'; ctx.font='4px "Press Start 2P"'; ctx.textAlign='center'; ctx.fillText('CHICOTE', x, y+s/2+10); ctx.textAlign='left';
+      ctx.fillStyle=`rgba(255,255,255,${0.6+Math.sin(this.anim*5)*0.3})`; const rcx=x+Math.cos(this.anim*1.6)*5; ctx.fillRect(rcx, y-6, 2,1.5);
     } else if(this.isRayMatematico){
       // Azazel Brimstone Azul - ícone no chão (horizontal beam com chifres)
       const x=this.x, y=this.y + this.bob, s=this.w;
       const pulse=0.5+Math.sin(this.anim*2.2)*0.33;
-      ctx.fillStyle='rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.ellipse(x, y+s*0.5, s*0.5, 4,0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.ellipse(x, y+s*0.5, s*0.5, 4,0,Math.PI*2); ctx.fill();
       // glow externo azul demoníaco
       ctx.fillStyle=`rgba(26,127,191,${0.18+pulse*0.10})`; ctx.beginPath(); ctx.arc(x,y,s*0.80+pulse*3,0,Math.PI*2); ctx.fill();
       // base retangular escura (recipiente)
@@ -9398,8 +9857,15 @@ class Player {
     this.motosserraCharge = 0; // 0..100
     this.motosserraChargeMax = MOTOSSERRA_CHARGE_MAX;
     this.motosserraIdleTimer = 0; // ms sem atacar para decair
+    // CHICOTE - grapple parede + explosão (Indiana Jones)
+    this.hasIndianaHat = false; // chapéu de couro quando pega Chicote (visual)
+    this.isChicotePulling = false; // puxando até parede
+    this.chicoteTarget = null; // {x,y}
+    this.chicoteWhipRef = null; // referência ChicoteWhip ativo
+    this.chicotePullSpeed = CHICOTE_PULL_SPEED;
+    this.chicotePullTimer = 0;
     // sistema de melhorias por arma (4 raridades, valores em UPGRADE_VALUES) + níveis
-    this.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], LASER:[], RAIO_MATEMATICO:[], ALL:[], SPECIAL:[] };
+    this.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], LASER:[], RAIO_MATEMATICO:[], CHICOTE:[], ALL:[], SPECIAL:[] };
     this.obtainedUpgrades = new Set(); // ids únicos para evitar duplicação (compatibilidade)
     this.upgradeLevels = new Map(); // id -> nível atual (1..maxLevel) para melhorias com níveis
     // ================= SISTEMA ITENS ESPECIAIS (E) =================
@@ -9466,6 +9932,12 @@ class Player {
     if(this.motosserraCharge===undefined) this.motosserraCharge=0;
     if(this.motosserraChargeMax===undefined) this.motosserraChargeMax=MOTOSSERRA_CHARGE_MAX;
     if(this.motosserraIdleTimer===undefined) this.motosserraIdleTimer=0;
+    // CHICOTE - reseta pulling ao trocar de sala se o whip já morreu
+    if(this.isChicotePulling && (!this.chicoteWhipRef || this.chicoteWhipRef.dead)){
+      this.cancelChicotePull();
+    }
+    // mantém chapéu Indiana entre salas (cosmético permanente após pegar Chicote)
+    if(this.hasIndianaHat===undefined) this.hasIndianaHat=false;
     this.hammerChargeTime=0; this.isHammerCharging=false; this.hammerHeavyReady=false; this.hammerChargeDir=null;
     this.lancaChargeTime=0; this.isLancaCharging=false; this.lancaReady=false; this.lancaChargeDir=null; this.thrownSpear=null;
     this.axeChargeTime=0; this.isAxeCharging=false; this.axeReady=false; this.axeChargeDir=null; this.axeSpinActive=false; this.axeSpinTimer=0; this.axeSpinTick=0;
@@ -9512,6 +9984,9 @@ class Player {
     } else if (t==='laser' || t===WEAPON_LASER.name.toLowerCase()) {
       this.setSecondaryWeapon('laser');
       this.weapon = this.secondaryWeapon;
+    } else if (t==='chicote' || t==='chicote_do_indiana' || t===WEAPON_CHICOTE.name.toLowerCase()) {
+      this.setSecondaryWeapon('chicote');
+      this.weapon = this.secondaryWeapon;
     } else if (t==='raio_matematico' || t===WEAPON_RAIO_MATEMATICO.name.toLowerCase()) {
       this.setSecondaryWeapon('raio_matematico');
       this.weapon = this.secondaryWeapon;
@@ -9533,6 +10008,7 @@ class Player {
     else if(t==='bastao' || t===WEAPON_BASTAO.name.toLowerCase()) wName='BASTAO';
     else if(t==='motosserra' || t===WEAPON_MOTOSSERRA.name.toLowerCase()) wName='MOTOSSERRA';
     else if(t==='laser' || t===WEAPON_LASER.name.toLowerCase()) wName='LASER';
+    else if(t==='chicote' || t==='chicote_do_indiana' || t===WEAPON_CHICOTE.name.toLowerCase()) wName='CHICOTE';
     else if(t==='raio_matematico' || t===WEAPON_RAIO_MATEMATICO.name.toLowerCase()) wName='RAIO_MATEMATICO';
     // martelo/lanca/arco/machado wName removidos
     else return false;
@@ -9546,6 +10022,7 @@ class Player {
       }
     }
     this.secondaryWeapon = this.createWeaponWithUpgrades(wName);
+    if(wName==='CHICOTE' && !this.hasIndianaHat) this.enableIndianaHat();
     return true;
   }
   enableDoubleShot(){
@@ -9635,7 +10112,7 @@ class Player {
   }
   // constrói arma com todas as melhorias já obtidas para aquele tipo (reutiliza base + aplica cumulativo com caps)
   buildUpgradedWeapon(weaponName){
-    const map = { NORMAL: WEAPON_NORMAL, SHOTGUN: WEAPON_SHOTGUN, RAIO: WEAPON_RAIO, METRALHADORA: WEAPON_METRALHADORA, CARREGADA: WEAPON_CARREGADA, BAZUCA: WEAPON_BAZUCA, ESPADA: WEAPON_ESPADA, LUVA: WEAPON_LUVA, BASTAO: WEAPON_BASTAO, MOTOSSERRA: WEAPON_MOTOSSERRA, LASER: WEAPON_LASER, RAIO_MATEMATICO: WEAPON_RAIO_MATEMATICO };
+    const map = { NORMAL: WEAPON_NORMAL, SHOTGUN: WEAPON_SHOTGUN, RAIO: WEAPON_RAIO, METRALHADORA: WEAPON_METRALHADORA, CARREGADA: WEAPON_CARREGADA, BAZUCA: WEAPON_BAZUCA, ESPADA: WEAPON_ESPADA, LUVA: WEAPON_LUVA, BASTAO: WEAPON_BASTAO, MOTOSSERRA: WEAPON_MOTOSSERRA, LASER: WEAPON_LASER, RAIO_MATEMATICO: WEAPON_RAIO_MATEMATICO, CHICOTE: WEAPON_CHICOTE };
     const base = map[weaponName];
     if(!base) return null;
     const w = { ...base };
@@ -10592,6 +11069,77 @@ class Player {
     const ang = this.dillianShieldAngle || 0;
     return { x: this.x + Math.cos(ang)*DILLIAN_SHIELD_RADIUS, y: this.y + Math.sin(ang)*DILLIAN_SHIELD_RADIUS, ang };
   }
+  // ===================== CHICOTE DO INDIANA - Chapéu + Grapple =====================
+  enableIndianaHat(){
+    if(this.hasIndianaHat) return false;
+    this.hasIndianaHat = true;
+    const g = (typeof window!=='undefined' && window.game) ? window.game : null;
+    if(g && g.showToast) g.showToast('🤠 Chapéu de couro do Indiana! Chicote equipado', 2000);
+    if(g){
+      g.shake = Math.max(g.shake||0, 60);
+      for(let k=0;k<14;k++) g.particles.push(new Particle(this.x, this.y, randRange(-1.4,1.4), randRange(-1.6,0.6), 340, '#8b4513', 2.2));
+      for(let k=0;k<8;k++) g.particles.push(new Particle(this.x, this.y, randRange(-1.2,1.2), -0.9, 240, 'rgba(180,220,255,0.85)', 1.4));
+      if(g.currentRoom) g.currentRoom.explosions.push({x:this.x, y:this.y, radius:10, life:300, max:300, isChicoteHat:true});
+    }
+    return true;
+  }
+  isChicoteWeapon(){ return this.weapon && !!this.weapon.isChicote; }
+  startChicotePull(latchX, latchY, whipRef){
+    if(this.isChicotePulling) return false;
+    this.isChicotePulling = true;
+    this.chicoteTarget = { x: latchX, y: latchY };
+    this.chicoteWhipRef = whipRef || null;
+    this.chicotePullTimer = 0;
+    // breve invuln durante puxão (evita dano frustrante no trajeto)
+    this.invulnTimer = Math.max(this.invulnTimer, 220);
+    return true;
+  }
+  cancelChicotePull(){
+    this.isChicotePulling = false;
+    this.chicoteTarget = null;
+    this.chicoteWhipRef = null;
+    this.chicotePullTimer = 0;
+  }
+  // Chamado em update para mover o player até a parede
+  updateChicotePull(dt, walls){
+    if(!this.isChicotePulling || !this.chicoteTarget) return false;
+    this.chicotePullTimer += dt;
+    const tx=this.chicoteTarget.x, ty=this.chicoteTarget.y;
+    const dx=tx - this.x, dy=ty - this.y;
+    const d=Math.hypot(dx,dy);
+    if(d < 14){
+      // chegou: cancela pulling mas explosão já foi feita pelo Whip; apenas limpa
+      this.cancelChicotePull();
+      return true; // chegou
+    }
+    const n=normalize(dx,dy);
+    const spd=this.chicotePullSpeed ?? CHICOTE_PULL_SPEED;
+    // move com checagem de parede (deslize simplificado)
+    let nx=this.x + n.x*spd;
+    let ny=this.y + n.y*spd;
+    // tenta X e Y separados para não atravessar parede inesperado
+    if(!this.checkWallCollision(nx, this.y, walls)) this.x=nx;
+    else { // tenta deslize reduzido
+      if(!this.checkWallCollision(this.x + n.x*spd*0.35, this.y, walls)) this.x+= n.x*spd*0.35;
+    }
+    if(!this.checkWallCollision(this.x, ny, walls)) this.y=ny;
+    else {
+      if(!this.checkWallCollision(this.x, this.y + n.y*spd*0.35, walls)) this.y+= n.y*spd*0.35;
+    }
+    this.x=clamp(this.x, WALL_THICK+this.w/2, CANVAS_W-WALL_THICK-this.w/2);
+    this.y=clamp(this.y, WALL_THICK+this.h/2, CANVAS_H-WALL_THICK-this.h/2);
+    // partículas vento durante puxão
+    if(Math.random()<0.45){
+      const g=(typeof window!=='undefined' && window.game) ? window.game : null;
+      if(g && g.particles) g.particles.push(new Particle(this.x+randRange(-5,5), this.y+randRange(-5,5), randRange(-0.8,0.8), randRange(-0.8,0.4), 180, 'rgba(180,220,255,0.55)', 1.4));
+    }
+    // timeout segurança 1200ms
+    if(this.chicotePullTimer>1200){
+      this.cancelChicotePull();
+      if(this.chicoteWhipRef) this.chicoteWhipRef.dead=true;
+    }
+    return false;
+  }
   heal(amount) {
     const before = this.hp;
     this.hp = clamp(this.hp + amount, 0, this.maxHp);
@@ -10810,6 +11358,16 @@ class Player {
       }
     }
 
+    // CHICOTE - puxão até parede (prioridade sobre movimento normal)
+    if(this.isChicotePulling && this.chicoteTarget){
+      const didArrive = this.updateChicotePull(dt, walls);
+      // Enquanto puxa, mantém velocidade de puxão (sobrescreve baseMove posterior)
+      // Se ainda não chegou, cancela dash timer para não interferir
+      if(this.isChicotePulling){
+        this.dashTimer = 0;
+        // ainda processa heat/velocidade base mas depois sobrescreve
+      }
+    }
     // metralhadora: controle de aquecimento e superaquecimento (com upgrades)
     const _heatPerShot = this.weapon && this.weapon._heatPerShot !== undefined ? this.weapon._heatPerShot : METRALHADORA_HEAT_PER_SHOT;
     const _heatMax = METRALHADORA_HEAT_MAX * (1 + (this.weapon && this.weapon._heatMaxBonus ? this.weapon._heatMaxBonus : 0));
@@ -11014,9 +11572,11 @@ class Player {
       }
     }
 
-    const move = input.getMoveVector();
+    // CHICOTE - se está sendo puxado, ignora input movimento/dash (puxão força)
+    const isPullingChicote = !!this.isChicotePulling;
+    const move = isPullingChicote ? {x:0,y:0} : input.getMoveVector();
     let mx = move.x, my = move.y;
-    if (mx !== 0 || my !== 0) {
+    if (!isPullingChicote && (mx !== 0 || my !== 0)) {
       this.lastDir.x = mx; this.lastDir.y = my;
       this.facing = mx !== 0 ? (mx > 0 ? 1 : -1) : this.facing;
     }
@@ -11024,7 +11584,7 @@ class Player {
     if (shootVec) { this.lastDir.x = shootVec.x; this.lastDir.y = shootVec.y; }
 
     this.didDashThisFrame = false;
-    if (input.isDashPressed() && this.dashCooldown <= 0 && this.dashTimer <= 0) {
+    if (!isPullingChicote && input.isDashPressed() && this.dashCooldown <= 0 && this.dashTimer <= 0) {
       let dx = this.lastDir.x, dy = this.lastDir.y;
       const len = Math.hypot(dx, dy) || 1;
       dx /= len; dy /= len;
@@ -11038,7 +11598,8 @@ class Player {
     }
 
     let curVx = 0, curVy = 0;
-    if (this.isDashing()) { curVx = this.vx; curVy = this.vy; }
+    if (isPullingChicote) { curVx = 0; curVy = 0; }
+    else if (this.isDashing()) { curVx = this.vx; curVy = this.vy; }
     else { curVx = mx * this.speed; curVy = my * this.speed; }
 
     const nextX = this.x + curVx;
@@ -11064,6 +11625,9 @@ class Player {
     return false;
   }
    canShoot() {
+    // CHICOTE puxando não pode atacar (evita spam durante grapple)
+    if(this.isChicotePulling) return false;
+    if(this.chicoteWhipRef && !this.chicoteWhipRef.dead) return false;
     // JG sem bastão não pode atacar (até retornar) - evita duplicação e mantém identidade
     if(this.characterId==='jg' && !this.hasBastao) return false;
     // Enquanto bastão está arremessado (projétil ativo) não pode atacar de novo
@@ -11206,6 +11770,28 @@ class Player {
         }
         return fists;
       }
+    }
+    // CHICOTE DO INDIANA - chicote longo com vento, grapple em parede, atordoa frente, puxa e explode
+    if(this.weapon && this.weapon.isChicote){
+      this.shootCooldown = this.weapon.cooldown;
+      this.lastDir.x=dir.x; this.lastDir.y=dir.y;
+      if(dir.x!==0) this.facing=dir.x>0?1:-1;
+      const n=normalize(dir.x,dir.y);
+      const sx=this.x + n.x*(this.w/2+8);
+      const sy=this.y + n.y*(this.h/2+6);
+      if(!this.hasIndianaHat) this.enableIndianaHat();
+      const whip=new ChicoteWhip(sx,sy,n.x,n.y,{
+        bulletSpeed: this.weapon.bulletSpeed,
+        range: this.weapon.range,
+        damage: this.weapon.damage,
+        bulletSize: this.weapon.bulletSize,
+        color: this.weapon.color,
+        whipColor: this.weapon.whipColor || '#a0522d',
+        windColor: this.weapon.windColor || 'rgba(180,220,255,0.45)'
+      });
+      this.chicoteWhipRef = whip;
+      try{ playWeaponSound('CHICOTE', false); }catch(e){}
+      return [whip];
     }
     // fallback para outras armas isFist (compatibilidade)
     if(this.weapon && this.weapon.isFist){
@@ -12457,6 +13043,29 @@ class Player {
       ctx.fillStyle = '#c47a6a';
       ctx.fillRect(x+11, y+6 + bob +4, 2, 1);
     }
+    // Chapéu de couro Indiana (quando tem Chicote) - visual couro marrom por cima da cabeça (requisito)
+    if(this.hasIndianaHat){
+      const hatY = y - 1 + bob;
+      const hatX = x + 5;
+      // aba larga couro
+      ctx.fillStyle='#6b3a11';
+      ctx.fillRect(hatX -2, hatY+3, 16, 2);
+      ctx.fillStyle='#3a1a0a';
+      ctx.fillRect(hatX -1, hatY+4, 14, 0.8);
+      // copa alta
+      ctx.fillStyle='#8b4513';
+      ctx.fillRect(hatX+2, hatY-2, 10, 5);
+      ctx.fillStyle='#5a2e0a';
+      ctx.fillRect(hatX+3, hatY+2, 8, 1);
+      ctx.fillStyle='#d2a679';
+      ctx.fillRect(hatX+3, hatY+1, 8, 0.7);
+      // brilho topo
+      ctx.fillStyle='rgba(255,255,255,0.22)';
+      ctx.fillRect(hatX+3, hatY-1, 3, 2);
+      // faixa dourada sutil
+      ctx.fillStyle='#3a1a0a';
+      ctx.fillRect(hatX+2, hatY+1, 10, 0.6);
+    }
     if (this.dashCooldown <= 0 && !this.isCharging && !this.isSwordCharging && !this.isRayMatematicoCharging) {
       ctx.fillStyle = 'rgba(0,217,255,0.9)';
       ctx.fillRect(x+8, y-6 + bob, 8, 3);
@@ -13387,17 +13996,22 @@ class XShooter {
   getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
 }
 
-// ===================== MACACO (NOVO INIMIGO COLORIDO) =====================
-class Macaco {
+// ===================== BORED APE NFT (BAYC) - REFERÊNCIA NFT (RENOMEADO DE MACACO) =====================
+// Nome NFT: Bored Ape Yacht Club (BAYC) - coleção NFT mais famosa de macacos
+// Macaco renomeado para Bored Ape para referência direta à NFT. Mantém compatibilidade total.
+class BoredApe {
   constructor(x, y, colorKey=null){
     this.x=x; this.y=y;
-    this.w=MACACO_SIZE; this.h=MACACO_SIZE;
-    this.hp=MACACO_HP; this.maxHp=MACACO_HP;
-    this.speed=MACACO_SPEED + randRange(-0.18,0.22);
+    this.w=BORED_APE_SIZE; this.h=BORED_APE_SIZE;
+    this.hp=BORED_APE_HP; this.maxHp=BORED_APE_HP;
+    this.speed=BORED_APE_SPEED + randRange(-0.18,0.22);
     this._baseSpeed=this.speed;
     this.hitFlash=0; this.dead=false; this.anim=Math.random()*1000;
-    this.type='macaco';
-    this.collisionDamage=MACACO_DAMAGE;
+    this.type='bored_ape'; // tipo NFT - referência BAYC
+    this.displayName='Bored Ape'; // nome visível referência NFT
+    this.nftName='Bored Ape NFT';
+    this.nftCollection='BAYC';
+    this.collisionDamage=BORED_APE_DAMAGE;
     this.variation=null;
     this.damageCooldown=0;
     this.slowTimer=0; this.slowFactor=1; this.stunTimer=0;
@@ -13436,11 +14050,11 @@ class Macaco {
     } else this.speed=this._baseSpeed;
     if(this.dead) return;
     const d=dist(this.x,this.y,player.x,player.y);
-    // Pulo ágil quando detecta jogador
+    // Pulo ágil quando detecta jogador (Bored Ape NFT - referência BAYC)
     if(this.isJumping){
       this.jumpTimer-=dt;
-      const nx=this.x + this.jumpDir.x*MACACO_JUMP_SPEED;
-      const ny=this.y + this.jumpDir.y*MACACO_JUMP_SPEED;
+      const nx=this.x + this.jumpDir.x*BORED_APE_JUMP_SPEED;
+      const ny=this.y + this.jumpDir.y*BORED_APE_JUMP_SPEED;
       let hitWall=false;
       if(this.collidesWalls(nx,this.y,walls)) hitWall=true; else this.x=nx;
       if(this.collidesWalls(this.x,ny,walls)) hitWall=true; else this.y=ny;
@@ -13449,7 +14063,7 @@ class Macaco {
       if(this.jumpTimer<=0 || hitWall){
         this.isJumping=false;
         this.jumpTimer=0;
-        this.jumpCooldown= MACACO_JUMP_COOLDOWN + randRange(-180,220);
+        this.jumpCooldown= BORED_APE_JUMP_COOLDOWN + randRange(-180,220);
       }
       return;
     }
@@ -13457,12 +14071,12 @@ class Macaco {
       this.jumpPrep-=dt;
       if(this.jumpPrep<=0){
         this.isJumping=true;
-        this.jumpTimer=MACACO_JUMP_DURATION;
+        this.jumpTimer=BORED_APE_JUMP_DURATION;
       }
       return;
     }
     if(this.jumpCooldown>0) this.jumpCooldown-=dt;
-    if(d < MACACO_DETECT_RADIUS && this.jumpCooldown<=0){
+    if(d < BORED_APE_DETECT_RADIUS && this.jumpCooldown<=0){
       // prepara pulo em direção ao jogador com leve jitter para não ser perfeito
       const dir=normalize(player.x - this.x + randRange(-12,12), player.y - this.y + randRange(-12,12));
       this.jumpDir=dir;
@@ -13470,9 +14084,9 @@ class Macaco {
       this.jumpCooldown=99999; // trava até pulo terminar
       return;
     }
-    // Wander / perseguição lenta quando não pula
+    // Wander / perseguição lenta quando não pula (BAYC)
     let moveX=0, moveY=0;
-    if(d < MACACO_DETECT_RADIUS*0.9){
+    if(d < BORED_APE_DETECT_RADIUS*0.9){
       const dir=normalize(player.x - this.x, player.y - this.y);
       moveX=dir.x*effSpeed*0.62;
       moveY=dir.y*effSpeed*0.62;
@@ -13514,7 +14128,7 @@ class Macaco {
       ctx.beginPath(); ctx.arc(this.x, this.y+bob, 6+p*4,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
     }
     ctx.fillStyle='rgba(0,0,0,0.30)'; ctx.fillRect(x+2, y+this.h-3, this.w, 3);
-    // corpo macaco: base é cor escolhida, variações modificam
+    // corpo Bored Ape NFT (BAYC): base é cor escolhida, variações modificam
     let base=this.color;
     if(this.variation==='tank') base='#2a5a9a';
     else if(this.variation==='brute') base='#7a1a10';
@@ -13534,9 +14148,9 @@ class Macaco {
     // olhos
     ctx.fillStyle='#1a0a00'; ctx.fillRect(x+8, y+4+bob, 3,3); ctx.fillRect(x+15, y+4+bob, 3,3);
     ctx.fillStyle='#fff'; ctx.fillRect(x+9, y+5+bob,1,1); ctx.fillRect(x+16, y+5+bob,1,1);
-    // boca macaco (sorriso)
+    // boca Bored Ape (sorriso BAYC característico)
     ctx.fillStyle='#7a2a1a'; ctx.fillRect(x+10, y+8+bob, 6,1.5);
-    // rabo enrolado atrás
+    // rabo enrolado atrás (BAYC ape tail)
     const tailX=x+this.w-2 + Math.sin(this.anim*0.018)*2.2;
     ctx.fillStyle=isFlash?'#fff': this.color;
     ctx.fillRect(tailX, y+12+bob, 4, 6);
@@ -13551,14 +14165,23 @@ class Macaco {
       ctx.fillStyle='rgba(0,0,0,0.70)'; ctx.fillRect(x, y-7+bob, this.w,4);
       ctx.fillStyle=pct>0.5?'#4ade80':pct>0.25?'#facc15':'#ef4444'; ctx.fillRect(x, y-7+bob, this.w*pct,4);
     }
-    // label cor
-    ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(x+ this.w/2 -12, y-12+bob, 24, 5);
-    ctx.fillStyle=this.color; ctx.font='4px monospace'; ctx.textAlign='center';
-    ctx.fillText(this.colorKey.toUpperCase(), this.x, y-8+bob); ctx.textAlign='left';
+    // label NFT BAYC + cor (referência NFT clara)
+    ctx.fillStyle='rgba(0,0,0,0.68)'; ctx.fillRect(x+ this.w/2 -18, y-14+bob, 36, 10);
+    ctx.fillStyle='#ffd700'; ctx.font='4px monospace'; ctx.textAlign='center';
+    ctx.fillText('BAYC', this.x, y-8+bob);
+    ctx.fillStyle=this.color; ctx.font='4px monospace';
+    ctx.fillText(this.colorKey.toUpperCase(), this.x, y-4+bob); ctx.textAlign='left';
+    // ícone NFT mini
+    ctx.fillStyle='rgba(255,215,0,0.92)'; ctx.font='5px monospace'; ctx.textAlign='center';
+    ctx.fillText('◆', this.x+12, y-10+bob); ctx.textAlign='left';
     drawVariationIcon(ctx,this,x,y,bob);
   }
   getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
 }
+// Compatibilidade: Macaco antigo aponta para BoredApe NFT (BAYC)
+const Macaco = BoredApe;
+const ApeNFT = BoredApe;
+const Ape_NFT = BoredApe;
 
 // ===================== SALA SETCH - NPC E MINIGAME COPINHOS =====================
 // Sala Setch: tamanho equivalente a 2 salas normais (arena grande sem pilares centrais), temática misteriosa.
@@ -13948,6 +14571,146 @@ class SetchNPC {
   getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
 }
 
+// ===================== INDIANA JONES NPC - CHICOTE 100% (SALA SETCH) =====================
+// Novo NPC na Sala Setch com visual Indiana Jones: fedora marrom, jaqueta couro, chicote no ombro.
+// Garante Chicote do Indiana 100% ao interagir com [E] quando próximo (requisito).
+// Itens raros mas pode aparecer em todas fases; aqui é garantido.
+class IndianaJonesNPC {
+  constructor(x,y){
+    this.x=x; this.y=y;
+    this.w=INDIANA_NPC_SIZE_W; this.h=INDIANA_NPC_SIZE_H;
+    this.anim=Math.random()*1000;
+    this.interactRange=CHICOTE_INTERACT_RANGE;
+    this.giftGiven=false; // para não dar infinito (mas 100% primeira vez)
+    this.wasNear=false;
+  }
+  update(dt,player){
+    this.anim+=dt;
+  }
+  isNear(player){
+    return dist(this.x,this.y,player.x,player.y) < this.interactRange;
+  }
+  // Tenta dar o Chicote: 100% sucesso se ainda não deu
+  tryGiveGift(player, game, room){
+    if(this.giftGiven) return {ok:false, reason:'already_given'};
+    // Cria arma Chicote e equipa como secundária (ou primária se não tem)
+    const gave = player.setSecondaryWeapon('chicote');
+    // Mesmo se falhou por lock de personagem (ex: JG/Kinight lock), ainda dá chapéu + item no chão
+    if(gave){
+      player.weapon = player.secondaryWeapon;
+    } else {
+      // Se lock impediu equipar, dropa item no chão perto do NPC como fallback
+      if(game && game.currentRoom){
+        const it=new WeaponItem(this.x+18, this.y+12, 'chicote');
+        it.spawnDelay=0;
+        game.currentRoom.items.push(it);
+      }
+    }
+    // Chapéu de couro garantido
+    if(!player.hasIndianaHat) player.enableIndianaHat();
+    this.giftGiven=true;
+    if(room) room.indianaGiftGiven=true;
+    // Efeitos
+    if(game){
+      game.shake=Math.max(game.shake||0, 80);
+      for(let k=0;k<18;k++) game.particles.push(new Particle(this.x,this.y, randRange(-1.6,1.6), randRange(-1.6,0.6), 380, '#8b4513', 2.4));
+      for(let k=0;k<10;k++) game.particles.push(new Particle(this.x,this.y, randRange(-1,1), randRange(-1,0.6), 300, 'rgba(180,220,255,0.85)', 1.8));
+      if(game.currentRoom) game.currentRoom.explosions.push({x:this.x,y:this.y,radius:12,life:360,max:360,isChicoteGift:true});
+      if(game.showToast) game.showToast('🤠 Indiana: Tome meu Chicote! Puxe paredes e cause explosão!', 2600);
+    }
+    return {ok:true, weapon:'chicote'};
+  }
+  draw(ctx){
+    const x=this.x-this.w/2, y=this.y-this.h/2, bob=Math.sin(this.anim*0.008)*1.4;
+    // sombra
+    ctx.fillStyle='rgba(0,0,0,0.30)'; ctx.fillRect(x+2, y+this.h-3, this.w, 4);
+    // aura aventureiro (areia/deserto)
+    const pulse=0.5+Math.sin(this.anim*0.011)*0.28;
+    ctx.fillStyle=`rgba(210,166,121,${0.13+pulse*0.07})`;
+    ctx.beginPath(); ctx.arc(this.x, this.y+bob, this.w*0.92+pulse*3,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle=`rgba(139,69,19,${0.22+pulse*0.10})`; ctx.lineWidth=1.1; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.arc(this.x, this.y+bob, this.w*0.88,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+    // pernas - calça cáqui Indiana
+    ctx.fillStyle='#8b7355'; ctx.fillRect(x+4, y+16+bob, 6, 6);
+    ctx.fillRect(x+18, y+16+bob, 6, 6);
+    ctx.fillStyle='#6b5a3a'; ctx.fillRect(x+4, y+18+bob, 6,1);
+    ctx.fillRect(x+18, y+18+bob, 6,1);
+    ctx.fillStyle='#3a2a0a'; ctx.fillRect(x+5, y+20+bob, 6,1.5);
+    ctx.fillRect(x+18, y+20+bob, 6,1.5);
+    // botas
+    ctx.fillStyle='#2a1a0a'; ctx.fillRect(x+3, y+21+bob, 8,2);
+    ctx.fillRect(x+17, y+21+bob, 8,2);
+    // jaqueta couro marrom Indiana
+    ctx.fillStyle='#5b3511'; ctx.fillRect(x+3, y+9+bob, this.w-6, 10);
+    ctx.fillStyle='#8b4513'; ctx.fillRect(x+3, y+9+bob, this.w-6, 2);
+    ctx.fillStyle='#a0522d'; ctx.fillRect(x+4, y+10+bob, this.w-8, 1);
+    // bolsos jaqueta
+    ctx.fillStyle='#6b3a1a'; ctx.fillRect(x+5, y+13+bob, 4,3);
+    ctx.fillRect(x+19, y+13+bob, 4,3);
+    ctx.fillStyle='#d2a679'; ctx.fillRect(x+6, y+14+bob, 2,0.8);
+    ctx.fillRect(x+20, y+14+bob, 2,0.8);
+    // cinto com fivela
+    ctx.fillStyle='#3a1a0a'; ctx.fillRect(x+4, y+16+bob, this.w-8, 2);
+    ctx.fillStyle='#d2a679'; ctx.fillRect(x+12, y+16+bob, 4,2);
+    ctx.fillStyle='#8b4513'; ctx.fillRect(x+13, y+16.5+bob, 2,1);
+    // braços
+    ctx.fillStyle='#5b3511'; ctx.fillRect(x+1, y+10+bob, 4,7);
+    ctx.fillRect(x+this.w-5, y+10+bob, 4,7);
+    ctx.fillStyle='#d9b99b'; ctx.fillRect(x+1, y+15+bob, 4,3);
+    ctx.fillRect(x+this.w-5, y+15+bob, 4,3);
+    // chicote enrolado no ombro (detalhe)
+    ctx.strokeStyle='#3a1a0a'; ctx.lineWidth=2.2;
+    ctx.beginPath(); ctx.arc(this.x+8, y+11+bob, 6, -0.2, 2.1); ctx.stroke();
+    ctx.strokeStyle='#8b4513'; ctx.lineWidth=1.4;
+    ctx.beginPath(); ctx.arc(this.x+8, y+11+bob, 6, -0.2, 2.1); ctx.stroke();
+    ctx.fillStyle='#1a0a00'; ctx.fillRect(this.x+12, y+14+bob, 3,1);
+    // cabeça
+    ctx.fillStyle='#e8c9a0'; ctx.fillRect(x+5, y+2+bob, this.w-10, 10);
+    // cabelo levemente à mostra sob chapéu
+    ctx.fillStyle='#2a1a0a'; ctx.fillRect(x+6, y+4+bob, this.w-12, 2);
+    // chapéu Fedora marrom Indiana - icônico
+    ctx.fillStyle='#6b3a11'; ctx.fillRect(x+2, y-1+bob, this.w-4, 4); // aba
+    ctx.fillStyle='#3a1a0a'; ctx.fillRect(x+2, y+1+bob, this.w-4, 1); // faixa
+    ctx.fillStyle='#8b4513'; ctx.fillRect(x+6, y-5+bob, this.w-12, 6); // copa
+    ctx.fillStyle='#3a1a0a'; ctx.fillRect(x+8, y-1+bob, this.w-16, 1); // vinco
+    ctx.fillStyle='#d2a679'; ctx.fillRect(x+7, y-2+bob, this.w-14, 0.8); // brilho
+    // sombra aba sobre rosto
+    ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.fillRect(x+5, y+2+bob, this.w-10, 2);
+    // olhos aventureiro (determinado)
+    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+8, y+6+bob, 3,2.5);
+    ctx.fillRect(x+17, y+6+bob, 3,2.5);
+    ctx.fillStyle='#3a1a0a'; ctx.fillRect(x+8, y+7.5+bob, 3,0.6);
+    ctx.fillRect(x+17, y+7.5+bob, 3,0.6);
+    ctx.fillStyle='#fff'; ctx.fillRect(x+9, y+6.5+bob, 1,1);
+    ctx.fillRect(x+18, y+6.5+bob, 1,1);
+    // sorriso confiante + bigode leve?
+    ctx.fillStyle='#7a4a3a'; ctx.fillRect(x+11, y+10+bob, 6,1);
+    ctx.fillStyle='#5a2a1a'; ctx.fillRect(x+12, y+11+bob, 4,0.7);
+    // cicatriz leve queixo (aventureiro)
+    ctx.fillStyle='#b09070'; ctx.fillRect(x+9, y+11+bob, 2,0.8);
+    // nome tag
+    ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(this.x-26, y-12+bob, 52, 8);
+    ctx.fillStyle='#d2a679'; ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
+    ctx.fillText('INDIANA', this.x, y-6+bob); ctx.textAlign='left';
+    // hint chicote 100%
+    if(!this.giftGiven){
+      ctx.fillStyle='rgba(210,166,121,0.96)'; ctx.font='5px monospace'; ctx.textAlign='center';
+      ctx.fillText('[E] CHICOTE 100%', this.x, y-16+bob); ctx.textAlign='left';
+      if(Math.floor(this.anim/500)%2===0){
+        ctx.fillStyle='rgba(255,255,255,0.88)'; ctx.font='6px monospace'; ctx.textAlign='center';
+        ctx.fillText('▼', this.x, y-8+bob); ctx.textAlign='left';
+      }
+      // brilho gift aguardando
+      ctx.strokeStyle=`rgba(210,166,121,${0.38+pulse*0.18})`; ctx.lineWidth=1.4; ctx.setLineDash([3,3]);
+      ctx.strokeRect(x-2, y-4+bob, this.w+4, this.h+6); ctx.setLineDash([]);
+    } else {
+      ctx.fillStyle='rgba(74,222,128,0.9)'; ctx.font='5px monospace'; ctx.textAlign='center';
+      ctx.fillText('OBRIGADO!', this.x, y-16+bob); ctx.textAlign='left';
+    }
+  }
+  getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
+}
+
 // ===================== ROOM =====================
 class Room {
   constructor(gx, gy, doors, isStart = false, seedRand, floor = 1) {
@@ -13996,6 +14759,8 @@ class Room {
     this.setchCleared = false; // venceu e ganhou recompensa
     this.npc = null; // SetchNPC
     this.cupGame = null; // SetchCupGame
+    this.indianaNPC = null; // Indiana Jones NPC (Chicote 100%)
+    this.indianaGiftGiven = false; // garante 100% Chicote
     this.rareItemCollected = false;
     this.buildWalls(seedRand);
     if (!isStart) {
@@ -14078,63 +14843,57 @@ class Room {
         for (const w of this.walls) if (rectCollide(x-14,y-14,28,28,w.x,w.y,w.w,w.h)) { onWall=true; break; }
         if (!onWall && dist(x,y,cx,cy) > 100) break;
       } while (tries<20);
-      let e;
-      if(this.floor===4){
-        // Fase 4: inclui Macaco 13%
-        const roll = rng();
-        const hasSummoner = this.enemies.some(en=>en.type==='summoner');
-        if(!hasSummoner && roll < 0.12) e = new Summoner(x,y);
-        else if(roll < 0.26) e = new XShooter(x,y);
-        else if(roll < 0.39) e = new Macaco(x,y); // 13%
-        else if(roll < 0.53) e = new DashEnemy(x,y);
-        else if(roll < 0.67) e = new Kamikaze(x,y);
-        else if(roll < 0.79) e = new Fugitive(x,y);
-        else e = new Chaser(x,y);
-      } else if(this.floor===3){
-        // Fase 3: inclui Macaco 12%
-        const roll = rng();
-        const hasSummoner = this.enemies.some(en=>en.type==='summoner');
-        if(!hasSummoner && roll < 0.20) e = new Summoner(x,y);
-        else if(roll < 0.36) e = new XShooter(x,y);
-        else if(roll < 0.48) e = new Macaco(x,y); // 12%
-        else if(roll < 0.68) e = new Kamikaze(x,y);
-        else if(roll < 0.84) e = new Fugitive(x,y);
-        else e = new Chaser(x,y);
-      } else if(this.floor===2){
-        const roll = rng();
-        if(roll < 0.22) e = new XShooter(x,y);
-        else if(roll < 0.34) e = new Macaco(x,y); // 12% já na fase 2
-        else if(roll < 0.58) e = new Fugitive(x,y);
-        else e = new Chaser(x,y);
-      } else if(this.floor===5){
-        // Fase 5 corredores (antes da escada) - também com X-Shooter + Macaco colorido
-        const roll = rng();
-        const hasSummoner = this.enemies.some(en=>en.type==='summoner');
-        if(!hasSummoner && roll < 0.10) e = new Summoner(x,y);
-        else if(roll < 0.24) e = new XShooter(x,y);
-        else if(roll < 0.38) e = new Macaco(x,y); // Macaco 14%
-        else if(roll < 0.52) e = new DashEnemy(x,y);
-        else if(roll < 0.68) e = new Kamikaze(x,y);
-        else if(roll < 0.82) e = new Fugitive(x,y);
-        else e = new Chaser(x,y);
-      } else if(this.floor===6){
-        // Fase 6 Mineradora de Coins - Macaco mais frequente + todos os tipos mineradora
-        const roll = rng();
-        const hasSummoner = this.enemies.some(en=>en.type==='summoner');
-        if(!hasSummoner && roll < 0.09) e = new Summoner(x,y);
-        else if(roll < 0.22) e = new Macaco(x,y); // 13% Macaco (destaque)
-        else if(roll < 0.34) e = new XShooter(x,y);
-        else if(roll < 0.46) e = new DashEnemy(x,y);
-        else if(roll < 0.62) e = new Kamikaze(x,y);
-        else if(roll < 0.78) e = new Fugitive(x,y);
-        else e = new Chaser(x,y);
-      } else {
-        // Fase 1 - Macaco pode aparecer raramente até na fase 1 (8%)
-        const rMac = rng();
-        if(rMac < 0.08) e = new Macaco(x,y);
-        else if (rng() < 0.18) e = new Fugitive(x,y);
-        else e = new Chaser(x,y);
-      }
+       let e;
+       if(this.floor===4){
+         // Fase 4: Bored Ape NFT removido (só Fase 6) - redistribuído para outros inimigos
+         const roll = rng();
+         const hasSummoner = this.enemies.some(en=>en.type==='summoner');
+         if(!hasSummoner && roll < 0.12) e = new Summoner(x,y);
+         else if(roll < 0.30) e = new XShooter(x,y); // 18% (absorveu 13% do Ape)
+         else if(roll < 0.53) e = new DashEnemy(x,y); // 23%
+         else if(roll < 0.67) e = new Kamikaze(x,y);
+         else if(roll < 0.79) e = new Fugitive(x,y);
+         else e = new Chaser(x,y);
+       } else if(this.floor===3){
+         // Fase 3: Bored Ape NFT removido (só Fase 6)
+         const roll = rng();
+         const hasSummoner = this.enemies.some(en=>en.type==='summoner');
+         if(!hasSummoner && roll < 0.20) e = new Summoner(x,y);
+         else if(roll < 0.38) e = new XShooter(x,y); // 18% (absorveu 12% do Ape)
+         else if(roll < 0.60) e = new Kamikaze(x,y); // 22%
+         else if(roll < 0.84) e = new Fugitive(x,y);
+         else e = new Chaser(x,y);
+       } else if(this.floor===2){
+         const roll = rng();
+         if(roll < 0.26) e = new XShooter(x,y); // 26% (absorveu 12% do Ape)
+         else if(roll < 0.58) e = new Fugitive(x,y);
+         else e = new Chaser(x,y);
+       } else if(this.floor===5){
+         // Fase 5: Bored Ape NFT removido (só Fase 6)
+         const roll = rng();
+         const hasSummoner = this.enemies.some(en=>en.type==='summoner');
+         if(!hasSummoner && roll < 0.10) e = new Summoner(x,y);
+         else if(roll < 0.28) e = new XShooter(x,y); // 18% (absorveu 14% do Ape)
+         else if(roll < 0.52) e = new DashEnemy(x,y);
+         else if(roll < 0.68) e = new Kamikaze(x,y);
+         else if(roll < 0.82) e = new Fugitive(x,y);
+         else e = new Chaser(x,y);
+       } else if(this.floor===6){
+         // Fase 6 Mineradora de Coins - ÚNICA fase com Bored Ape NFT (BAYC destaque) - requisito
+         const roll = rng();
+         const hasSummoner = this.enemies.some(en=>en.type==='summoner');
+         if(!hasSummoner && roll < 0.09) e = new Summoner(x,y);
+         else if(roll < 0.24) e = new BoredApe(x,y); // 15% Bored Ape NFT (BAYC destaque - levemente aumentado, só aqui)
+         else if(roll < 0.36) e = new XShooter(x,y);
+         else if(roll < 0.48) e = new DashEnemy(x,y);
+         else if(roll < 0.64) e = new Kamikaze(x,y);
+         else if(roll < 0.80) e = new Fugitive(x,y);
+         else e = new Chaser(x,y);
+       } else {
+         // Fase 1 - Sem Bored Ape (só Fase 6) - requisito
+         if (rng() < 0.18) e = new Fugitive(x,y);
+         else e = new Chaser(x,y);
+       }
       if (rng() < 0.22) { e.hp = (e.maxHp||2)+1; e.maxHp = e.hp; }
       if (this.floor===2 && e.type==='chaser' && rng()<0.25) e.speed += 0.25;
       if (this.floor===3 && e.type==='chaser' && rng()<0.30) e.speed += 0.35;
@@ -14282,7 +15041,7 @@ class Room {
         tryPlace(it);
       }
     }
-    // ===== LASER - nova arma carregável com timing (média-rara) =====
+     // ===== LASER - nova arma carregável com timing (média-rara) =====
     // Spawn balanceado: 3.8% normal, 7.5% treasure - média-rara para testar mecânica sem flood
     const laserChance = this.type==='treasure' ? 0.075 : 0.038;
     if(rng() < laserChance && !this.isRare && !this.isMiniboss && !this.isBossStair && !this.isHacker && !this.isPartyHorde && this.items.length < 4){
@@ -14292,6 +15051,17 @@ class Room {
         tryPlace(it);
       }
     }
+     // ===== CHICOTE DO INDIANA - RARO mas aparece em todas fases (requisito) =====
+     // Pode aparecer em qualquer fase (1-6), mas raro: 2.5% normal / 5.5% tesouro (balanceado)
+     // Na Sala Setch é garantido 100% via Indiana NPC, então este spawn é para o resto do mapa
+     const chicoteChance = this.type==='treasure' ? CHICOTE_SPAWN_TREASURE : CHICOTE_SPAWN_CHANCE;
+     if(rng() < chicoteChance && !this.isRare && !this.isMiniboss && !this.isBossStair && !this.isHacker && !this.isPartyHorde && !this.isSetch && this.items.length < 4){
+       if(!this.items.some(it=> it.isChicote)){
+         const it=new WeaponItem(randRange(140, CANVAS_W-140), randRange(100, CANVAS_H-100), 'chicote');
+         it.spawnDelay=200;
+         tryPlace(it);
+       }
+     }
     // ===== ITENS ESPECIAIS (E) - Sistema modular =====
     // Chance balanceada: ~5% por sala normal, 10% em treasure, inclui Flecha Stand incomum + Power Star raro
     // Flecha Stand é incomum: aparece com boa frequência para testar, mas não toda sala
@@ -14689,6 +15459,9 @@ class Room {
     this.npc = new SetchNPC(CANVAS_W/2, CANVAS_H/2 - 62);
     // Cria minigame de copos
     this.cupGame = new SetchCupGame(this);
+    // NPC Indiana Jones - garante Chicote 100% (requisito) na Sala Setch - visual Indiana Jones
+    this.indianaNPC = new IndianaJonesNPC(CANVAS_W/2 + 168, CANVAS_H/2 - 28);
+    this.indianaGiftGiven = false;
     // Marca sala como ainda não limpa (precisa vencer minigame para considerar limpa)
     return true;
   }
@@ -14860,8 +15633,8 @@ class Room {
       return this.partyHordeDefeated && this.enemies.length === 0;
     }
     if(this.isSetch){
-      // Sala Setch: limpa apenas após vencer o minigame (ou se já recompensado)
-      return this.setchCleared || this.setchRewardGiven;
+      // Sala Setch: limpa após vencer minigame OU receber Chicote do Indiana (100% garantido)
+      return this.setchCleared || this.setchRewardGiven || this.indianaGiftGiven;
     }
     return this.enemies.length === 0;
   }
@@ -14903,10 +15676,11 @@ class Room {
       }
       if(this._partyNextWaveFlash>0) this._partyNextWaveFlash-=dt;
     }
-    // ===================== SETCH - NPC e copos =====================
+    // ===================== SETCH - NPC e copos + INDIANA =====================
     if(this.isSetch){
       if(this.npc) this.npc.update(dt, player);
       if(this.cupGame) this.cupGame.update(dt);
+      if(this.indianaNPC) this.indianaNPC.update(dt, player);
     }
     // atualiza spikes (anim)
     for(const s of this.spikes) s.update(dt);
@@ -14970,7 +15744,7 @@ class Room {
       else if (e.type==='summoner') e.update(dt, player, this.walls, pendingSummons, this.enemies);
       else if (e.type==='miniboss') e.update(dt, player, this.walls, enemyBulletsOut, pendingSummons, this.enemies, globalParticles);
       else if (e.type==='dash') e.update(dt, player, this.walls);
-      else if (e.type==='macaco') e.update(dt, player, this.walls);
+      else if (e.type==='macaco' || e.type==='bored_ape' || e.type==='ape_nft') e.update(dt, player, this.walls);
       else e.update(dt, player, this.walls);
     }
     // Motosserra sangramento: aplica DoT serragem
@@ -16204,18 +16978,24 @@ class Room {
       ctx.fillRect(CANVAS_W/2 - 150, CANVAS_H/2 - 30, 300, 80);
       ctx.strokeStyle='rgba(168,85,247,0.12)'; ctx.lineWidth=1; ctx.setLineDash([6,4]);
       ctx.strokeRect(CANVAS_W/2 - 150, CANVAS_H/2 - 30, 300, 80); ctx.setLineDash([]);
-      // Desenha NPC e copos (se existem)
+      // Desenha NPC e copos + Indiana (se existem)
       if(this.npc) this.npc.draw(ctx);
       if(this.cupGame) this.cupGame.draw(ctx);
-      // Hint se não venceu e está perto
+      if(this.indianaNPC) this.indianaNPC.draw(ctx);
+      // Hint se não venceu e está perto - mostra ambos NPCs
       if(!this.setchCleared && this.npc && this.cupGame && this.cupGame.state==='idle'){
-        ctx.fillStyle='rgba(0,0,0,0.62)'; ctx.fillRect(CANVAS_W/2 - 92, CANVAS_H/2 + 100, 184, 14);
-        ctx.fillStyle='#ffd700'; ctx.font='6px monospace'; ctx.textAlign='center';
-        ctx.fillText('[E] CONVERSE COM SETCH', CANVAS_W/2, CANVAS_H/2 + 109); ctx.textAlign='left';
+        ctx.fillStyle='rgba(0,0,0,0.62)'; ctx.fillRect(CANVAS_W/2 - 112, CANVAS_H/2 + 100, 224, 14);
+        ctx.fillStyle='#ffd700'; ctx.font='5px monospace'; ctx.textAlign='center';
+        ctx.fillText('[E] SETCH COPINHOS | [E] INDIANA CHICOTE 100%', CANVAS_W/2, CANVAS_H/2 + 109); ctx.textAlign='left';
       }
-      if(this.setchCleared){
+      if(this.indianaNPC && !this.indianaGiftGiven){
+        ctx.fillStyle='rgba(210,166,121,0.92)'; ctx.font='5px monospace'; ctx.textAlign='center';
+        ctx.fillText('▼ INDIANA: CHICOTE 100% [E] ▼', this.indianaNPC.x, this.indianaNPC.y - 20); ctx.textAlign='left';
+      }
+      if(this.setchCleared || this.indianaGiftGiven){
         ctx.fillStyle='rgba(74,222,128,0.88)'; ctx.font='6px monospace'; ctx.textAlign='center';
-        ctx.fillText('✓ JOGO VENCIDO • PORTAS LIBERADAS', CANVAS_W/2, CANVAS_H-12); ctx.textAlign='left';
+        const txt = this.setchCleared && this.indianaGiftGiven ? '✓ SETCH & INDIANA COMPLETOS • PORTAS LIBERADAS' : this.setchCleared ? '✓ JOGO VENCIDO • PORTAS LIBERADAS' : '✓ CHICOTE ADQUIRIDO • PORTAS LIBERADAS';
+        ctx.fillText(txt, CANVAS_W/2, CANVAS_H-12); ctx.textAlign='left';
       }
     }
 
@@ -16249,6 +17029,9 @@ class Room {
       else if(ex.isMinibossDeath) targetR=80;
       else if(ex.isLaserPerfect) targetR=26;
       else if(ex.isLaserHoming) targetR=20;
+      else if(ex.isChicoteExplosion) targetR=CHICOTE_EXPLOSION_RADIUS;
+      else if(ex.isChicoteGift) targetR=36;
+      else if(ex.isChicoteHat) targetR=30;
       const r = 14 + (1-alpha)* (targetR - 14);
       if(ex.isFlameSword){
         ctx.strokeStyle=`rgba(255,90,0,${alpha*0.60})`;
@@ -16632,6 +17415,46 @@ class Room {
           ctx.fillStyle=`rgba(255,255,255,${alpha*0.72})`; ctx.font='7px monospace'; ctx.textAlign='center';
           ctx.fillText('◉', ex.x, ex.y+2); ctx.textAlign='left';
         }
+      } else if(ex.isChicoteExplosion){
+        // Chicote explosão marrom/vento - área que empurra e atordoa 1.5s
+        ctx.strokeStyle=`rgba(139,69,19,${alpha*0.62})`;
+        ctx.lineWidth=4;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle=`rgba(139,69,19,${alpha*0.16})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle=`rgba(210,166,121,${alpha*0.28})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.55,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle=`rgba(180,220,255,${alpha*0.32})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.32,0,Math.PI*2); ctx.fill();
+        if(alpha>0.45){
+          ctx.strokeStyle=`rgba(255,255,255,${alpha*0.45})`;
+          ctx.lineWidth=1.2; ctx.setLineDash([4,3]);
+          ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.75,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+          ctx.fillStyle=`rgba(210,166,121,${alpha*0.92})`; ctx.font='8px monospace'; ctx.textAlign='center';
+          ctx.fillText('💨', ex.x, ex.y+3); ctx.textAlign='left';
+        }
+      } else if(ex.isChicoteGift){
+        ctx.strokeStyle=`rgba(210,166,121,${alpha*0.62})`;
+        ctx.lineWidth=3.5;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle=`rgba(139,69,19,${alpha*0.18})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle=`rgba(255,228,180,${alpha*0.36})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.55,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle=`rgba(255,255,255,${alpha*0.55})`;
+        ctx.font='9px monospace'; ctx.textAlign='center';
+        ctx.fillText('🤠', ex.x, ex.y+3); ctx.textAlign='left';
+      } else if(ex.isChicoteHat){
+        ctx.strokeStyle=`rgba(139,69,19,${alpha*0.60})`;
+        ctx.lineWidth=3;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle=`rgba(210,166,121,${alpha*0.18})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle=`rgba(255,255,255,${alpha*0.42})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.45,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle=`rgba(139,69,19,${alpha*0.92})`;
+        ctx.font='8px monospace'; ctx.textAlign='center';
+        ctx.fillText('🎩', ex.x, ex.y+3); ctx.textAlign='left';
       } else {
         // kamikaze padrão (variação brutal/elite = mais vermelho/intenso)
         const isBruteKamikaze = ex.isKamikazeVariation==='brute' || ex.isKamikazeVariation==='elite';
@@ -17096,6 +17919,7 @@ class Game {
     this.fists = []; // punhos foguete ativos
     this.bastaoProjectiles = []; // JG - bastões arremessados (sem duplicação, máximo 1 ativo)
     this.lazerBeams = []; // LAZER CODIFICADO - feixes Brimstone retangulares ondulados
+    this.chicoteWhips = []; // CHICOTE DO INDIANA - chicotes ativos (grapple parede)
     this.particles = [];
     this.allies = []; // aliados Stand da Flecha (temporários)
     this.gatoAntivirus = []; // Gato Antivírus azul (companheiro incomum persistente)
@@ -17599,7 +18423,7 @@ class Game {
     this.totalEnemiesDefeated = 0;
     // reset completo do jogador (armas, passivos, melhorias) - Bone Heart: reseta recipientes cinza
     // Inclui suporte a BASTAO no weaponUpgrades modular
-    this.player.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], RAIO_MATEMATICO:[], LASER:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], ALL:[], SPECIAL:[] };
+    this.player.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], RAIO_MATEMATICO:[], LASER:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], CHICOTE:[], ALL:[], SPECIAL:[] };
     this.player.obtainedUpgrades = new Set();
     this.player.upgradeLevels = new Map();
     // Aplica personagem de forma modular (não duplica lógica, prepara para novos)
@@ -17631,34 +18455,31 @@ class Game {
     this.player.swordGuardianActive=false; this.player.swordGuardianCharges=0; this.player.swordGuardianTimer=0;
     this.player.motosserraCharge=0; this.player.motosserraChargeMax=MOTOSSERRA_CHARGE_MAX; this.player.motosserraIdleTimer=0;
     this.player.activeFist=null; this.player.activeFists=[]; this.player.meleeAnim=0;
+    // CHICOTE - reseta puxão e chapeu no novo jogo
+    this.player.hasIndianaHat=false;
+    this.player.isChicotePulling=false; this.player.chicoteTarget=null; this.player.chicoteWhipRef=null;
     // JG bastão já aplicado via applyCharacterToPlayer, mas garante hasBastao true no início
     if(this.player.characterId==='jg'){
       this.player.hasBastao=true;
       this.player.bastaoProjectile=null;
       this.player.isBastaoCharging=false;
     }
-    this.bullets=[]; this.meleeSwings=[]; this.fists=[]; this.bastaoProjectiles=[]; this.lazerBeams=[]; this.particles=[]; this.allies=[]; this.gatoAntivirus=[]; this.oliPieces=[]; this.oliPawns=[];
+    this.bullets=[]; this.meleeSwings=[]; this.fists=[]; this.bastaoProjectiles=[]; this.lazerBeams=[]; this.chicoteWhips=[]; this.particles=[]; this.allies=[]; this.gatoAntivirus=[]; this.oliPieces=[]; this.oliPawns=[];
     this.player.didDashThisFrame = false;
     this._lastHp = undefined; this._lastWeapon = undefined; this._lastDoubleShot = undefined;
     this._hasFlameNotified = false;
     this._lastUpgradeCount = 0;
     this._lastUpgradeLevels = new Map();
-    // Itens especiais: preserva equipado do personagem (JL = Farmar Aura 67). Não limpa se já veio do applyCharacter
-    // Para JG/Kinight já está null via applyCharacter, para JL mantém. Evita duplicação e mantém exclusivo
-    if(this.player.characterId==='jl' && !this.player.equippedSpecial){
-      const sp=createSpecialItem('farmar_aura');
-      if(sp) this.player.equipSpecial(sp);
-    } else if(this.player.characterId!=='jl' && this.player.equippedSpecial && this.player.equippedSpecial.id==='farmar_aura'){
-      // Se não é JL mas tem farmar_aura (ex debug), limpa para manter exclusivo
-      this.player.equippedSpecial=null;
-    }
-    if(this.player.characterId==='oli' && !this.player.equippedSpecial){
-      const sp=createSpecialItem('oli_xadrez');
-      if(sp) this.player.equipSpecial(sp);
-    } else if(this.player.characterId!=='oli' && this.player.equippedSpecial && this.player.equippedSpecial.id==='oli_xadrez'){
-      this.player.equippedSpecial=null;
-    }
-    // Reseta flags de escudo/power mas mantém equipado
+    // Fix bug: item especial da partida anterior persistia (ex: neutro com Espada Flamejante iniciava nova partida com ela)
+    // Agora applyCharacterToPlayer já garante starterSpecial correto (ou null). Este bloco apenas garante reset de flags
+    // que poderiam vazar da partida anterior (ex: farmarAura ativa, luva carregada, cooldown reduction)
+    this.player.specialCooldownReduction = 0;
+    this.player.farmarAuraActive = false;
+    this.player.farmarAuraRadius = FARMAR_AURA_RADIUS;
+    this.player.luvaCharge = 0;
+    this.player.luvaIsCharging = false;
+    this.player.luvaPunchCooldown = 0;
+    // Reseta flags de escudo/power mas mantém equipado (já correto via applyCharacter)
     this.player.shieldActive = false;
     this.player.shieldReduction = 0;
     this.player.shieldCharges = 0;
@@ -17713,7 +18534,7 @@ class Game {
     if(this.player.isCharging) this.player.cancelCharge();
     if(this.player.isSwordCharging) this.player.cancelSwordCharge();
     this.bullets = [];
-    this.bastaoProjectiles=[]; this.meleeSwings=[]; this.fists=[]; this.lazerBeams=[];
+    this.bastaoProjectiles=[]; this.meleeSwings=[]; this.fists=[]; this.lazerBeams=[]; this.chicoteWhips=[];
     this.particles = [];
     this.allies = []; this.gatoAntivirus=[]; this.oliPieces = []; this.oliPawns = []; // aliados, gato e xadrez são por andar, limpa ao trocar de andar (gato respawnará se passiva ativa)
     // Corrige bug da luva presa ao trocar de andar: limpa estado completo
@@ -17769,7 +18590,7 @@ class Game {
       this.roomsExplored++;
       this.player.x=CANVAS_W/2; this.player.y=CANVAS_H/2+40;
       this.player.vx=0; this.player.vy=0;
-      this.bullets=[]; this.meleeSwings=[]; this.fists=[]; this.bastaoProjectiles=[]; this.lazerBeams=[]; this.particles=[];
+      this.bullets=[]; this.meleeSwings=[]; this.fists=[]; this.bastaoProjectiles=[]; this.lazerBeams=[]; this.chicoteWhips=[]; this.particles=[];
       this.transitionCooldown=600;
       this._hackerTransition=false;
       this.showToast('◉ HACKER: Fui eu que contaminei seu código com o Dark Vírus! ◉', 2600);
@@ -18051,15 +18872,43 @@ class Game {
   trySetchInteraction(){
     if(!this.isInSetchRoom()) return false;
     const room=this.currentRoom;
-    if(!room.npc || !room.cupGame) return false;
-    if(room.setchCleared) return false; // já venceu, não precisa mais jogar
+    // Prioridade Indiana Jones - Chicote 100% garantido (requisito)
+    if(room.indianaNPC && !room.indianaGiftGiven && !room.indianaNPC.giftGiven){
+      const nearIndiana = dist(this.player.x, this.player.y, room.indianaNPC.x, room.indianaNPC.y) < CHICOTE_INTERACT_RANGE;
+      if(nearIndiana){
+        room.indianaNPC.tryGiveGift(this.player, this, room);
+        return true;
+      }
+    }
+    if(!room.npc || !room.cupGame) {
+      // Se só tem Indiana e ainda não deu gift, dá hint
+      if(room.indianaNPC && !room.indianaGiftGiven){
+        const nearInd2 = dist(this.player.x, this.player.y, room.indianaNPC.x, room.indianaNPC.y) < CHICOTE_INTERACT_RANGE + 18;
+        if(nearInd2) this.showToast('Indiana: Aproxime-se e pressione [E] para ganhar o Chicote! 100%', 1400);
+        else this.showToast('Aproxime-se de Indiana [E] CHICOTE 100% ou Setch [E] COPINHOS', 1400);
+        return true;
+      }
+      return false;
+    }
+    if(room.setchCleared) {
+      // Mesmo com Setch vencido, ainda permite pegar Chicote do Indiana se não pegou
+      if(room.indianaNPC && !room.indianaGiftGiven && !room.indianaNPC.giftGiven){
+        const nearIndiana3 = dist(this.player.x, this.player.y, room.indianaNPC.x, room.indianaNPC.y) < CHICOTE_INTERACT_RANGE;
+        if(nearIndiana3){
+          room.indianaNPC.tryGiveGift(this.player, this, room);
+          return true;
+        }
+      }
+      return false; // já venceu, não precisa mais jogar
+    }
     const cg=room.cupGame;
     const npc=room.npc;
     const nearNPC = dist(this.player.x, this.player.y, npc.x, npc.y) < SETCH_INTERACT_RANGE + 18;
     // Estado idle: E perto do NPC inicia o jogo
     if(cg.state==='idle'){
       if(!nearNPC) {
-        this.showToast('Chegue mais perto de Setch para jogar [E]', 1100);
+        if(room.indianaNPC && !room.indianaGiftGiven) this.showToast('Aproxime-se: Setch [E] COPINHOS ou Indiana [E] CHICOTE 100%', 1100);
+        else this.showToast('Chegue mais perto de Setch para jogar [E]', 1100);
         return true; // consome E para não ativar especial por engano
       }
       cg.start();
@@ -18241,6 +19090,7 @@ class Game {
     else if(nl==='bastao') wKey='BASTAO';
     else if(nl==='motosserra') wKey='MOTOSSERRA';
     else if(nl==='laser') wKey='LASER';
+    else if(nl==='chicote' || nl==='chicote_do_indiana') wKey='CHICOTE';
     else if(nl==='raio_matematico') wKey='RAIO_MATEMATICO';
     else wKey='NORMAL';
     // Bloqueio modular por personagem já filtrado em findNearbyWeapon, mas reforça aqui
@@ -18255,6 +19105,7 @@ class Game {
       }
     }
     newWeapon = this.player.createWeaponWithUpgrades(wKey);
+    if(wKey==='CHICOTE' && !this.player.hasIndianaHat) this.player.enableIndianaHat();
     // Ash: motosserra nunca pode ser desequipada, [E] troca arma, só pode ter +1 arma secundária
     if(this.player.characterId==='ash'){
       // Garante primary motosserra
@@ -18294,6 +19145,7 @@ class Game {
         nearby.isLuva = oldSecName==='LUVA';
         nearby.isBastao = oldSecName==='BASTAO';
         nearby.isMotosserra = oldSecName==='MOTOSSERRA';
+        nearby.isChicote = oldSecName==='CHICOTE';
         if(nearby.isRaio) nearby.w = nearby.h = ITEM_SIZE_RAIO;
         else if(nearby.isRayMatematico) nearby.w = nearby.h = 22;
         else if(nearby.isLaser) nearby.w = nearby.h = ITEM_SIZE_LASER;
@@ -18305,6 +19157,7 @@ class Game {
         else if(nearby.isLuva) nearby.w = nearby.h = 22;
         else if(nearby.isBastao) nearby.w = nearby.h = ITEM_SIZE_BASTAO;
         else if(nearby.isMotosserra) nearby.w = nearby.h = ITEM_SIZE_MOTOSSERRA;
+        else if(nearby.isChicote) nearby.w = nearby.h = ITEM_SIZE_CHICOTE;
         else nearby.w = nearby.h = ITEM_SIZE_SHOTGUN;
         nearby.spawnDelay = 320;
         // preserva heat reset
@@ -18328,6 +19181,7 @@ class Game {
     else if(oldName==='LUVA') oldWeaponConfig={...WEAPON_LUVA};
     else if(oldName==='BASTAO') oldWeaponConfig={...WEAPON_BASTAO};
     else if(oldName==='MOTOSSERRA') oldWeaponConfig={...WEAPON_MOTOSSERRA};
+    else if(oldName==='CHICOTE') oldWeaponConfig={...WEAPON_CHICOTE};
     else oldWeaponConfig={...WEAPON_NORMAL};
 
     // se a nova arma era ligada a doubleShot, preserva flag? DoubleShot é da primária, não da arma secundária
@@ -18360,6 +19214,7 @@ class Game {
     nearby.isRaio = oldName==='RAIO';
     nearby.isRayMatematico = oldName==='RAIO_MATEMATICO';
     nearby.isLaser = oldName==='LASER';
+    nearby.isChicote = oldName==='CHICOTE';
     nearby.isMini = oldName==='METRALHADORA';
     nearby.isNormal = oldName==='NORMAL';
     nearby.isCarregada = oldName==='CARREGADA';
@@ -18373,6 +19228,7 @@ class Game {
     if(nearby.isRaio) nearby.w = nearby.h = ITEM_SIZE_RAIO;
     else if(nearby.isRayMatematico) nearby.w = nearby.h = 22;
     else if(nearby.isLaser) nearby.w = nearby.h = ITEM_SIZE_LASER;
+    else if(nearby.isChicote) nearby.w = nearby.h = ITEM_SIZE_CHICOTE;
     else if(nearby.isMini) nearby.w = nearby.h = 22;
     else if(nearby.isNormal) nearby.w = nearby.h = 20;
     else if(nearby.isCarregada) nearby.w = nearby.h = 20;
@@ -18386,7 +19242,7 @@ class Game {
 
     // partículas e toast
     this.showToast(`↔ ${oldName} → ${newWeapon.name} [Q]`, 1300);
-    const col = newWeapon.name==='RAIO'?'#00e5ff': newWeapon.name==='RAIO_MATEMATICO'?'#7af2ff': newWeapon.name==='LASER'?'#ff1a2e': newWeapon.name==='METRALHADORA'?'#ff3b30': newWeapon.name==='CARREGADA'?'#a78bfa': newWeapon.name==='SHOTGUN'?'#ff8c42': newWeapon.name==='ESPADA'?'#e8e8e8': newWeapon.name==='LUVA'?'#ff3b30': newWeapon.name==='MOTOSSERRA'?'#ff3b30': newWeapon.name==='BASTAO'?'#facc15':'#ffeb3b';
+    const col = newWeapon.name==='RAIO'?'#00e5ff': newWeapon.name==='RAIO_MATEMATICO'?'#7af2ff': newWeapon.name==='LASER'?'#ff1a2e': newWeapon.name==='METRALHADORA'?'#ff3b30': newWeapon.name==='CARREGADA'?'#a78bfa': newWeapon.name==='SHOTGUN'?'#ff8c42': newWeapon.name==='ESPADA'?'#e8e8e8': newWeapon.name==='LUVA'?'#ff3b30': newWeapon.name==='MOTOSSERRA'?'#ff3b30': newWeapon.name==='BASTAO'?'#facc15': newWeapon.name==='CHICOTE'?'#8b4513':'#ffeb3b';
     for(let k=0;k<10;k++) this.particles.push(new Particle(this.player.x, this.player.y, randRange(-1.9,1.9), randRange(-1.9,0.7), 300, col, 2));
     for(let k=0;k<8;k++) this.particles.push(new Particle(nearby.x, nearby.y, randRange(-1.5,1.5), randRange(-1.5,0.8), 320, '#ffffff', 2));
     return true;
@@ -19071,6 +19927,7 @@ class Game {
         for(const obj of newObjs){
           if(obj instanceof MeleeSwing) this.meleeSwings.push(obj);
           else if(obj instanceof RocketFist){ this.fists.push(obj); this.player.activeFist=obj; }
+          else if(typeof ChicoteWhip!=='undefined' && obj instanceof ChicoteWhip){ this.chicoteWhips.push(obj); }
           else this.bullets.push(obj);
         }
         if(newObjs.length>0){
@@ -19201,6 +20058,17 @@ class Game {
     const enemyNewBullets=[];
     // Nota: enemy bullets serão adicionados via Room.update -> enemyBulletsOut, mas também precisamos tratar bullets já existentes como enemy
     for(const b of this.bullets) b.update(dt, walls);
+    // CHICOTE - chicotes ativos (grapple parede + vento)
+    for(let i=this.chicoteWhips.length-1;i>=0;i--){
+      const whip=this.chicoteWhips[i];
+      const alive = whip.update(dt, this.currentRoom.walls, this.currentRoom.enemies, this.player, this);
+      if(!alive || whip.dead){
+        if(this.player.chicoteWhipRef === whip) this.player.chicoteWhipRef=null;
+        if(this.player.isChicotePulling && this.player.chicoteWhipRef===whip) this.player.cancelChicotePull();
+        this.chicoteWhips.splice(i,1);
+      }
+    }
+    if(this.chicoteWhips.length===0 && this.player.chicoteWhipRef) this.player.chicoteWhipRef=null;
 
     // ===== ESCUDO DO DILLIAN - Dream Shield orbitante =====
     if(this.player.hasDillianShield){
@@ -20329,6 +21197,7 @@ class Game {
     if((this.state==='PLAYING' || this.state==='PAUSED') && this.currentRoom && this.player){
       try{ this.currentRoom.draw(ctx, true); }catch(e){ console.error('Room draw error', e); try{ ctx.fillStyle=theme.bg; ctx.fillRect(0,0,CANVAS_W,CANVAS_H); }catch(_){} }
       try{ for(const b of this.bullets) b.draw(ctx); }catch(e){ console.error('Bullet draw error', e); }
+      try{ for(const whip of this.chicoteWhips) whip.draw(ctx, this.player); }catch(e){ console.error('Chicote draw error', e); }
       try{ for(const lb of (this.lazerBeams||[])) lb.draw(ctx); }catch(e){ console.error('LazerBeam draw error', e); }
       try{ for(const m of this.meleeSwings) m.draw(ctx); }catch(e){ console.error('Melee draw error', e); }
       try{ for(const f of this.fists) f.draw(ctx); }catch(e){ console.error('Fist draw error', e); }
