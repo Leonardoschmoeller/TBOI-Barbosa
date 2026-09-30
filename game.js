@@ -2183,6 +2183,16 @@ const CYBER_HEART_HP_AMOUNT = 2;       // 1 coração cibernético = 1 recipient
 const CYBER_HEART_MAX_CYBER = 8;       // máximo de HP em Bone Hearts (4 recipientes = 8 HP) - limite de recipientes cinza
 const CYBER_HEART_MAX_HP = 10;         // compatibilidade (legado) - não usado, limite real é base 6 + 8 = 14
 const CYBER_HEART_SPAWN_CHANCE = 0.06; // 6% por sala normal, 10.8% em treasure
+// --- DISQUETE DA VIDA (continue) ---
+// Item de continue: ao coletar, guarda 1 continue. Ao perder toda a vida com pelo menos
+// 1 continue, o jogo NAO acaba: volta para a última sala atravessada e recupera 1 coração.
+// Sem continues restantes, a morte é definitiva (game over normal).
+const ITEM_SIZE_DISQUETE_VIDA = 24;    // tamanho no chão
+const DISQUETE_VIDA_HP = 2;            // vida recuperada ao usar (2 HP = 1 coração)
+const DISQUETE_VIDA_SPAWN = 0.05;      // 5% por sala normal
+const DISQUETE_VIDA_SPAWN_TREASURE = 0.12; // 12% em sala tesouro
+const DISQUETE_VIDA_COLOR = '#22c55e';  // verde do glifo 0/1
+const DISQUETE_VIDA_GLOW = 'rgba(34,197,94,0.30)';
 // Bone Heart: base fixa de containers vermelhos
 const BONE_HEART_RED_CAPACITY = 6;     // 3 corações vermelhos base (inicial)
 const BONE_HEART_MAX_CONTAINERS = CYBER_HEART_MAX_CYBER / 2; // 4 recipientes cinza máximo
@@ -2301,9 +2311,15 @@ const SETCH_CUP_COUNT = 3;
 const SETCH_SHUFFLE_MOVES = 7; // número de trocas de copos
 const SETCH_SHUFFLE_SPEED = 420; // ms por troca
 const SETCH_SHOW_BALL_TIME = 900; // ms mostra bolinha antes de esconder
-const SETCH_NPC_SIZE_W = 28;
-const SETCH_NPC_SIZE_H = 34;
+const SETCH_NPC_SIZE_W = 26;
+const SETCH_NPC_SIZE_H = 32;
 const SETCH_REWARD_UPGRADE_CHANCE = 0.50; // 50% upgrade, 50% vida cibernética
+// ===== DISQUETE DA VIDA - também ganhävel no Jogo do Copinho da Sala Setch =====
+// Rolagem de 3 resultados (não 2): disquete é o prize mais raro dos três.
+//   [0, D)                            -> 'disquete'  (continue)
+//   [D, D+U)                          -> 'upgrade'
+//   [D+U, 1)                          -> 'cyber'     (Vida Cibernética)
+const SETCH_REWARD_DISQUETE_CHANCE = 0.20; // 20% de chance de sair o Disquete da Vida
 const SETCH_INTERACT_RANGE = 64;
 
 // --- Fase 4: Miniboss (configurável) ---
@@ -2994,34 +3010,47 @@ class ChicoteWhip {
     ctx.strokeStyle='rgba(180,220,255,0.28)';
     ctx.lineWidth=5;
     ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
-    // chicote couro segmentado com ondulação leve
-    const segs=10;
+    // chicote de couro: afila do punho ate a ponta, com ondulacao e tranca
+    const segs=12;
     const wave=2.2;
-    ctx.strokeStyle=this.whipColor;
-    ctx.lineWidth=3.2;
+    const wob=Date.now()*0.012;
+    // ponto no cabo (ondulacao amortecida: reta na ponta, onda na base)
+    const pt=(t)=>[
+      lerp(x1,x2,t) + Math.sin(t*Math.PI*2 + wob)*wave*(1-t),
+      lerp(y1,y2,t) + Math.cos(t*Math.PI*2 + wob*1.08)*wave*0.6*(1-t)
+    ];
+    const wt=(t)=>lerp(2.2, 3.6, t);   // punho fino -> ponta grossa
     ctx.lineCap='round';
+    // corpo em segmentos (afilado)
+    for(let i=0;i<segs;i++){
+      const a=pt(i/segs), b=pt((i+1)/segs);
+      ctx.strokeStyle=this.whipColor;
+      ctx.lineWidth=wt(i/segs);
+      ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
+    }
+    // tranca: hachuras transversais escuras
+    ctx.strokeStyle='rgba(59,26,10,0.5)'; ctx.lineWidth=0.9;
+    for(let i=1;i<segs;i++){
+      const t=i/segs, a=pt(t), c=pt(t+1/segs);
+      const ang=Math.atan2(c[1]-a[1], c[0]-a[0]);
+      const nx=-Math.sin(ang)*wt(t)*0.5, ny=Math.cos(ang)*wt(t)*0.5;
+      ctx.beginPath(); ctx.moveTo(a[0]-nx, a[1]-ny); ctx.lineTo(a[0]+nx, a[1]+ny); ctx.stroke();
+    }
+    // brilho do couro no topo do cabo
+    ctx.strokeStyle='rgba(255,228,180,0.5)'; ctx.lineWidth=0.8;
     ctx.beginPath();
     for(let i=0;i<=segs;i++){
-      const t=i/segs;
-      const x=lerp(x1,x2,t) + Math.sin(t*Math.PI*2 + Date.now()*0.012)*wave*(1-t);
-      const y=lerp(y1,y2,t) + Math.cos(t*Math.PI*2 + Date.now()*0.013)*wave*0.6*(1-t);
-      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      const t=i/segs, a=pt(t), c=pt(t+0.02);
+      const ang=Math.atan2(c[1]-a[1], c[0]-a[0]);
+      const nx=-Math.sin(ang)*wt(t)*0.28, ny=Math.cos(ang)*wt(t)*0.28;
+      if(i===0) ctx.moveTo(a[0]+nx, a[1]+ny); else ctx.lineTo(a[0]+nx, a[1]+ny);
     }
     ctx.stroke();
-    // brilho couro
-    ctx.strokeStyle='rgba(255,228,180,0.55)';
-    ctx.lineWidth=0.9;
-    ctx.beginPath();
-    for(let i=0;i<=segs;i++){
-      const t=i/segs;
-      const x=lerp(x1,x2,t) + Math.sin(t*Math.PI*2 + Date.now()*0.012)*wave*(1-t);
-      const y=lerp(y1,y2,t) + Math.cos(t*Math.PI*2 + Date.now()*0.013)*wave*0.6*(1-t);
-      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-    }
-    ctx.stroke();
-    // ponta
+    // ponta - no de couro com flale dourado
     ctx.fillStyle='#3a1a0a';
     ctx.beginPath(); ctx.arc(x2,y2,4,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#6b3a11';
+    ctx.beginPath(); ctx.arc(x2,y2,2.8,0,Math.PI*2); ctx.fill();
     ctx.fillStyle='#ffd700';
     ctx.beginPath(); ctx.arc(x2,y2,1.6,0,Math.PI*2); ctx.fill();
     if(this.latched){
@@ -3040,6 +3069,184 @@ class ChicoteWhip {
     }
   }
   getRect(){ return {x:this.tipX-this.size, y:this.tipY-this.size, w:this.size*2, h:this.size*2}; }
+}
+
+// ===================== CHICOTE LEVE - GOLPE EM LEQUE (toque) =====================
+// Ataque normal do Chicote: abre o chicote em leque frontal de média distância,
+// como uma espada bem mais longa. Para ao encostar na parede (mas ainda causa dano),
+// NÃO puxa o player e NÃO explode. O ataque carregado continua sendo o ChicoteWhip
+// de grapple/explosão (mesma mecânica antiga), disparado ao segurar o ataque.
+class ChicoteLash {
+  constructor(x, y, dirX, dirY, config={}){
+    this.x = x; this.y = y;
+    this.startX = x; this.startY = y;
+    this.dirX = dirX; this.dirY = dirY;
+    this.range = config.range ?? WEAPON_CHICOTE.lashRange;
+    this.angle = config.angle ?? WEAPON_CHICOTE.lashAngle;
+    this.damage = config.damage ?? WEAPON_CHICOTE.lashDamage;
+    this.duration = config.duration ?? WEAPON_CHICOTE.lashDuration;
+    this.stun = config.stun ?? (config.stun ?? WEAPON_CHICOTE.lashStun);
+    this.knock = config.knock ?? WEAPON_CHICOTE.lashKnock;
+    this.strands = config.strands ?? WEAPON_CHICOTE.lashStrands;
+    this.whipColor = config.whipColor ?? WEAPON_CHICOTE.whipColor;
+    this.windColor = config.windColor ?? WEAPON_CHICOTE.windColor;
+    this.life = this.duration;
+    this.maxLife = this.duration;
+    this.dead = false;
+    this.isChicoteWhip = true;      // compartilha a array chicoteWhips / update / draw do Game
+    this.isChicoteLash = true;
+    this.isLash = true;             // nunca latcha, nunca puxa, nunca explode
+    this.hitEnemies = new Set();
+    this.windTrail = [];
+    this.blocked = false;           // bateu em parede (o leque foi cortado)
+    this.effRange = this.range;     // alcance já cortado pela parede
+    this.dead = false;
+  }
+  // Alcance efetivo: varre o leque e corta na primeira parede à frente
+  computeBlockedRange(walls){
+    let best = this.range;
+    if(!walls || !walls.length) return best;
+    const baseAng = Math.atan2(this.dirY, this.dirX);
+    const halfRad = (this.angle/2) * Math.PI/180;
+    for(let i=0;i<CHICOTE_LASH_SAMPLES;i++){
+      const a = baseAng - halfRad + (this.angle) * (i/(CHICOTE_LASH_SAMPLES-1));
+      const ux = Math.cos(a), uy = Math.sin(a);
+      for(let t=CHICOTE_LASH_STEP; t<=this.range; t+=CHICOTE_LASH_STEP){
+        const px = this.x + ux*t, py = this.y + uy*t;
+        let hit = false;
+        for(const w of walls){
+          if(circleRectCollide(px, py, 3, w.x, w.y, w.w, w.h)){ hit=true; break; }
+        }
+        if(hit){ if(t<best) best=t; break; }
+      }
+    }
+    return best;
+  }
+  // Inimigo dentro do leque?
+  hits(e){
+    const dx = e.x - this.x, dy = e.y - this.y;
+    const d = Math.hypot(dx, dy);
+    if(d > this.effRange + e.w*0.38) return false;
+    if(d < 16) return true;
+    const angTo = Math.atan2(dy, dx);
+    const angDir = Math.atan2(this.dirY, this.dirX);
+    let diff = Math.abs(angTo - angDir);
+    diff = Math.abs(Math.atan2(Math.sin(diff), Math.cos(diff))) * 180/Math.PI;
+    return diff <= this.angle/2;
+  }
+  update(dt, walls, enemies, player, game){
+    if(this.dead) return false;
+    // segue o player (o leque nasce na mão)
+    this.x = player.x; this.y = player.y;
+    this.effRange = this.computeBlockedRange(walls);
+    this.blocked = this.effRange < this.range - CHICOTE_LASH_STEP;
+    this.life -= dt;
+    if(this.life <= 0){ this.dead = true; return false; }
+    // vento na frente do leque
+    const prog = clamp(this.life/this.maxLife, 0, 1);
+    if(game && game.particles && Math.random() < 0.5){
+      const baseAng = Math.atan2(this.dirY, this.dirX);
+      const halfRad = (this.angle/2) * Math.PI/180;
+      const a = baseAng - halfRad + this.angle*Math.random();
+      const r = this.effRange*(0.55 + prog*0.45);
+      game.particles.push(new Particle(this.x+Math.cos(a)*r, this.y+Math.sin(a)*r, randRange(-0.7,0.7), randRange(-0.6,0.3), 170, this.windColor, 1.5));
+    }
+    this.windTrail.push({ang: Math.atan2(this.dirY,this.dirX) + randRange(-0.12,0.12), r: this.effRange*(0.5+prog*0.5), life: 200});
+    if(this.windTrail.length > 12) this.windTrail.shift();
+    for(const t of this.windTrail) t.life -= dt;
+    this.windTrail = this.windTrail.filter(t=>t.life>0);
+    // dano no leque
+    if(enemies && enemies.length){
+      for(const e of enemies){
+        if(e.dead || this.hitEnemies.has(e)) continue;
+        if(!this.hits(e)) continue;
+        this.hitEnemies.add(e);
+        const died = e.takeDamage(this.damage);
+        if(this.stun>0 && e.stunTimer!==undefined) e.stunTimer = Math.max(e.stunTimer||0, this.stun);
+        e.stunVisual = true;
+        e.hitFlash = Math.max(e.hitFlash||0, 150);
+        const ang = Math.atan2(e.y - this.y, e.x - this.x);
+        e.x += Math.cos(ang)*this.knock;
+        e.y += Math.sin(ang)*this.knock;
+        if(game && game.particles){
+          for(let k=0;k<5;k++) game.particles.push(new Particle(e.x, e.y, randRange(-1.3,1.3), randRange(-1.1,0.4), 230, this.whipColor, 1.8));
+          for(let k=0;k<3;k++) game.particles.push(new Particle(e.x, e.y-10+randRange(-4,4), randRange(-0.4,0.4), -0.7, 210, '#ffff99', 1.2));
+          if(died) for(let k=0;k<10;k++){ const a=Math.random()*Math.PI*2; game.particles.push(new Particle(e.x,e.y, Math.cos(a)*randRange(1.2,3), Math.sin(a)*randRange(1.2,3), 280, '#8b4513', 2)); }
+        }
+        if(game) game.shake = Math.max(game.shake||0, 34);
+      }
+    }
+    // parou na parede: dá um baque curto e some (ainda Having atingido quem estava na frente)
+    if(this.blocked && this.life > this.maxLife*0.45){
+      this.life = Math.min(this.life, this.maxLife*0.45);
+      if(game && game.particles){
+        const ang = Math.atan2(this.dirY, this.dirX);
+        for(let k=0;k<5;k++) game.particles.push(new Particle(this.x+Math.cos(ang)*this.effRange, this.y+Math.sin(ang)*this.effRange, randRange(-1.2,1.2), randRange(-1.2,0.4), 190, '#a0522d', 1.6));
+      }
+    }
+    return true;
+  }
+  draw(ctx, player){
+    const x1 = this.x, y1 = this.y;
+    const prog = clamp(this.life/this.maxLife, 0, 1);       // 1 -> 0 durante o golpe
+    const sweep = prog;                                    // frente a tras no leque
+    const baseAng = Math.atan2(this.dirY, this.dirX);
+    const halfRad = (this.angle/2) * Math.PI/180;
+    const alpha = 0.85 * (1 - prog*0.35);
+    const wob = Date.now()*0.014;
+    // bruma de vento no cone inteiro
+    ctx.save();
+    ctx.globalAlpha = alpha*0.20;
+    ctx.fillStyle = this.windColor;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.arc(x1, y1, this.effRange, baseAng-halfRad, baseAng+halfRad);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    // aresta externa do leque
+    ctx.strokeStyle = `rgba(180,220,255,${alpha*0.30})`;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(x1, y1, this.effRange*0.96, baseAng-halfRad, baseAng+halfRad);
+    ctx.stroke();
+    // fios de couro abrindo em leque
+    const n = Math.max(1, this.strands);
+    for(let s=0; s<n; s++){
+      const t = n===1 ? 0.5 : s/(n-1);
+      const a = baseAng - halfRad + this.angle*t;
+      // o fio "atravessa" o leque conforme o golpe avanca
+      const reach = this.effRange * clamp(sweep*1.18, 0, 1);
+      const wobble = Math.sin(t*Math.PI*2 + wob)*2.0;
+      const perp = a + Math.PI/2;
+      const cx = x1 + Math.cos(a)*reach*0.55 + Math.cos(perp)*wobble;
+      const cy = y1 + Math.sin(a)*reach*0.55 + Math.sin(perp)*wobble;
+      const ex = x1 + Math.cos(a)*reach;
+      const ey = y1 + Math.sin(a)*reach;
+      ctx.strokeStyle = this.whipColor;
+      ctx.lineWidth = lerp(3.4, 1.6, t);
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.quadraticCurveTo(cx, cy, ex, ey); ctx.stroke();
+      // trança clara no topo do fio
+      ctx.strokeStyle = 'rgba(255,228,180,0.42)';
+      ctx.lineWidth = 0.7;
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.quadraticCurveTo(cx, cy, ex, ey); ctx.stroke();
+      // nó de couro na ponta
+      ctx.fillStyle = '#3a1a0a';
+      ctx.beginPath(); ctx.arc(ex, ey, 3, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#6b3a11';
+      ctx.beginPath(); ctx.arc(ex, ey, 2, 0, Math.PI*2); ctx.fill();
+    }
+    // rastro de vento
+    for(const tr of this.windTrail){
+      const a = clamp(tr.life/200, 0, 1);
+      ctx.fillStyle = `rgba(180,220,255,${a*0.20})`;
+      ctx.beginPath();
+      ctx.arc(x1+Math.cos(tr.ang)*tr.r, y1+Math.sin(tr.ang)*tr.r, 2.6*a, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+  getRect(){ return {x:this.x-this.effRange, y:this.y-this.effRange, w:this.effRange*2, h:this.effRange*2}; }
 }
 
 // --- Nova Arma Muito Rara: BAZUCA ---
@@ -3244,7 +3451,22 @@ const WEAPON_CHICOTE = {
   windColor: 'rgba(180,220,255,0.45)',
   isWhip: true,
   isChicote: true,
-  isIndianaWhip: true
+  isIndianaWhip: true,
+  // ===== LEVE (toque) - arco/leque de média distância, como uma espada bem mais longa =====
+  // Sem puxar, sem explodir, sem latch: só o golpe em leque frontal que para na parede.
+  lashRange: 178,       // alcance do golpe leve (espada normal = 72, aqui bem mais longo)
+  lashAngle: 112,       // abertura do leque em graus (mais fechado que a espada = "espada longa")
+  lashDamage: 1.9,      // dano do toque (1 coração)
+  lashCooldown: 300,    // intervalo entre golpes leves (permite spam leve sem travar)
+  lashDuration: 190,    // duração da animação do leque (ms)
+  lashStrands: 3,       // fios de couro desenhados no leque
+  lashStun: 260,        // atordoamento curto do toque (ms)
+  lashKnock: 6,         // empurrão do toque
+  // ===== CARREGADO (segurar) - mantém o ataque atual: chicote na parede + puxão + explosão =====
+  chargeTime: 420,      // ms segurando para virar o pesado (grapple/explosão)
+  heavyDamage: 2.6,     // mesmos valores do ataque original
+  heavyRange: 360,
+  heavyCooldown: 540
 };
 const ITEM_SIZE_CHICOTE = 22;
 // Constantes balanceáveis do Chicote (todas editáveis, arquitetura modular)
@@ -3259,8 +3481,13 @@ const CHICOTE_SPAWN_CHANCE = 0.025;    // 2.5% por sala normal (raro mas aparece
 const CHICOTE_SPAWN_TREASURE = 0.055;  // 5.5% em sala tesouro
 const CHICOTE_HAT_BONUS = true;        // flag chapeu (usado em Player)
 const CHICOTE_INTERACT_RANGE = 64;     // alcance interação Indiana NPC
-const INDIANA_NPC_SIZE_W = 28;
-const INDIANA_NPC_SIZE_H = 34;
+const CHICOTE_CHARGE_TIME = 420;      // ms segurando o ataque para virar o pesado (grapple/explosão)
+const CHICOTE_LASH_STUN = 260;         // stun curto do golpe leve em leque (ms)
+const CHICOTE_LASH_KNOCK = 6;          // empurrão do golpe leve
+const CHICOTE_LASH_SAMPLES = 9;        // raios amostrados dentro do leque para achar a parede
+const CHICOTE_LASH_STEP = 7;           // passo (px) da varredura de parede do leque
+const INDIANA_NPC_SIZE_W = 24;
+const INDIANA_NPC_SIZE_H = 30;
 
 // ===================== DEV - LAZER CODIFICADO (ex-RAIO MATEMÁTICO) - Brimstone Isaac =====================
 // Arma exclusiva do Dev: agora é LAZER CODIFICADO estilo Brimstone de The Binding of Isaac.
@@ -3326,6 +3553,115 @@ const OLI_PAWN_HP = 5; const OLI_PAWN_DAMAGE = 2.1; const OLI_PAWN_SPEED = 3.15;
 const OLI_PAWN_PROMOTE_KILLS = 2; // após 2 abates promove
 const OLI_PAWN_STUN_CHANCE = 0.18; // 18% chance de atordoar 320ms
 const OLI_PAWN_SHIELD_REDUCTION = 0.28; // 28% redução de dano recebido
+
+// ===================== IO-IO (passivo do NPC JL) =====================
+// Passivo reativo: ao levar dano, invoca io-ios que giram em volta do jogador
+// causando dano nos inimigos que encostarem neles.
+const IOI_ORBIT_RADIUS = 44;          // raio da órbita ao redor do jogador
+const IOI_ORBIT_ANGULAR_SPEED = 0.052; // rad/ms -> ~1 volta a cada 2.5s
+const IOI_ORBIT_COUNT = 2;            // quantos io-ios por invocação
+const IOI_ORBIT_DAMAGE = 1.5;         // dano por acerto
+const IOI_ORBIT_HIT_COOLDOWN = 420;   // ms entre acertos no mesmo inimigo
+const IOI_ORBIT_LIFE = 4200;          // duração de cada io-io (ms)
+const IOI_ORBIT_MAX = 6;              // limite simultâneo (evita spam)
+const IOI_SUMMON_COOLDOWN = 700;      // ms entre invocações do passivo
+const IOI_RADIUS = 7;                 // raio de colisão do io-io
+const IOI_COLOR_MAIN = '#e53935';
+const IOI_COLOR_LIGHT = '#ff8a80';
+// NPC JL (dá o passivo io-io)
+const JL_NPC_SIZE_W = 24;
+const JL_NPC_SIZE_H = 30;
+const JL_INTERACT_RANGE = 64;
+// NPC Oli (dá o item especial de xadrez)
+const OLI_NPC_SIZE_W = 24;
+const OLI_NPC_SIZE_H = 30;
+const OLI_NPC_INTERACT_RANGE = 64;
+
+// ===================== IO-IO ORBITANTE =====================
+// Io-io invocado pelo passivo: orbita o jogador girando e causa dano por contato
+class IoiOrbit {
+  constructor(player, angle){
+    this.owner = player;
+    this.angle = angle;
+    this.radius = IOI_ORBIT_RADIUS;
+    this.damage = IOI_ORBIT_DAMAGE;
+    this.life = IOI_ORBIT_LIFE;
+    this.maxLife = IOI_ORBIT_LIFE;
+    this.spin = 0;          // rotação do próprio io-io
+    this.anim = 0;
+    this.dead = false;
+    this.w = IOI_RADIUS*2; this.h = IOI_RADIUS*2;
+    this.x = player.x; this.y = player.y;
+    this.hitCooldowns = new Map(); // inimigo -> ms restantes até poder acertar de novo
+  }
+  update(dt, enemies, walls, particles){
+    this.life -= dt;
+    this.anim += dt;
+    this.spin += dt * 0.021; // rotação visual do disco
+    if(this.life <= 0){ this.dead = true; return false; }
+    const p = this.owner;
+    if(!p || p.dead){ this.dead = true; return false; }
+    this.angle += IOI_ORBIT_ANGULAR_SPEED * dt;
+    // posição na órbita; reduz o raio se o ponto cair dentro de parede
+    let r = this.radius, placed = false;
+    for(let k=0;k<5;k++){
+      const tx = p.x + Math.cos(this.angle) * r;
+      const ty = p.y + Math.sin(this.angle) * r;
+      let blocked = false;
+      for(const w of walls){
+        if(rectCollide(tx-IOI_RADIUS, ty-IOI_RADIUS, IOI_RADIUS*2, IOI_RADIUS*2, w.x, w.y, w.w, w.h)){ blocked = true; break; }
+      }
+      if(!blocked){ this.x = tx; this.y = ty; this.drawRadius = r; placed = true; break; }
+      r *= 0.72;
+    }
+    if(!placed){ this.x = p.x; this.y = p.y; this.drawRadius = 0; }
+    // dano por contato com inimigos
+    for(const e of enemies){
+      if(e.dead) continue;
+      const cd = this.hitCooldowns.get(e) || 0;
+      if(cd > 0){ this.hitCooldowns.set(e, cd - dt); continue; }
+      const reach = IOI_RADIUS + Math.max(e.w||20, e.h||20)/2;
+      if(dist(this.x, this.y, e.x, e.y) < reach){
+        e.takeDamage(this.damage);
+        e.hitFlash = Math.max(e.hitFlash||0, 110);
+        // empurra o inimigo pra fora da órbita
+        const ang = Math.atan2(e.y - this.y, e.x - this.x);
+        e.x += Math.cos(ang)*5; e.y += Math.sin(ang)*5;
+        this.hitCooldowns.set(e, IOI_ORBIT_HIT_COOLDOWN);
+        if(particles){
+          for(let k=0;k<4;k++) particles.push(new Particle(e.x, e.y, randRange(-1,1), randRange(-1,1), 200, '#ffd54a', 1.6));
+        }
+      }
+    }
+    return true;
+  }
+  draw(ctx){
+    const p = this.owner;
+    const fade = this.life < 500 ? Math.max(0, this.life/500) : 1;
+    // corda do io-io até o jogador
+    ctx.strokeStyle = `rgba(255,255,255,${0.40*fade})`;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(this.x, this.y); ctx.stroke();
+    // corpo girando (duas metades girando em torno do próprio eixo)
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.fillStyle = `rgba(229,57,53,${0.18*fade})`;
+    ctx.beginPath(); ctx.arc(0, 0, IOI_RADIUS+3.5, 0, Math.PI*2); ctx.fill();
+    for(let half=0; half<2; half++){
+      ctx.save();
+      ctx.rotate(this.spin + half*Math.PI);
+      ctx.fillStyle = IOI_COLOR_MAIN;
+      ctx.beginPath(); ctx.arc(0, 0, IOI_RADIUS, -Math.PI*0.42, Math.PI*0.42); ctx.fill();
+      ctx.fillStyle = IOI_COLOR_LIGHT;
+      ctx.beginPath(); ctx.arc(0, 0, IOI_RADIUS-1.7, -Math.PI*0.30, Math.PI*0.30); ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+    // eixo central
+    ctx.fillStyle = `rgba(255,255,255,${0.75*fade})`;
+    ctx.beginPath(); ctx.arc(this.x, this.y, 1.3, 0, Math.PI*2); ctx.fill();
+  }
+}
 
 // ===================== SISTEMA MODULAR DE PERSONAGENS =====================
 // Arquitetura: CHARACTER_DEFS centraliza atributos de cada personagem de forma declarativa.
@@ -8768,6 +9104,101 @@ class CyberHeartItem extends Item {
   }
 }
 
+// ===================== DISQUETE DA VIDA (item de CONTINUE) =====================
+// Item raro de save/continue. Ao pisar nele concede 1 continue (empilha sem limite).
+// Enquanto houver continue guardado, morrer NÃO encerra a partida: o jogador volta para
+// a última sala atravessada e recupera 1 coração, com chuva de glifos 0 e 1 em verde.
+// Sem nenhum continue, a morte é definitiva (game over normal).
+class DisqueteVidaItem extends Item {
+  constructor(x, y) {
+    super(x, y, ITEM_SIZE_DISQUETE_VIDA, ITEM_SIZE_DISQUETE_VIDA, 'disquete_vida');
+    this.isDisqueteVida = true;
+  }
+  onCollect(player, particles) {
+    // já coletado: não concede continue de novo (item dá recurso, então é inidempotente)
+    if(this.collected) return false;
+    // concede 1 continue (empilha). Sempre coletável, mesmo já tendo outros.
+    if(typeof player.grantContinue === 'function') player.grantContinue(1);
+    // efeitos: isolados em try/catch para nunca impedir a coleta
+    try{
+      const g = (typeof window!=='undefined' && window.game) ? window.game : null;
+      if(g){
+        // chuva de 0 e 1 verdes marcando o momento da coleta
+        for(let k=0;k<16;k++){
+          const a = Math.random()*Math.PI*2, sp = randRange(1.2, 3.4);
+          g.particles.push(new StarParticle(
+            this.x + Math.cos(a)*randRange(0,6), this.y + Math.sin(a)*randRange(0,6),
+            Math.cos(a)*sp, Math.sin(a)*sp - 0.6,
+            randRange(420,700), DISQUETE_VIDA_COLOR, randRange(2.2,3.4),
+            Math.random()<0.5 ? '0' : '1'
+          ));
+        }
+        g.shake = Math.max(g.shake||0, 34);
+        if(g.showToast) g.showToast(`💾 Disquete da Vida! ${player.continues} continue(s) salvo(s)`, 2400);
+      }
+    }catch(e){}
+    return true;
+  }
+  draw(ctx) {
+    const x = this.x, y = this.y + this.bob;
+    const s = this.w;
+    const pulse = 0.5 + Math.sin(this.anim*2.6)*0.3;
+    // sombra
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.beginPath(); ctx.ellipse(x, y + s*0.46, s*0.44, 4, 0, 0, Math.PI*2); ctx.fill();
+    // glow verde pulsante
+    ctx.fillStyle = `rgba(34,197,94,${0.16 + pulse*0.16})`;
+    ctx.beginPath(); ctx.arc(x, y, s*0.68 + pulse*2.5, 0, Math.PI*2); ctx.fill();
+    if(pulse > 0.72){
+      ctx.strokeStyle = 'rgba(74,222,128,0.55)';
+      ctx.lineWidth = 1.1;
+      ctx.beginPath(); ctx.arc(x, y, s*0.74 + pulse*2, 0, Math.PI*2); ctx.stroke();
+    }
+    ctx.save();
+    ctx.translate(x - s/2, y - s/2);
+    // corpo do disquete (retângulo escuro com canto chanfrado)
+    ctx.fillStyle = 'rgba(0,0,0,0.40)';
+    ctx.fillRect(1, 2, s, s);
+    ctx.fillStyle = '#1f2a24';
+    ctx.fillRect(0, 0, s, s);
+    // etiqueta verde
+    ctx.fillStyle = DISQUETE_VIDA_COLOR;
+    ctx.fillRect(2, 2, s-4, s*0.42);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillRect(2, 2, s-4, 1.4);
+    // "etiqueta" com 0 e 1
+    ctx.fillStyle = '#062b16';
+    ctx.font = 'bold 6px "Press Start 2P", monospace';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText('0', 3.5, s*0.22);
+    ctx.textAlign = 'right';
+    ctx.fillText('1', s-3.5, s*0.22);
+    ctx.textAlign = 'left';
+    // furo do disquete + trava metálica
+    ctx.fillStyle = '#2a2f2c';
+    ctx.beginPath(); ctx.arc(s*0.72, s*0.66, s*0.16, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#0c100e';
+    ctx.beginPath(); ctx.arc(s*0.72, s*0.66, s*0.10, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#9aa6a0';
+    ctx.fillRect(s*0.20, s*0.58, s*0.30, s*0.16);
+    ctx.fillStyle = '#c3cec8';
+    ctx.fillRect(s*0.20, s*0.58, s*0.30, s*0.05);
+    // brilho
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillRect(1, 1, 2, 2);
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+    // glifos 0/1 flutuando (lembra do que o item faz)
+    ctx.fillStyle = `rgba(74,222,128,${0.35 + pulse*0.35})`;
+    ctx.font = '6px "Press Start 2P", monospace';
+    ctx.textAlign = 'center';
+    const bobA = Math.sin(this.anim*1.8)*2.2;
+    ctx.fillText('0', x - s*0.30, y - s*0.46 + bobA);
+    ctx.fillText('1', x + s*0.30, y - s*0.60 - bobA);
+    ctx.textAlign = 'left';
+  }
+}
+
 // Shotgun / Raio / Metralhadora / Normal / Carregada item: ocupa slot secundário ou troca por proximidade Q
 class WeaponItem extends Item {
   constructor(x, y, weaponType='shotgun') {
@@ -8980,29 +9411,29 @@ class WeaponItem extends Item {
       const pulse=0.5+Math.sin(this.anim*2.4)*0.34;
       ctx.fillStyle='rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.ellipse(x, y+s*0.5, s*0.5, 4,0,Math.PI*2); ctx.fill();
       ctx.fillStyle=`rgba(255,60,60,${0.20+pulse*0.13})`; ctx.beginPath(); ctx.arc(x,y,s*0.78+pulse*4,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle='#1a0a0a'; ctx.fillRect(x - s/2+1, y-5, s-2, 12);
-      // DUAL: 2 luvas lado a lado
-      ctx.fillStyle='#ff3b30'; ctx.beginPath(); ctx.arc(x-5, y-1, 5.8,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle='#ff6b6b'; ctx.beginPath(); ctx.arc(x-5, y-1, 3.6,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle='#ff3b30'; ctx.beginPath(); ctx.arc(x+5, y-1, 5.8,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle='#ff6b6b'; ctx.beginPath(); ctx.arc(x+5, y-1, 3.6,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle='#1a1a1a'; ctx.fillRect(x+2, y-2, 4, 4);
-      ctx.fillStyle='#ffcc00'; ctx.fillRect(x+3, y-1, 2,1);
-      ctx.fillStyle='#1a1a1a'; ctx.fillRect(x-6, y-2, 4, 4);
-      ctx.fillStyle='#ffcc00'; ctx.fillRect(x-5, y-1, 2,1);
-      // foguetes atrás
-      ctx.fillStyle='#5a3a00'; ctx.fillRect(x-10, y-1, 3, 4);
-      ctx.fillStyle='#5a3a00'; ctx.fillRect(x+7, y-1, 3, 4);
-      ctx.fillStyle='rgba(255,120,40,0.88)'; ctx.fillRect(x-11, y, 2,2);
-      ctx.fillStyle='rgba(255,120,40,0.88)'; ctx.fillRect(x+9, y, 2,2);
+      // painel de ringue (o emoji manda no visual)
+      ctx.fillStyle='#1a0a0a'; ctx.fillRect(x - s/2, y-9, s, 18);
+      ctx.fillStyle='#3a0f0f'; ctx.fillRect(x - s/2+1, y-8, s-2, 16);
+      ctx.fillStyle='#5a1a1a'; ctx.fillRect(x - s/2+1, y-8, s-2, 2);
+      ctx.fillStyle='#220808'; ctx.fillRect(x - s/2+1, y+6, s-2, 2);
+      // cordas do ringue nos cantos
+      ctx.strokeStyle='rgba(255,255,255,0.18)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(x-s/2+1, y-6); ctx.lineTo(x-s/2+1, y+4);
+      ctx.moveTo(x+s/2-1, y-6); ctx.lineTo(x+s/2-1, y+4); ctx.stroke();
+      // jato dos foguetes nos punhos (identidade LUVA FOGUETE)
+      ctx.fillStyle='rgba(255,120,40,0.88)';
+      ctx.fillRect(x - s/2+2, y+7, 2, 2); ctx.fillRect(x + s/2-4, y+7, 2, 2);
+      ctx.fillStyle='rgba(255,204,0,0.9)';
+      ctx.fillRect(x - s/2+2.5, y+7.5, 1, 1); ctx.fillRect(x + s/2-3.5, y+7.5, 1, 1);
+      // texto
       ctx.fillStyle='#ffcc00'; ctx.font='4px "Press Start 2P"'; ctx.textAlign='center'; ctx.fillText('LUVA', x, y+s/2+10); ctx.textAlign='left';
       // ícone de luva de boxe central - grande e visível com contorno
       ctx.fillStyle='#fff';
-      ctx.font='16px sans-serif'; ctx.textAlign='center';
+      ctx.font='13px sans-serif'; ctx.textAlign='center';
       // sombra para destacar emoji
       ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillText('🥊', x+1, y+5);
       ctx.fillStyle='#fff'; ctx.fillText('🥊', x, y+4); ctx.textAlign='left';
-      ctx.fillStyle=`rgba(255,255,255,${0.6+Math.sin(this.anim*5)*0.3})`; const rlx=x+Math.cos(this.anim*1.6)*5; ctx.fillRect(rlx, y-6, 2,1.5);
+      ctx.fillStyle=`rgba(255,255,255,${0.6+Math.sin(this.anim*5)*0.3})`; const rlx=x+Math.cos(this.anim*1.6)*(s*0.42); ctx.fillRect(rlx, y-6, 2,1.5);
     } else if(this.isBastao){
       const x=this.x, y=this.y + this.bob, s=this.w;
       const pulse=0.5+Math.sin(this.anim*2.4)*0.34;
@@ -9050,28 +9481,78 @@ class WeaponItem extends Item {
       // glow externo azul demoníaco
       ctx.fillStyle=`rgba(26,127,191,${0.18+pulse*0.10})`; ctx.beginPath(); ctx.arc(x,y,s*0.80+pulse*3,0,Math.PI*2); ctx.fill();
       // base retangular escura (recipiente)
-      ctx.fillStyle='#041226'; ctx.fillRect(x - s/2+1, y-7, s-2, 14);
-      ctx.fillStyle='#0a2a4a'; ctx.fillRect(x - s/2+2, y-6, s-4, 12);
-      // feixe Azazel horizontal - camadas Brimstone azul
-      // outer dark
-      ctx.fillStyle='#081e3a'; ctx.fillRect(x - s/2+2, y-4, s-4, 8);
-      // mid blue
-      ctx.fillStyle='#1a5fb8'; ctx.fillRect(x - s/2+3, y-3, s-6, 6);
-      // inner ciano
-      ctx.fillStyle='#3aa0ff'; ctx.fillRect(x - s/2+4, y-2, s-8, 4);
-      // núcleo branco-azulado
-      ctx.fillStyle='#b8fffb'; ctx.fillRect(x - s/2+5, y-1, s-10, 2);
-      ctx.fillStyle='#ffffff'; ctx.fillRect(x -2, y-1, 4, 2);
-      // ondulação sutil
+      ctx.fillStyle='#041226'; ctx.fillRect(x - s/2, y-9, s, 18);
+      ctx.fillStyle='#0a2a4a'; ctx.fillRect(x - s/2+1, y-8, s-2, 16);
+      ctx.fillStyle='#16406e'; ctx.fillRect(x - s/2+1, y-8, s-2, 2);
+      ctx.fillStyle='#020a18'; ctx.fillRect(x - s/2+1, y+6, s-2, 2);
+      // linhas de codigo atras (textura de computador)
+      ctx.fillStyle='rgba(122,242,255,0.22)';
+      ctx.fillRect(x - s/2+3, y-6, s-6, 1);
+      ctx.fillRect(x - s/2+6, y-3, s-12, 1);
+      ctx.fillRect(x - s/2+3, y+0, s-6, 1);
+      ctx.fillRect(x - s/2+6, y+3, s-12, 1);
+      // emoji de computador (com sombra dura pra destacar)
+      ctx.font='13px sans-serif'; ctx.textAlign='center';
+      ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillText('💻', x+1, y+4.5);
+      ctx.fillStyle='#ffffff'; ctx.fillText('💻', x, y+4);
+      ctx.textAlign='left';
+      // feixe Azazel horizontal na base - camadas Brimstone azul
+      ctx.fillStyle='#081e3a'; ctx.fillRect(x - s/2+2, y+7, s-4, 3);
+      ctx.fillStyle='#1a5fb8'; ctx.fillRect(x - s/2+3, y+8, s-6, 2);
+      ctx.fillStyle='#3aa0ff'; ctx.fillRect(x - s/2+4, y+8, s-8, 1);
+      // ondulacao sutil
       if(Math.floor(this.anim*3)%2===0){
         ctx.fillStyle='rgba(255,255,255,0.55)'; ctx.fillRect(x+2, y-2, 1, 1);
       }
-      // chifres Azazel mini nos cantos (sugestão demoníaca)
-      ctx.fillStyle='#1a1a1a'; ctx.fillRect(x - s/2+2, y-7, 2, 3); ctx.fillRect(x + s/2-4, y-7, 2, 3);
-      ctx.fillStyle='#3a3a3a'; ctx.fillRect(x - s/2+2.5, y-6.5, 1, 1.5); ctx.fillRect(x + s/2-3.5, y-6.5, 1, 1.5);
       // texto - LAZER CODIFICADO Brimstone
       ctx.fillStyle='#7af2ff'; ctx.font='4px "Press Start 2P"'; ctx.textAlign='center'; ctx.fillText('LAZER', x, y+s/2+10); ctx.textAlign='left';
-      ctx.fillStyle=`rgba(255,255,255,${0.6+Math.sin(this.anim*5)*0.3})`; const rrx=x+Math.cos(this.anim*1.6)*5; ctx.fillRect(rrx, y-6, 2,1.5);
+      ctx.fillStyle=`rgba(255,255,255,${0.6+Math.sin(this.anim*5)*0.3})`; const rrx=x+Math.cos(this.anim*1.6)*(s*0.42); ctx.fillRect(rrx, y-6, 2,1.5);
+    } else if(this.isChicote){
+      // CHICOTE DO INDIANA - corda de couro enrolada + emoji de corda 🨢
+      const x=this.x, y=this.y + this.bob, s=this.w;
+      const pulse = 0.5 + Math.sin(this.anim*2.4)*0.32;
+      const sw = Math.sin(this.anim*1.6), sh = Math.cos(this.anim*1.1);
+      ctx.lineCap='round';
+      // sombra
+      ctx.fillStyle='rgba(0,0,0,0.30)';
+      ctx.beginPath(); ctx.ellipse(x, y+ s*0.46, s*0.46, 3.6, 0, 0, Math.PI*2); ctx.fill();
+      // glow couro/areia
+      ctx.fillStyle=`rgba(160,82,45,${0.20+pulse*0.14})`;
+      ctx.beginPath(); ctx.arc(x, y, s*0.78 + pulse*4, 0, Math.PI*2); ctx.fill();
+      // aro dourado tracejado = item raro
+      ctx.strokeStyle=`rgba(255,215,0,${0.20+pulse*0.16})`; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.arc(x, y, s*0.66, 0, Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+      // placa de couro (fundo do item)
+      ctx.fillStyle='#2a1a0f'; ctx.fillRect(x - s/2, y - s/2 +2, s, s-4);
+      ctx.fillStyle='#6b4a2d'; ctx.fillRect(x - s/2, y - s/2 +2, s, 2);
+      ctx.fillStyle='#1a0f08'; ctx.fillRect(x - s/2, y + s/2 -4, s, 2);
+      // chicote enrolado em espiral (voltas de couro) - moldura em torno do emoji
+      for(let i=0;i<3;i++){
+        const r = s*0.36 - i*2.2;
+        ctx.strokeStyle = (i%2) ? '#6b3a11' : '#a0522d';
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.arc(x + sw*(0.9+i*0.4), y - 0.2 + sh*(0.4+i*0.25), r, Math.PI*0.15, Math.PI*1.75);
+        ctx.stroke();
+      }
+      // brilho do couro na espiral
+      ctx.strokeStyle='rgba(255,228,180,0.45)'; ctx.lineWidth=0.8;
+      ctx.beginPath();
+      ctx.arc(x + sw*0.9, y-0.2+sh*0.4, s*0.36, Math.PI*1.0, Math.PI*1.5); ctx.stroke();
+      // emoji de corda 🨢 (com sombra dura pra destacar)
+      ctx.font='12px sans-serif'; ctx.textAlign='center';
+      ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillText('🨢', x+1, y+4.5);
+      ctx.fillStyle='#ffffff'; ctx.fillText('🨢', x, y+4);
+      ctx.textAlign='left';
+      // texto
+      ctx.fillStyle='#d2a679'; ctx.font='4px "Press Start 2P"'; ctx.textAlign='center';
+      ctx.fillText('CHIC', x, y+ s/2 +10); ctx.textAlign='left';
+      // sparkle
+      ctx.fillStyle=`rgba(255,255,255,${0.55+Math.sin(this.anim*5)*0.35})`;
+      const rx = x + Math.cos(this.anim*1.7)* (s*0.42);
+      const ry = y + Math.sin(this.anim*1.7)* (s*0.28);
+      ctx.fillRect(rx, ry, 2, 2);
+      ctx.lineCap='butt';
     } else if(this.isMartelo){ /* removido */
     } else if(this.isLanca){ /* removido */
     } else if(this.isArco){ /* removido */
@@ -9766,6 +10247,17 @@ class Player {
     this.chicoteWhipRef = null; // referência ChicoteWhip ativo
     this.chicotePullSpeed = CHICOTE_PULL_SPEED;
     this.chicotePullTimer = 0;
+    // CHICOTE - carga: leve (toque) = golpe em leque; carregado (segurar) = grapple/explosão
+    this.chicoteChargeTime = 0;
+    this.isChicoteCharging = false;
+    this.chicoteChargeDir = null;
+    this.chicoteHeavyReady = false; // true quando passou do chargeTime (ataca com o ChicoteWhip)
+    // DISQUETE DA VIDA - continues salvos (item de continue). Sem limite superior.
+    // 0 = morte é definitiva. >0 = ao morrer, volta pra última sala e recupera 1 coração.
+    this.continues = 0;
+    // IO-IO (passivo do NPC JL) - ao levar dano invoca io-ios que orbitam causando dano
+    this.hasIoiPassive = false;
+    this.ioiCooldown = 0;
     // sistema de melhorias por arma (4 raridades, valores em UPGRADE_VALUES) + níveis
     this.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], RAIO_MATEMATICO:[], CHICOTE:[], ALL:[], SPECIAL:[] };
     this.obtainedUpgrades = new Set(); // ids únicos para evitar duplicação (compatibilidade)
@@ -9821,6 +10313,7 @@ class Player {
     if(this.rayMatematicoChargeSystem) this.rayMatematicoChargeSystem.reset();
     this.swordChargeTime=0; this.isSwordCharging=false; this.swordChargeDir=null; this.swordHeavyReady=false;
      this.swordCombo=0; this.swordComboTimer=0;
+    this.chicoteChargeTime=0; this.isChicoteCharging=false; this.chicoteChargeDir=null; this.chicoteHeavyReady=false;
     this.swordGuardianActive=false; this.swordGuardianCharges=0; this.swordGuardianTimer=0;
     // LASER REMOVIDA
     // Motosserra barra cura mantém entre salas (não zera no reset de sala, só em new game via startGame) - mas garante inicialização
@@ -9833,6 +10326,9 @@ class Player {
     }
     // mantém chapéu Indiana entre salas (cosmético permanente após pegar Chicote)
     if(this.hasIndianaHat===undefined) this.hasIndianaHat=false;
+    // IO-IO - passivo permanente entre salas; reseta só o cooldown de invocação
+    if(this.hasIoiPassive===undefined) this.hasIoiPassive=false;
+    this.ioiCooldown = 0;
     this.hammerChargeTime=0; this.isHammerCharging=false; this.hammerHeavyReady=false; this.hammerChargeDir=null;
     this.lancaChargeTime=0; this.isLancaCharging=false; this.lancaReady=false; this.lancaChargeDir=null; this.thrownSpear=null;
     this.axeChargeTime=0; this.isAxeCharging=false; this.axeReady=false; this.axeChargeDir=null; this.axeSpinActive=false; this.axeSpinTimer=0; this.axeSpinTick=0;
@@ -9849,6 +10345,7 @@ class Player {
     const t = (type||'').toString().toLowerCase();
     // cancela carga se estiver carregando
     if(this.isCharging) this.cancelCharge();
+    if(this.isChicoteCharging) this.cancelChicoteCharge();
     if(this.isRayMatematicoCharging) this.cancelRayMatematicoCharge();
     if (t==='shotgun' || t===WEAPON_SHOTGUN.name.toLowerCase()) {
       this.setSecondaryWeapon('shotgun');
@@ -9932,6 +10429,7 @@ class Player {
     // cancela cargas ao trocar
     if(this.isCharging) this.cancelCharge();
     if(this.isSwordCharging) this.cancelSwordCharge();
+    if(this.isChicoteCharging) this.cancelChicoteCharge();
     if(this.isBastaoCharging) this.cancelBastaoCharge();
     if(this.isRayMatematicoCharging) this.cancelRayMatematicoCharge();
     // troca instantânea entre primária e secundária
@@ -10963,7 +11461,130 @@ class Player {
     }
     return true;
   }
+  // ===================== IO-IO (passivo do NPC JL) =====================
+  enableIoiPassive(){
+    if(this.hasIoiPassive) return false;
+    this.hasIoiPassive = true;
+    this.ioiCooldown = 0;
+    const g = (typeof window!=='undefined' && window.game) ? window.game : null;
+    if(g && g.showToast) g.showToast('🪀 Passivo IO-IO! Ao levar dano, um io-io gira em você causando dano.', 2800);
+    if(g){
+      g.shake = Math.max(g.shake||0, 60);
+      for(let k=0;k<16;k++) g.particles.push(new Particle(this.x, this.y, randRange(-1.6,1.6), randRange(-1.8,0.6), 340, '#e53935', 2.2));
+      for(let k=0;k<8;k++) g.particles.push(new Particle(this.x, this.y, randRange(-1.2,1.2), -0.9, 240, '#ff8a80', 1.4));
+      if(g.currentRoom) g.currentRoom.explosions.push({x:this.x, y:this.y, radius:11, life:320, max:320, isIoiGift:true});
+    }
+    return true;
+  }
+  // Invoca io-ios orbitais ao redor do jogador (chamado quando ele leva dano)
+  triggerIoiOrbit(gameRef){
+    if(!this.hasIoiPassive) return false;
+    if(this.ioiCooldown > 0) return false;
+    const g = gameRef || (typeof window!=='undefined' && window.game ? window.game : null);
+    if(!g || !g.currentRoom) return false;
+    if(!g.ioiOrbits) g.ioiOrbits = [];
+    this.ioiCooldown = IOI_SUMMON_COOLDOWN;
+    // respeita o limite simultâneo: recicla o mais antigo se estiver cheio
+    while(g.ioiOrbits.length + IOI_ORBIT_COUNT > IOI_ORBIT_MAX){
+      g.ioiOrbits.shift();
+    }
+    const base = Math.random() * Math.PI * 2;
+    for(let k=0;k<IOI_ORBIT_COUNT;k++){
+      g.ioiOrbits.push(new IoiOrbit(this, base + (k * Math.PI*2 / IOI_ORBIT_COUNT)));
+    }
+    if(g.shake) g.shake = Math.max(g.shake, 40);
+    for(let k=0;k<10;k++){
+      const ang = Math.random()*Math.PI*2;
+      g.particles.push(new Particle(this.x, this.y, Math.cos(ang)*randRange(1.4,3.2), Math.sin(ang)*randRange(1.4,3.2), 300, '#e53935', 2));
+    }
+    if(g.currentRoom.explosions) g.currentRoom.explosions.push({x:this.x, y:this.y, radius:9, life:260, max:260, isIoiSummon:true});
+    return true;
+  }
   isChicoteWeapon(){ return this.weapon && !!this.weapon.isChicote; }
+  // ===== CHICOTE: carga leve (toque = leque) vs pesada (segurar = grapple/explosão) =====
+  getChicoteChargeTime(){ return this.weapon && this.weapon.chargeTime ? this.weapon.chargeTime : CHICOTE_CHARGE_TIME; }
+  startChicoteCharge(dir){
+    if(!this.isChicoteWeapon()) return false;
+    if(this.isChicoteCharging) return false;
+    if(!this.canShoot()) return false;
+    this.isChicoteCharging = true;
+    this.chicoteChargeTime = 0;
+    this.chicoteChargeDir = { x: dir.x, y: dir.y };
+    this.chicoteHeavyReady = false;
+    return true;
+  }
+  updateChicoteCharge(dt, dir){
+    if(!this.isChicoteCharging) return;
+    this.chicoteChargeTime += dt;
+    if(dir){ this.chicoteChargeDir.x = dir.x; this.chicoteChargeDir.y = dir.y; }
+    if(this.chicoteChargeTime >= this.getChicoteChargeTime()) this.chicoteHeavyReady = true;
+  }
+  getChicoteChargeProgress(){
+    if(!this.isChicoteCharging) return 0;
+    return clamp(this.chicoteChargeTime / this.getChicoteChargeTime(), 0, 1);
+  }
+  cancelChicoteCharge(){
+    this.isChicoteCharging = false;
+    this.chicoteChargeTime = 0;
+    this.chicoteChargeDir = null;
+    this.chicoteHeavyReady = false;
+  }
+  // Soltou o ataque: devolve o ChicoteLash (leve) ou o ChicoteWhip (carregado)
+  releaseChicoteCharge(){
+    if(!this.isChicoteCharging) return null;
+    const maxT = this.getChicoteChargeTime();
+    const isHeavy = this.chicoteHeavyReady && this.chicoteChargeTime >= maxT;
+    const dir = normalize(this.chicoteChargeDir.x, this.chicoteChargeDir.y);
+    const w = this.weapon;
+    if(!this.hasIndianaHat) this.enableIndianaHat();
+    this.lastDir.x = dir.x; this.lastDir.y = dir.y;
+    if(dir.x!==0) this.facing = dir.x>0?1:-1;
+    this.isChicoteCharging = false;
+    this.chicoteChargeTime = 0;
+    this.chicoteChargeDir = null;
+    this.chicoteHeavyReady = false;
+    if(isHeavy){
+      // ===== CARREGADO: ataque antigo do chicote (chicote na parede, puxão + explosão) =====
+      this.shootCooldown = w.heavyCooldown || w.cooldown;
+      const n = normalize(dir.x, dir.y);
+      const sx = this.x + n.x*(this.w/2+8);
+      const sy = this.y + n.y*(this.h/2+6);
+      const whip = new ChicoteWhip(sx, sy, n.x, n.y, {
+        bulletSpeed: w.bulletSpeed,
+        range: w.heavyRange || w.range,
+        damage: w.heavyDamage || w.damage,
+        bulletSize: w.bulletSize,
+        color: w.color,
+        whipColor: w.whipColor || '#a0522d',
+        windColor: w.windColor || 'rgba(180,220,255,0.45)'
+      });
+      whip.isHeavy = true;
+      this.chicoteWhipRef = whip;
+      this.meleeAnim = 200;
+      this.meleeDir = {x:n.x, y:n.y};
+      try{ playWeaponSound('CHICOTE', true); }catch(e){}
+      return whip;
+    }
+    // ===== LEVE: leque de média distância, como uma espada bem mais longa =====
+    this.shootCooldown = w.lashCooldown ?? w.cooldown;
+    this.meleeAnim = 150;
+    this.meleeDir = {x:dir.x, y:dir.y};
+    const nx = this.x + dir.x*(this.w/2+6);
+    const ny = this.y + dir.y*(this.h/2+5);
+    const lash = new ChicoteLash(nx, ny, dir.x, dir.y, {
+      range: w.lashRange,
+      angle: w.lashAngle,
+      damage: w.lashDamage,
+      duration: w.lashDuration,
+      strands: w.lashStrands,
+      stun: w.lashStun,
+      knock: w.lashKnock,
+      whipColor: w.whipColor,
+      windColor: w.windColor
+    });
+    try{ playWeaponSound('CHICOTE', false); }catch(e){}
+    return lash;
+  }
   startChicotePull(latchX, latchY, whipRef){
     if(this.isChicotePulling) return false;
     this.isChicotePulling = true;
@@ -11024,6 +11645,20 @@ class Player {
     const before = this.hp;
     this.hp = clamp(this.hp + amount, 0, this.maxHp);
     return this.hp - before;
+  }
+  // ===== DISQUETE DA VIDA (continue) =====
+  // Cada DisqueteVidaItem coletado chama isto e guarda 1 continue (empilha sem limite).
+  grantContinue(amount = 1) {
+    const before = this.continues || 0;
+    this.continues = Math.max(0, (this.continues || 0) + amount);
+    return this.continues - before;
+  }
+  hasContinue() { return (this.continues || 0) > 0; }
+  // Consome 1 continue. Devolve false se não houver nenhum (aí a morte é definitiva).
+  useContinue() {
+    if(!this.hasContinue()) return false;
+    this.continues -= 1;
+    return true;
   }
   takeDamage(amount, opts = {}) {
     // Power Star: invencibilidade total
@@ -11129,6 +11764,8 @@ class Player {
         this.invulnTimer = 400;
         // Técnica Secreta Joestar - mesmo quebrando osso conta como sofrer dano (ativa bônus 5s)
         if(this.hasJoestarTechnique) this.triggerJoestarTechnique();
+        // IO-IO - levar dano (mesmo absorvido pelo osso) invoca io-io orbital
+        if(this.hasIoiPassive) this.triggerIoiOrbit(opts.game);
         return false; // dano absorvido pela quebra do osso, sem perder vida vermelha
       }
       // Caso especial: osso com apenas ½ coração (1 HP) e dano de 1 coração (2 HP) -> só esvazia, não quebra (fiel ao Isaac)
@@ -11165,6 +11802,8 @@ class Player {
     this.invulnTimer = 400;
     // Técnica Secreta Joestar - ao sofrer dano ganha bônus velocidade 5s (item comum)
     if(this.hasJoestarTechnique) this.triggerJoestarTechnique();
+    // IO-IO (passivo do JL) - ao levar dano invoca io-ios que orbitam causando dano
+    if(this.hasIoiPassive) this.triggerIoiOrbit(opts.game);
     return true;
   }
   isAlive() { return this.hp > 0; }
@@ -11205,6 +11844,8 @@ class Player {
         this.rayMatematicoFeedback=null;
       }
     }
+    // IO-IO (passivo do JL) - cooldown entre invocações de io-io
+    if(this.ioiCooldown > 0) this.ioiCooldown -= dt;
     // Técnica Secreta Joestar - decrementa bônus 5s e gerencia partículas
     if(this.hasJoestarTechnique && this.joestarTimer > 0){
       this.joestarTimer -= dt;
@@ -11386,6 +12027,10 @@ class Player {
     if(this.isSwordCharging && !this.isSwordWeapon()){
       this.cancelSwordCharge();
     }
+    // Chicote - cancela carga se trocou de arma
+    if(this.isChicoteCharging && !this.isChicoteWeapon()){
+      this.cancelChicoteCharge();
+    }
     // JG Bastão - cancela carga se não é JG ou sem bastão ou trocou personagem
     if(this.isBastaoCharging && (this.characterId!=='jg' || !this.hasBastao)){
       this.cancelBastaoCharge();
@@ -11504,6 +12149,7 @@ class Player {
    canShoot() {
     // CHICOTE puxando não pode atacar (evita spam durante grapple)
     if(this.isChicotePulling) return false;
+    if(this.isChicoteCharging) return false;
     if(this.chicoteWhipRef && !this.chicoteWhipRef.dead) return false;
     // JG sem bastão não pode atacar (até retornar) - evita duplicação e mantém identidade
     if(this.characterId==='jg' && !this.hasBastao) return false;
@@ -11646,27 +12292,28 @@ class Player {
         return fists;
       }
     }
-    // CHICOTE DO INDIANA - chicote longo com vento, grapple em parede, atordoa frente, puxa e explode
+    // CHICOTE DO INDIANA - fallback (o caminho normal é o bloco de carga no Game.update).
+    // Sem carga => golpe leve em leque. O pesado (grapple/explosão) só sai segurando.
     if(this.weapon && this.weapon.isChicote){
-      this.shootCooldown = this.weapon.cooldown;
-      this.lastDir.x=dir.x; this.lastDir.y=dir.y;
-      if(dir.x!==0) this.facing=dir.x>0?1:-1;
       const n=normalize(dir.x,dir.y);
-      const sx=this.x + n.x*(this.w/2+8);
-      const sy=this.y + n.y*(this.h/2+6);
       if(!this.hasIndianaHat) this.enableIndianaHat();
-      const whip=new ChicoteWhip(sx,sy,n.x,n.y,{
-        bulletSpeed: this.weapon.bulletSpeed,
-        range: this.weapon.range,
-        damage: this.weapon.damage,
-        bulletSize: this.weapon.bulletSize,
-        color: this.weapon.color,
-        whipColor: this.weapon.whipColor || '#a0522d',
-        windColor: this.weapon.windColor || 'rgba(180,220,255,0.45)'
-      });
-      this.chicoteWhipRef = whip;
+      this.lastDir.x=n.x; this.lastDir.y=n.y;
+      if(n.x!==0) this.facing=n.x>0?1:-1;
+      this.shootCooldown = this.weapon.lashCooldown ?? this.weapon.cooldown;
+      this.meleeAnim = 150;
+      this.meleeDir = {x:n.x, y:n.y};
+      const lash=new ChicoteLash(
+        this.x + n.x*(this.w/2+6), this.y + n.y*(this.h/2+5), n.x, n.y,
+        {
+          range: this.weapon.lashRange, angle: this.weapon.lashAngle,
+          damage: this.weapon.lashDamage, duration: this.weapon.lashDuration,
+          strands: this.weapon.lashStrands, stun: this.weapon.lashStun,
+          knock: this.weapon.lashKnock, whipColor: this.weapon.whipColor,
+          windColor: this.weapon.windColor
+        }
+      );
       try{ playWeaponSound('CHICOTE', false); }catch(e){}
-      return [whip];
+      return [lash];
     }
     // fallback para outras armas isFist (compatibilidade)
     if(this.weapon && this.weapon.isFist){
@@ -12173,6 +12820,7 @@ class Player {
     const isBastao = this.weapon.name==='BASTAO' || (this.characterId==='jg' && this.weapon.name==='BASTAO');
     const isMotosserra = this.weapon.name==='MOTOSSERRA';
     const isRayMatematico = this.weapon.name==='RAIO_MATEMATICO';
+    const isChicote = !!this.weapon.isChicote;
     const isMartelo = false;
     const isLanca = false;
     const isArco = false;
@@ -12197,6 +12845,12 @@ class Player {
       const prog=this.isSwordCharging? this.getSwordChargeProgress():0;
       if(this.isSwordCharging) ctx.fillStyle = prog>0.85 ? '#ffffff' : prog>0.5 ? '#e8e8e8' : '#a0a0b8';
       else ctx.fillStyle = '#d0d0d8';
+    }
+    else if (isChicote) {
+      // CHICOTE - couro enrolado: claro carregando, dourado quando o pesado está pronto
+      const prog = this.isChicoteCharging ? this.getChicoteChargeProgress() : 0;
+      if(this.isChicoteCharging) ctx.fillStyle = prog>0.92 ? '#ffd700' : prog>0.5 ? '#c98a52' : '#a0522d';
+      else ctx.fillStyle = '#8b4513';
     }
     else if (isLuva) ctx.fillStyle = (this.activeFists && this.activeFists.length>0) || this.activeFist ? '#6b1a1a' : '#ff3b30';
     else if (isMotosserra) {
@@ -12292,6 +12946,57 @@ class Player {
       if(this.isSwordCharging && prog>=0.99){
         ctx.fillStyle='rgba(255,255,255,0.82)';
         if(Math.floor(this.animTime/80)%2===0) ctx.fillRect(x+8, y+4 + bob, 6,1);
+      }
+    } else if (isChicote) {
+      // CHICOTE - punho + rolo de couro; enrolando enquanto carrega (leve -> pesado)
+      const prog = this.isChicoteCharging ? this.getChicoteChargeProgress() : 0;
+      const charging = this.isChicoteCharging;
+      const ready = charging && prog >= 0.99;
+      const cAng = charging && this.chicoteChargeDir
+        ? Math.atan2(this.chicoteChargeDir.y, this.chicoteChargeDir.x)
+        : (this.facing>0 ? 0 : Math.PI);
+      // punho de couro
+      ctx.fillStyle='#5a3010'; ctx.fillRect(x+4, y+12 + bob, 4, 3);
+      // rolo do chicote preso na mão
+      ctx.fillStyle='#3a1a0a'; ctx.fillRect(x+7, y+10 + bob, 6, 5);
+      ctx.fillStyle= ready ? '#ffd700' : charging ? '#c98a52' : '#a0522d';
+      ctx.fillRect(x+8, y+11 + bob, 4, 3);
+      // laços de couro enrolando conforme a carga sobe
+      if(charging){
+        const loops = 1 + Math.floor(prog*3);
+        const grow = 2 + prog*4;
+        ctx.strokeStyle = ready ? 'rgba(255,215,0,0.92)' : 'rgba(160,82,45,0.9)';
+        ctx.lineWidth = 1.1;
+        for(let i=0;i<loops;i++){
+          const a = cAng + i*0.9;
+          const r = 4 + i*grow*0.5;
+          ctx.beginPath();
+          ctx.arc(x+10 + Math.cos(a)*r, y+12 + bob + Math.sin(a)*r*0.6, grow*0.5, 0, Math.PI*2);
+          ctx.stroke();
+        }
+        // ponta do chicote tremendo pronta pra soltar
+        if(prog > 0.5){
+          const tipA = cAng + Math.sin(this.animTime*0.03)*0.35;
+          const tipR = 8 + prog*7;
+          const tx = x+10 + Math.cos(tipA)*tipR, ty = y+12+bob + Math.sin(tipA)*tipR*0.6;
+          ctx.strokeStyle= ready ? 'rgba(255,215,0,0.9)' : 'rgba(201,138,82,0.85)';
+          ctx.lineWidth=1.4;
+          ctx.beginPath(); ctx.moveTo(x+10, y+12+bob); ctx.quadraticCurveTo(x+10+Math.cos(tipA)*tipR*0.5, y+12+bob+Math.sin(tipA)*tipR*0.3-1, tx, ty); ctx.stroke();
+          ctx.fillStyle='#3a1a0a'; ctx.beginPath(); ctx.arc(tx,ty,1.6,0,Math.PI*2); ctx.fill();
+          if(ready){
+            ctx.fillStyle='rgba(255,215,0,0.85)';
+            if(Math.floor(this.animTime/80)%2===0) ctx.fillRect(tx-1, ty-4, 2, 1);
+          }
+        }
+      } else if(this.meleeAnim > 0 && this.meleeDir){
+        // golpe leve: puxão curto do chicote na direção do leque
+        const p = clamp(this.meleeAnim/150, 0, 1);
+        const ang = Math.atan2(this.meleeDir.y, this.meleeDir.x);
+        const r = 4 + p*7;
+        ctx.strokeStyle='rgba(160,82,45,0.8)'; ctx.lineWidth=1.2;
+        ctx.beginPath(); ctx.moveTo(x+10, y+12+bob);
+        ctx.quadraticCurveTo(x+10+Math.cos(ang)*r*0.5, y+12+bob+Math.sin(ang)*r*0.5-1, x+10+Math.cos(ang)*r, y+12+bob+Math.sin(ang)*r);
+        ctx.stroke();
       }
     } else if (isLuva) {
       // NOVO VISUAL: duas luvas de boxe com mola elástica
@@ -12941,7 +13646,7 @@ class Player {
       ctx.fillStyle='#3a1a0a';
       ctx.fillRect(hatX+2, hatY+1, 10, 0.6);
     }
-    if (this.dashCooldown <= 0 && !this.isCharging && !this.isSwordCharging && !this.isRayMatematicoCharging) {
+    if (this.dashCooldown <= 0 && !this.isCharging && !this.isSwordCharging && !this.isChicoteCharging && !this.isRayMatematicoCharging) {
       ctx.fillStyle = 'rgba(0,217,255,0.9)';
       ctx.fillRect(x+8, y-6 + bob, 8, 3);
     }
@@ -14015,7 +14720,7 @@ class SetchCupGame {
     this.showTimer = 0;
     this.revealTimer = 0;
     this.result = null; // 'win' | 'lose' | null
-    this.rewardType = null; // 'upgrade' | 'cyber'
+    this.rewardType = null; // 'upgrade' | 'cyber' | 'disquete'
     this.interactive = false;
     this.anim = 0;
     // Posições base: 3 copos igualmente espaçados na sala (arena grande 2x -> mais espaço)
@@ -14146,15 +14851,17 @@ class SetchCupGame {
       this.cups[i].revealed = true;
     }
     if(isWin){
-      // Sorteia recompensa: 50% upgrade compatível com arma equipada, 50% Vida Cibernética
+      // Sorteia entre 3 prêmios: Disquete da Vida / upgrade / Vida Cibernética
       const roll = Math.random();
-      let reward = (roll < SETCH_REWARD_UPGRADE_CHANCE) ? 'upgrade' : 'cyber';
+      let reward;
+      if(roll < SETCH_REWARD_DISQUETE_CHANCE) reward = 'disquete';
+      else if(roll < SETCH_REWARD_DISQUETE_CHANCE + SETCH_REWARD_UPGRADE_CHANCE) reward = 'upgrade';
+      else reward = 'cyber';
       // Se não pode dar vida cibernética (já no máximo), força upgrade
       const canCyber = player.boneHearts < player.maxBoneHearts;
       const hasUpgradeOption = this.getRandomUpgradeForPlayer(player);
-      if(!canCyber) reward='upgrade';
-      if(!hasUpgradeOption) reward='cyber';
-      if(!canCyber && !hasUpgradeOption) reward=null;
+      if(!canCyber && reward==='cyber') reward = hasUpgradeOption ? 'upgrade' : 'disquete';
+      if(!hasUpgradeOption && reward==='upgrade') reward = canCyber ? 'cyber' : 'disquete';
       this.rewardType = reward;
       if(reward==='upgrade'){
         const upId = this.getRandomUpgradeForPlayer(player);
@@ -14177,6 +14884,11 @@ class SetchCupGame {
         }
       } else if(reward==='cyber'){
         this.giveCyberHeart(player, game, room);
+        room.setchRewardGiven = true;
+        room.setchCleared = true;
+      } else if(reward==='disquete'){
+        // DISQUETE DA VIDA como prêmio do Jogo do Copinho
+        this.giveDisqueteVida(player, game, room);
         room.setchRewardGiven = true;
         room.setchCleared = true;
       }
@@ -14234,6 +14946,28 @@ class SetchCupGame {
       for(let k=0;k<16;k++) game.particles.push(new Particle(room.npc.x, room.npc.y-10, randRange(-1.4,1.4), randRange(-1.4,0.6), 340, '#00e5ff', 2.2));
     }
     if(game.shake) game.shake = Math.max(game.shake, 65);
+  }
+  giveDisqueteVida(player, game, room){
+    // DISQUETE DA VIDA como prêmio do Copinho: concede 1 continue, empilhável
+    const before = (player.continues|0);
+    if(typeof player.grantContinue === 'function') player.grantContinue(1);
+    const total = player.continues|0;
+    if(game.showToast) game.showToast(`💾 Setch: DISQUETE DA VIDA! [${total} continue(s) salvo(s)]`, 3000);
+    // partículas: chuva de 0 e 1 verdes no NPC (mesma identidade visual do item)
+    if(game.particles && room && room.npc){
+      const ox = room.npc.x, oy = room.npc.y-12;
+      for(let k=0;k<22;k++){
+        const a = Math.random()*Math.PI*2, sp = randRange(1.2, 3.4);
+        game.particles.push(new StarParticle(
+          ox + Math.cos(a)*randRange(0,6), oy + Math.sin(a)*randRange(0,6),
+          Math.cos(a)*sp, Math.sin(a)*sp - 0.6,
+          randRange(420,700), DISQUETE_VIDA_COLOR, randRange(2.2,3.4),
+          Math.random()<0.5 ? '0' : '1'
+        ));
+      }
+      if(room.explosions) room.explosions.push({x:ox, y:oy, radius:16, life:620, max:620, isDisqueteSave:true});
+    }
+    game.shake = Math.max(game.shake||0, 65);
   }
   draw(ctx){
     // Desenha mesa / base para sala grande
@@ -14330,6 +15064,28 @@ class SetchCupGame {
   }
 }
 
+// Uniforme dos NPCs da Sala Setch: camisa branca, calça azul e emblema "DS" no peito.
+// "Press Start 2P" avanca 1em por caractere, entao "DS" a 5px ocupa 10px: o escudo
+// precisa ter >=11px de largura para o texto nao encostar na borda. DS_BADGE_TEXT_DY
+// desloca a linha de base para centrar as letras no escudo (fonte de 5px => ~2.5px p/ centro).
+const DS_BADGE_TEXT_DY = 2.0;
+function drawDSBadge(ctx, cx, cy, bw, bh){
+  bw=bw||11; bh=bh||11;
+  const bx=cx-bw/2, by=cy-bh/2;
+  ctx.beginPath();
+  ctx.moveTo(bx, by);
+  ctx.lineTo(bx+bw, by);
+  ctx.lineTo(bx+bw, by+bh*0.58);
+  ctx.quadraticCurveTo(bx+bw, by+bh, cx, by+bh);
+  ctx.quadraticCurveTo(bx, by+bh, bx, by+bh*0.58);
+  ctx.closePath();
+  ctx.fillStyle='#1e3a8a'; ctx.fill();
+  ctx.strokeStyle='#ffd700'; ctx.lineWidth=0.8; ctx.stroke();
+  ctx.fillStyle='#ffd700'; ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
+  ctx.fillText('DS', cx, cy+DS_BADGE_TEXT_DY);
+  ctx.textAlign='left';
+}
+
 class SetchNPC {
   constructor(x,y){
     this.x=x; this.y=y;
@@ -14345,43 +15101,55 @@ class SetchNPC {
     return dist(this.x,this.y,player.x,player.y) < this.interactRange;
   }
   draw(ctx){
-    const x=this.x-this.w/2, y=this.y-this.h/2, bob=Math.sin(this.anim*0.008)*1.6;
+    const W=this.w, H=this.h;
+    const x=this.x-W/2, y=this.y-H/2, bob=Math.sin(this.anim*0.008)*1.6;
     // sombra
-    ctx.fillStyle='rgba(0,0,0,0.32)'; ctx.fillRect(x+2, y+this.h-3, this.w, 4);
+    ctx.fillStyle='rgba(0,0,0,0.32)'; ctx.fillRect(x+2, y+H-3, W, 4);
     // aura misteriosa setch (roxo/dourado)
     const pulse=0.5+Math.sin(this.anim*0.011)*0.30;
     ctx.fillStyle=`rgba(168,85,247,${0.14+pulse*0.08})`;
-    ctx.beginPath(); ctx.arc(this.x, this.y+bob, this.w*0.92+pulse*3,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.92+pulse*3,0,Math.PI*2); ctx.fill();
     ctx.strokeStyle=`rgba(255,215,0,${0.22+pulse*0.10})`; ctx.lineWidth=1.1; ctx.setLineDash([4,3]);
-    ctx.beginPath(); ctx.arc(this.x, this.y+bob, this.w*0.88,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
-    // corpo - jaleco/manto escuro
-    ctx.fillStyle='#1a0f1e'; ctx.fillRect(x+3, y+10+bob, this.w-6, this.h-12);
-    ctx.fillStyle='#2a1a30'; ctx.fillRect(x+3, y+10+bob, this.w-6, 2);
-    // cinto dourado
-    ctx.fillStyle='#a16207'; ctx.fillRect(x+4, y+16+bob, this.w-8, 2);
-    ctx.fillStyle='rgba(255,255,255,0.18)'; ctx.fillRect(x+4, y+16+bob, this.w-8, 0.7);
+    ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.88,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+    // pernas - calça azul
+    ctx.fillStyle='#1d4ed8'; ctx.fillRect(x+4, y+22+bob, W-8, H-25);
+    ctx.fillStyle='#1e3a8a'; ctx.fillRect(x+4, y+22+bob, 1, H-25);
+    ctx.fillStyle='#172554'; ctx.fillRect(x+4, y+24+bob, W-8, 0.8);
+    // sapatos
+    ctx.fillStyle='#111827'; ctx.fillRect(x+3, y+H-4, W-6, 2);
+    // corpo - camisa branca
+    ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+3, y+10+bob, W-6, 12);
+    ctx.fillStyle='#ffffff'; ctx.fillRect(x+3, y+10+bob, W-6, 1.5);
+    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+20.5+bob, W-6, 1.5);
+    // gola da camisa
+    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+10+bob, W-6, 1);
+    // emblema DS no peito
+    drawDSBadge(ctx, this.x, y+15.5+bob, 11, 9.8);
+    // cinto
+    ctx.fillStyle='#a16207'; ctx.fillRect(x+4, y+21.6+bob, W-8, 1.4);
+    ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.fillRect(x+4, y+21.6+bob, W-8, 0.6);
     // cabeça
-    ctx.fillStyle='#d9b99b'; ctx.fillRect(x+5, y+2+bob, this.w-10, 10);
-    // chapéu setch (cartola estilosa)
-    ctx.fillStyle='#0a0a0a'; ctx.fillRect(x+3, y-1+bob, this.w-6, 4);
-    ctx.fillRect(x+7, y-4+bob, this.w-14, 4);
-    ctx.fillStyle='#a16207'; ctx.fillRect(x+7, y+1+bob, this.w-14, 1.5);
+    ctx.fillStyle='#d9b99b'; ctx.fillRect(x+4, y+2+bob, W-8, 9);
+    // chapéu setch (cartola estilosa) - mantido
+    ctx.fillStyle='#0a0a0a'; ctx.fillRect(x+2, y-1+bob, W-4, 3.5);
+    ctx.fillRect(x+6, y-5+bob, W-12, 4.5);
+    ctx.fillStyle='#a16207'; ctx.fillRect(x+6, y+1+bob, W-12, 1.2);
     // olhos (misteriosos, brilho)
-    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+8, y+6+bob, 3,3); ctx.fillRect(x+17, y+6+bob, 3,3);
-    ctx.fillStyle='#ffd700'; ctx.fillRect(x+8.5, y+7+bob, 1.5,1.5); ctx.fillRect(x+17.5, y+7+bob, 1.5,1.5);
-    ctx.fillStyle='#fff'; ctx.fillRect(x+9, y+7.5+bob,0.7,0.7); ctx.fillRect(x+18, y+7.5+bob,0.7,0.7);
+    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+7, y+5.5+bob, 2.6,2.6); ctx.fillRect(x+W-9.6, y+5.5+bob, 2.6,2.6);
+    ctx.fillStyle='#ffd700'; ctx.fillRect(x+7.5, y+6.5+bob, 1.3,1.3); ctx.fillRect(x+W-9.1, y+6.5+bob, 1.3,1.3);
+    ctx.fillStyle='#fff'; ctx.fillRect(x+8, y+7+bob,0.6,0.6); ctx.fillRect(x+W-8.6, y+7+bob,0.6,0.6);
     // bigode estiloso
-    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+10, y+10+bob, 8,1);
-    ctx.fillStyle='#3a1a0a'; ctx.fillRect(x+9, y+11+bob, 10,0.7);
+    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+9, y+9.2+bob, W-18,0.9);
+    ctx.fillStyle='#3a1a0a'; ctx.fillRect(x+8, y+10.1+bob, W-16,0.6);
     // mãos (segurando copo imaginário)
-    ctx.fillStyle='#d9b99b'; ctx.fillRect(x+1, y+12+bob, 4,5); ctx.fillRect(x+this.w-5, y+12+bob, 4,5);
+    ctx.fillStyle='#d9b99b'; ctx.fillRect(x+0.5, y+11+bob, 3.5,4.5); ctx.fillRect(x+W-4, y+11+bob, 3.5,4.5);
     // nome tag
-    ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(this.x-22, y-12+bob, 44, 8);
+    ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(this.x-22, y-13+bob, 44, 8);
     ctx.fillStyle='#ffd700'; ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
-    ctx.fillText('SETCH', this.x, y-6+bob); ctx.textAlign='left';
+    ctx.fillText('SETCH', this.x, y-7+bob); ctx.textAlign='left';
     // hint
     ctx.fillStyle='rgba(168,85,247,0.92)'; ctx.font='5px monospace'; ctx.textAlign='center';
-    ctx.fillText('COPINHOS', this.x, y-16+bob); ctx.textAlign='left';
+    ctx.fillText('COPINHOS', this.x, y-17+bob); ctx.textAlign='left';
   }
   getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
 }
@@ -14436,91 +15204,312 @@ class IndianaJonesNPC {
     return {ok:true, weapon:'chicote'};
   }
   draw(ctx){
-    const x=this.x-this.w/2, y=this.y-this.h/2, bob=Math.sin(this.anim*0.008)*1.4;
+    const W=this.w, H=this.h;
+    const x=this.x-W/2, y=this.y-H/2, bob=Math.sin(this.anim*0.008)*1.4;
     // sombra
-    ctx.fillStyle='rgba(0,0,0,0.30)'; ctx.fillRect(x+2, y+this.h-3, this.w, 4);
+    ctx.fillStyle='rgba(0,0,0,0.30)'; ctx.fillRect(x+2, y+H-3, W, 4);
     // aura aventureiro (areia/deserto)
     const pulse=0.5+Math.sin(this.anim*0.011)*0.28;
     ctx.fillStyle=`rgba(210,166,121,${0.13+pulse*0.07})`;
-    ctx.beginPath(); ctx.arc(this.x, this.y+bob, this.w*0.92+pulse*3,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.92+pulse*3,0,Math.PI*2); ctx.fill();
     ctx.strokeStyle=`rgba(139,69,19,${0.22+pulse*0.10})`; ctx.lineWidth=1.1; ctx.setLineDash([4,3]);
-    ctx.beginPath(); ctx.arc(this.x, this.y+bob, this.w*0.88,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
-    // pernas - calça cáqui Indiana
-    ctx.fillStyle='#8b7355'; ctx.fillRect(x+4, y+16+bob, 6, 6);
-    ctx.fillRect(x+18, y+16+bob, 6, 6);
-    ctx.fillStyle='#6b5a3a'; ctx.fillRect(x+4, y+18+bob, 6,1);
-    ctx.fillRect(x+18, y+18+bob, 6,1);
-    ctx.fillStyle='#3a2a0a'; ctx.fillRect(x+5, y+20+bob, 6,1.5);
-    ctx.fillRect(x+18, y+20+bob, 6,1.5);
+    ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.88,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+    // pernas - calça azul
+    ctx.fillStyle='#1d4ed8'; ctx.fillRect(x+3, y+20+bob, W-6, H-24);
+    ctx.fillStyle='#1e3a8a'; ctx.fillRect(x+3, y+20+bob, 1, H-24);
+    ctx.fillStyle='#172554'; ctx.fillRect(x+3, y+22.5+bob, W-6, 0.8);
     // botas
-    ctx.fillStyle='#2a1a0a'; ctx.fillRect(x+3, y+21+bob, 8,2);
-    ctx.fillRect(x+17, y+21+bob, 8,2);
-    // jaqueta couro marrom Indiana
-    ctx.fillStyle='#5b3511'; ctx.fillRect(x+3, y+9+bob, this.w-6, 10);
-    ctx.fillStyle='#8b4513'; ctx.fillRect(x+3, y+9+bob, this.w-6, 2);
-    ctx.fillStyle='#a0522d'; ctx.fillRect(x+4, y+10+bob, this.w-8, 1);
-    // bolsos jaqueta
-    ctx.fillStyle='#6b3a1a'; ctx.fillRect(x+5, y+13+bob, 4,3);
-    ctx.fillRect(x+19, y+13+bob, 4,3);
-    ctx.fillStyle='#d2a679'; ctx.fillRect(x+6, y+14+bob, 2,0.8);
-    ctx.fillRect(x+20, y+14+bob, 2,0.8);
+    ctx.fillStyle='#2a1a0a'; ctx.fillRect(x+2, y+H-4, 7.5, 2.5);
+    ctx.fillRect(x+W-9.5, y+H-4, 7.5, 2.5);
+    // corpo - camisa branca
+    ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+3, y+9.5+bob, W-6, 11);
+    ctx.fillStyle='#ffffff'; ctx.fillRect(x+3, y+9.5+bob, W-6, 1.5);
+    // gola
+    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+9.5+bob, W-6, 1);
+    // emblema DS no peito
+    drawDSBadge(ctx, this.x, y+14.5+bob, 11, 7.8);
     // cinto com fivela
-    ctx.fillStyle='#3a1a0a'; ctx.fillRect(x+4, y+16+bob, this.w-8, 2);
-    ctx.fillStyle='#d2a679'; ctx.fillRect(x+12, y+16+bob, 4,2);
-    ctx.fillStyle='#8b4513'; ctx.fillRect(x+13, y+16.5+bob, 2,1);
-    // braços
-    ctx.fillStyle='#5b3511'; ctx.fillRect(x+1, y+10+bob, 4,7);
-    ctx.fillRect(x+this.w-5, y+10+bob, 4,7);
-    ctx.fillStyle='#d9b99b'; ctx.fillRect(x+1, y+15+bob, 4,3);
-    ctx.fillRect(x+this.w-5, y+15+bob, 4,3);
+    ctx.fillStyle='#3a1a0a'; ctx.fillRect(x+3.5, y+18.9+bob, W-7, 1.6);
+    ctx.fillStyle='#d2a679'; ctx.fillRect(x+W/2-2, y+18.9+bob, 4, 1.6);
+    ctx.fillStyle='#8b4513'; ctx.fillRect(x+W/2-1, y+19.3+bob, 2, 0.8);
+    // braços - mangas brancas
+    ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+0.5, y+10.5+bob, 3.5, 6.5);
+    ctx.fillRect(x+W-4, y+10.5+bob, 3.5, 6.5);
+    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+0.5, y+10.5+bob, 3.5, 0.8);
+    ctx.fillRect(x+W-4, y+10.5+bob, 3.5, 0.8);
+    ctx.fillStyle='#e8c9a0'; ctx.fillRect(x+0.5, y+15.2+bob, 3.5, 2.8);
+    ctx.fillRect(x+W-4, y+15.2+bob, 3.5, 2.8);
     // chicote enrolado no ombro (detalhe)
-    ctx.strokeStyle='#3a1a0a'; ctx.lineWidth=2.2;
-    ctx.beginPath(); ctx.arc(this.x+8, y+11+bob, 6, -0.2, 2.1); ctx.stroke();
-    ctx.strokeStyle='#8b4513'; ctx.lineWidth=1.4;
-    ctx.beginPath(); ctx.arc(this.x+8, y+11+bob, 6, -0.2, 2.1); ctx.stroke();
-    ctx.fillStyle='#1a0a00'; ctx.fillRect(this.x+12, y+14+bob, 3,1);
+    ctx.strokeStyle='#3a1a0a'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(this.x+6, y+12+bob, 5.2, -0.2, 2.1); ctx.stroke();
+    ctx.strokeStyle='#8b4513'; ctx.lineWidth=1.3;
+    ctx.beginPath(); ctx.arc(this.x+6, y+12+bob, 5.2, -0.2, 2.1); ctx.stroke();
+    ctx.fillStyle='#1a0a00'; ctx.fillRect(this.x+9, y+14.6+bob, 2.6,0.9);
     // cabeça
-    ctx.fillStyle='#e8c9a0'; ctx.fillRect(x+5, y+2+bob, this.w-10, 10);
+    ctx.fillStyle='#e8c9a0'; ctx.fillRect(x+4, y+2+bob, W-8, 9);
     // cabelo levemente à mostra sob chapéu
-    ctx.fillStyle='#2a1a0a'; ctx.fillRect(x+6, y+4+bob, this.w-12, 2);
-    // chapéu Fedora marrom Indiana - icônico
-    ctx.fillStyle='#6b3a11'; ctx.fillRect(x+2, y-1+bob, this.w-4, 4); // aba
-    ctx.fillStyle='#3a1a0a'; ctx.fillRect(x+2, y+1+bob, this.w-4, 1); // faixa
-    ctx.fillStyle='#8b4513'; ctx.fillRect(x+6, y-5+bob, this.w-12, 6); // copa
-    ctx.fillStyle='#3a1a0a'; ctx.fillRect(x+8, y-1+bob, this.w-16, 1); // vinco
-    ctx.fillStyle='#d2a679'; ctx.fillRect(x+7, y-2+bob, this.w-14, 0.8); // brilho
+    ctx.fillStyle='#2a1a0a'; ctx.fillRect(x+5, y+3.5+bob, W-10, 1.8);
+    // chapéu Fedora marrom Indiana - mantido (icônico)
+    ctx.fillStyle='#6b3a11'; ctx.fillRect(x+1, y-1+bob, W-2, 3.5); // aba
+    ctx.fillStyle='#3a1a0a'; ctx.fillRect(x+1, y+1+bob, W-2, 1); // faixa
+    ctx.fillStyle='#8b4513'; ctx.fillRect(x+5, y-5+bob, W-10, 5.5); // copa
+    ctx.fillStyle='#3a1a0a'; ctx.fillRect(x+7, y-1+bob, W-14, 1); // vinco
+    ctx.fillStyle='#d2a679'; ctx.fillRect(x+6, y-2.2+bob, W-12, 0.8); // brilho
     // sombra aba sobre rosto
-    ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.fillRect(x+5, y+2+bob, this.w-10, 2);
+    ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.fillRect(x+4, y+2+bob, W-8, 1.8);
     // olhos aventureiro (determinado)
-    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+8, y+6+bob, 3,2.5);
-    ctx.fillRect(x+17, y+6+bob, 3,2.5);
-    ctx.fillStyle='#3a1a0a'; ctx.fillRect(x+8, y+7.5+bob, 3,0.6);
-    ctx.fillRect(x+17, y+7.5+bob, 3,0.6);
-    ctx.fillStyle='#fff'; ctx.fillRect(x+9, y+6.5+bob, 1,1);
-    ctx.fillRect(x+18, y+6.5+bob, 1,1);
+    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+7, y+5.5+bob, 2.6,2.3);
+    ctx.fillRect(x+W-9.6, y+5.5+bob, 2.6,2.3);
+    ctx.fillStyle='#3a1a0a'; ctx.fillRect(x+7, y+6.9+bob, 2.6,0.5);
+    ctx.fillRect(x+W-9.6, y+6.9+bob, 2.6,0.5);
+    ctx.fillStyle='#fff'; ctx.fillRect(x+7.8, y+6+bob, 0.9,0.9);
+    ctx.fillRect(x+W-8.8, y+6+bob, 0.9,0.9);
     // sorriso confiante + bigode leve?
-    ctx.fillStyle='#7a4a3a'; ctx.fillRect(x+11, y+10+bob, 6,1);
-    ctx.fillStyle='#5a2a1a'; ctx.fillRect(x+12, y+11+bob, 4,0.7);
+    ctx.fillStyle='#7a4a3a'; ctx.fillRect(x+9.5, y+9+bob, 5,0.9);
+    ctx.fillStyle='#5a2a1a'; ctx.fillRect(x+10.5, y+9.9+bob, 3,0.6);
     // cicatriz leve queixo (aventureiro)
-    ctx.fillStyle='#b09070'; ctx.fillRect(x+9, y+11+bob, 2,0.8);
+    ctx.fillStyle='#b09070'; ctx.fillRect(x+8, y+9.9+bob, 1.8,0.7);
     // nome tag
-    ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(this.x-26, y-12+bob, 52, 8);
+    ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(this.x-26, y-13+bob, 52, 8);
+    if(!this.giftGiven && Math.floor(this.anim/500)%2===0){
+      ctx.strokeStyle='rgba(255,215,0,0.9)'; ctx.lineWidth=0.7;
+      ctx.strokeRect(this.x-26.5, y-13.5+bob, 53, 9);
+    }
     ctx.fillStyle='#d2a679'; ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
-    ctx.fillText('INDIANA', this.x, y-6+bob); ctx.textAlign='left';
+    ctx.fillText('INDIANA', this.x, y-7+bob); ctx.textAlign='left';
     // hint chicote 100%
     if(!this.giftGiven){
       ctx.fillStyle='rgba(210,166,121,0.96)'; ctx.font='5px monospace'; ctx.textAlign='center';
-      ctx.fillText('[E] CHICOTE 100%', this.x, y-16+bob); ctx.textAlign='left';
-      if(Math.floor(this.anim/500)%2===0){
-        ctx.fillStyle='rgba(255,255,255,0.88)'; ctx.font='6px monospace'; ctx.textAlign='center';
-        ctx.fillText('▼', this.x, y-8+bob); ctx.textAlign='left';
-      }
+      ctx.fillText('[E] CHICOTE 100%', this.x, y-17+bob); ctx.textAlign='left';
       // brilho gift aguardando
       ctx.strokeStyle=`rgba(210,166,121,${0.38+pulse*0.18})`; ctx.lineWidth=1.4; ctx.setLineDash([3,3]);
-      ctx.strokeRect(x-2, y-4+bob, this.w+4, this.h+6); ctx.setLineDash([]);
+      ctx.strokeRect(x-2, y-4+bob, W+4, H+6); ctx.setLineDash([]);
     } else {
       ctx.fillStyle='rgba(74,222,128,0.9)'; ctx.font='5px monospace'; ctx.textAlign='center';
-      ctx.fillText('OBRIGADO!', this.x, y-16+bob); ctx.textAlign='left';
+      ctx.fillText('OBRIGADO!', this.x, y-17+bob); ctx.textAlign='left';
+    }
+  }
+  getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
+}
+
+// ===================== JL NPC - PASSIVO IO-IO (SALA SETCH) =====================
+// NPC na Sala Setch que entrega o passivo IO-IO: ao levar dano o jogador invoca
+// io-ios que giram em volta dele causando dano nos inimigos.
+class JLNPC {
+  constructor(x,y){
+    this.x=x; this.y=y;
+    this.w=JL_NPC_SIZE_W; this.h=JL_NPC_SIZE_H;
+    this.anim=Math.random()*1000;
+    this.interactRange=JL_INTERACT_RANGE;
+    this.giftGiven=false; // 1 vez só por partida
+    this.wasNear=false;
+  }
+  update(dt,player){ this.anim+=dt; }
+  isNear(player){ return dist(this.x,this.y,player.x,player.y) < this.interactRange; }
+  // Dá o passivo IO-IO (flag permanente, não ocupa o slot de especial)
+  tryGiveGift(player, game, room){
+    if(this.giftGiven || player.hasIoiPassive) return {ok:false, reason:'already_given'};
+    player.enableIoiPassive();
+    this.giftGiven=true;
+    if(room) room.jlGiftGiven=true;
+    if(game){
+      game.shake=Math.max(game.shake||0, 70);
+      for(let k=0;k<18;k++) game.particles.push(new Particle(this.x,this.y, randRange(-1.7,1.7), randRange(-1.7,0.6), 380, '#e53935', 2.4));
+      for(let k=0;k<8;k++) game.particles.push(new Particle(this.x,this.y, randRange(-1.1,1.1), randRange(-1.5,0.5), 300, '#ffd54a', 1.8));
+      if(game.currentRoom) game.currentRoom.explosions.push({x:this.x,y:this.y,radius:12,life:340,max:340,isIoiGift:true});
+      if(game.showToast) game.showToast('🪀 JL: Toma meu IO-IO! Ao levar dano, ele gira em você e machuca os inimigos!', 3000);
+    }
+    return {ok:true, passive:'ioio'};
+  }
+  draw(ctx){
+    const W=this.w, H=this.h;
+    const x=this.x-W/2, y=this.y-H/2, bob=Math.sin(this.anim*0.009)*1.6;
+    const spin=this.anim*0.02;
+    // sombra
+    ctx.fillStyle='rgba(0,0,0,0.32)'; ctx.fillRect(x+2, y+H-3, W, 4);
+    // aura do io-io (vermelha, pulsante)
+    const pulse=0.5+Math.sin(this.anim*0.012)*0.30;
+    ctx.fillStyle=`rgba(229,57,53,${0.13+pulse*0.08})`;
+    ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.92+pulse*3,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle=`rgba(255,213,74,${0.24+pulse*0.10})`; ctx.lineWidth=1.1; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.88,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+    // pernas - calça azul
+    ctx.fillStyle='#1d4ed8'; ctx.fillRect(x+4, y+22+bob, W-8, H-25);
+    ctx.fillStyle='#1e3a8a'; ctx.fillRect(x+4, y+22+bob, 1, H-25);
+    ctx.fillStyle='#172554'; ctx.fillRect(x+4, y+24+bob, W-8, 0.8);
+    // sapatos
+    ctx.fillStyle='#111827'; ctx.fillRect(x+3, y+H-4, W-6, 2);
+    // corpo - camisa branca
+    ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+3, y+10+bob, W-6, 12);
+    ctx.fillStyle='#ffffff'; ctx.fillRect(x+3, y+10+bob, W-6, 1.5);
+    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+20.5+bob, W-6, 1.5);
+    // gola
+    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+10+bob, W-6, 1);
+    // emblema DS no peito
+    drawDSBadge(ctx, this.x, y+15.5+bob, 11, 9.8);
+    // cinto
+    ctx.fillStyle='#a16207'; ctx.fillRect(x+4, y+21.6+bob, W-8, 1.4);
+    ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.fillRect(x+4, y+21.6+bob, W-8, 0.6);
+    // cabeça
+    ctx.fillStyle='#e0bfa0'; ctx.fillRect(x+4, y+2+bob, W-8, 9);
+    // cabelo (escurinho, espetado)
+    ctx.fillStyle='#2a1a0a'; ctx.fillRect(x+3, y+0.5+bob, W-6, 3.2);
+    ctx.fillRect(x+5, y-1.2+bob, 4, 2); ctx.fillRect(x+W-9, y-1.2+bob, 4, 2);
+    // olhos (animados)
+    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+7, y+5.5+bob, 2.6,2.6); ctx.fillRect(x+W-9.6, y+5.5+bob, 2.6,2.6);
+    ctx.fillStyle='#fff'; ctx.fillRect(x+8, y+7+bob,0.6,0.6); ctx.fillRect(x+W-8.6, y+7+bob,0.6,0.6);
+    // sorriso
+    ctx.fillStyle='#8a4a3a'; ctx.fillRect(x+9, y+9.2+bob, W-18,0.9);
+    // mão direita segurando o io-io (com corda)
+    const hx=x+W-2, hy=y+12+bob;
+    ctx.strokeStyle='rgba(255,255,255,0.75)'; ctx.lineWidth=0.7;
+    ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(hx+4.5, hy+7); ctx.stroke();
+    ctx.save(); ctx.translate(hx+4.5, hy+7); ctx.rotate(spin);
+    ctx.fillStyle='#e53935'; ctx.beginPath(); ctx.arc(-1.6,0,2.4,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#e53935'; ctx.beginPath(); ctx.arc(1.6,0,2.4,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#ff8a80';
+    ctx.beginPath(); ctx.arc(-1.6,0,1.3,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(1.6,0,1.3,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.arc(hx+4.5, hy+7, 0.7, 0, Math.PI*2); ctx.fill();
+    // braço
+    ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+W-4, y+10.5+bob, 3.5, 6);
+    // mão esquerda
+    ctx.fillStyle='#e0bfa0'; ctx.fillRect(x+0.5, y+11+bob, 3.5,4.5);
+    // nome tag
+    ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(this.x-20, y-13+bob, 40, 8);
+    if(!this.giftGiven && Math.floor(this.anim/500)%2===0){
+      ctx.strokeStyle='rgba(255,213,74,0.9)'; ctx.lineWidth=0.7;
+      ctx.strokeRect(this.x-20.5, y-13.5+bob, 41, 9);
+    }
+    ctx.fillStyle='#ff8a80'; ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
+    ctx.fillText('JL', this.x, y-7+bob); ctx.textAlign='left';
+    // hint
+    if(!this.giftGiven){
+      ctx.fillStyle='rgba(255,138,128,0.96)'; ctx.font='5px monospace'; ctx.textAlign='center';
+      ctx.fillText('[E] PASSIVO IO-IO', this.x, y-17+bob); ctx.textAlign='left';
+      ctx.strokeStyle=`rgba(255,138,128,${0.38+pulse*0.18})`; ctx.lineWidth=1.4; ctx.setLineDash([3,3]);
+      ctx.strokeRect(x-2, y-4+bob, W+4, H+6); ctx.setLineDash([]);
+    } else {
+      ctx.fillStyle='rgba(74,222,128,0.9)'; ctx.font='5px monospace'; ctx.textAlign='center';
+      ctx.fillText('OBRIGADO!', this.x, y-17+bob); ctx.textAlign='left';
+    }
+  }
+  getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
+}
+
+// ===================== OLI NPC - ITEM ESPECIAL DE XADREZ (SALA SETCH) =====================
+// NPC na Sala Setch que entrega o item especial de Xadrez do Oli (OliXadrez):
+// invoca Torre, Bispo, Rainha e Rei em ciclo - cada peça com mecânica única.
+class OliNPC {
+  constructor(x,y){
+    this.x=x; this.y=y;
+    this.w=OLI_NPC_SIZE_W; this.h=OLI_NPC_SIZE_H;
+    this.anim=Math.random()*1000;
+    this.interactRange=OLI_NPC_INTERACT_RANGE;
+    this.giftGiven=false; // 1 vez só por partida
+    this.wasNear=false;
+  }
+  update(dt,player){ this.anim+=dt; }
+  isNear(player){ return dist(this.x,this.y,player.x,player.y) < this.interactRange; }
+  // Dá o item especial de xadrez (equipado no slot de especial do jogador)
+  tryGiveGift(player, game, room){
+    if(this.giftGiven) return {ok:false, reason:'already_given'};
+    if(player.equippedSpecial && player.equippedSpecial.id==='oli_xadrez'){
+      this.giftGiven = true;
+      if(room) room.oliGiftGiven = true;
+      return {ok:false, reason:'already_has'};
+    }
+    const hadSpecial = player.equippedSpecial;
+    const special = createSpecialItem('oli_xadrez');
+    if(!special) return {ok:false, reason:'create_failed'};
+    if(typeof player.equipSpecial === 'function') player.equipSpecial(special);
+    else player.equippedSpecial = special; // fallback de compatibilidade
+    this.giftGiven=true;
+    if(room) room.oliGiftGiven=true;
+    if(game){
+      game.shake=Math.max(game.shake||0, 70);
+      for(let k=0;k<18;k++) game.particles.push(new Particle(this.x,this.y, randRange(-1.6,1.6), randRange(-1.7,0.6), 380, '#a78bfa', 2.4));
+      for(let k=0;k<8;k++) game.particles.push(new Particle(this.x,this.y, randRange(-1.1,1.1), randRange(-1.4,0.5), 300, '#e9d5ff', 1.8));
+      if(game.currentRoom) game.currentRoom.explosions.push({x:this.x,y:this.y,radius:12,life:340,max:340,isChessGift:true});
+      let msg = '♞ Oli: Toma meu XADREZ! Invoca Torre ♜, Bispo ♝, Rainha ♛ e Rei ♚ em ciclo. [E] para usar.';
+      if(hadSpecial && hadSpecial.id!=='oli_xadrez') msg += ` (substituiu ${hadSpecial.name})`;
+      if(game.showToast) game.showToast(msg, 3000);
+    }
+    return {ok:true, special:'oli_xadrez'};
+  }
+  draw(ctx){
+    const W=this.w, H=this.h;
+    const x=this.x-W/2, y=this.y-H/2, bob=Math.sin(this.anim*0.008)*1.6;
+    // sombra
+    ctx.fillStyle='rgba(0,0,0,0.32)'; ctx.fillRect(x+2, y+H-3, W, 4);
+    // aura de xadrez (roxa/violeta, pulsante)
+    const pulse=0.5+Math.sin(this.anim*0.011)*0.30;
+    ctx.fillStyle=`rgba(167,139,250,${0.15+pulse*0.09})`;
+    ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.94+pulse*3,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle=`rgba(216,180,254,${0.24+pulse*0.10})`; ctx.lineWidth=1.1; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.89,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+    // pernas - calça azul
+    ctx.fillStyle='#1d4ed8'; ctx.fillRect(x+4, y+22+bob, W-8, H-25);
+    ctx.fillStyle='#1e3a8a'; ctx.fillRect(x+4, y+22+bob, 1, H-25);
+    ctx.fillStyle='#172554'; ctx.fillRect(x+4, y+24+bob, W-8, 0.8);
+    // sapatos
+    ctx.fillStyle='#111827'; ctx.fillRect(x+3, y+H-4, W-6, 2);
+    // corpo - camisa branca
+    ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+3, y+10+bob, W-6, 12);
+    ctx.fillStyle='#ffffff'; ctx.fillRect(x+3, y+10+bob, W-6, 1.5);
+    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+20.5+bob, W-6, 1.5);
+    // gola
+    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+10+bob, W-6, 1);
+    // emblema DS no peito
+    drawDSBadge(ctx, this.x, y+15.5+bob, 11, 9.8);
+    // cinto
+    ctx.fillStyle='#6d28d9'; ctx.fillRect(x+4, y+21.6+bob, W-8, 1.4);
+    ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.fillRect(x+4, y+21.6+bob, W-8, 0.6);
+    // cabeça
+    ctx.fillStyle='#d9b99b'; ctx.fillRect(x+4, y+2+bob, W-8, 9);
+    // cabelo castanho
+    ctx.fillStyle='#4a2c17'; ctx.fillRect(x+3, y+0.5+bob, W-6, 3.2);
+    ctx.fillRect(x+5, y-1.2+bob, 4, 2); ctx.fillRect(x+W-9, y-1.2+bob, 4, 2);
+    // olhos (violeta, brilho de xadrez)
+    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+7, y+5.5+bob, 2.6,2.6); ctx.fillRect(x+W-9.6, y+5.5+bob, 2.6,2.6);
+    ctx.fillStyle='#c084fc'; ctx.fillRect(x+7.5, y+6.5+bob, 1.3,1.3); ctx.fillRect(x+W-9.1, y+6.5+bob, 1.3,1.3);
+    ctx.fillStyle='#fff'; ctx.fillRect(x+8, y+7+bob,0.6,0.6); ctx.fillRect(x+W-8.6, y+7+bob,0.6,0.6);
+    // sorriso
+    ctx.fillStyle='#8a4a3a'; ctx.fillRect(x+9, y+9.2+bob, W-18,0.9);
+    // mão esquerda - peça de xadrez ♞ flutuando/girando ao lado
+    const px=x+2.5, py=y+13+bob, wspin=this.anim*0.012;
+    ctx.save(); ctx.translate(px, py); ctx.rotate(wspin*0.35);
+    ctx.fillStyle='rgba(167,139,250,0.22)'; ctx.beginPath(); ctx.arc(0,0,6.5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#f5f3ff'; ctx.font='9px serif'; ctx.textAlign='center';
+    ctx.fillText('♞', 0, 3.2);
+    ctx.textAlign='left';
+    ctx.restore();
+    ctx.strokeStyle=`rgba(216,180,254,${0.5+pulse*0.2})`; ctx.lineWidth=0.7; ctx.setLineDash([2,2]);
+    ctx.beginPath(); ctx.arc(px, py, 7.5, this.anim*0.01, this.anim*0.01+2.2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(px, py, 7.5, this.anim*0.01+Math.PI, this.anim*0.01+Math.PI+2.2); ctx.stroke();
+    ctx.setLineDash([]);
+    // braço esquerdo
+    ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+0.5, y+10.5+bob, 3.5, 6);
+    // mão direita
+    ctx.fillStyle='#d9b99b'; ctx.fillRect(x+W-4, y+11+bob, 3.5,4.5);
+    // nome tag
+    ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(this.x-20, y-13+bob, 40, 8);
+    if(!this.giftGiven && Math.floor(this.anim/500)%2===0){
+      ctx.strokeStyle='rgba(167,139,250,0.9)'; ctx.lineWidth=0.7;
+      ctx.strokeRect(this.x-20.5, y-13.5+bob, 41, 9);
+    }
+    ctx.fillStyle='#c084fc'; ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
+    ctx.fillText('OLI', this.x, y-7+bob); ctx.textAlign='left';
+    // hint
+    if(!this.giftGiven){
+      ctx.fillStyle='rgba(192,132,252,0.96)'; ctx.font='5px monospace'; ctx.textAlign='center';
+      ctx.fillText('[E] XADREZ ♞', this.x, y-17+bob); ctx.textAlign='left';
+      ctx.strokeStyle=`rgba(192,132,252,${0.38+pulse*0.18})`; ctx.lineWidth=1.4; ctx.setLineDash([3,3]);
+      ctx.strokeRect(x-2, y-4+bob, W+4, H+6); ctx.setLineDash([]);
+    } else {
+      ctx.fillStyle='rgba(74,222,128,0.9)'; ctx.font='5px monospace'; ctx.textAlign='center';
+      ctx.fillText('OBRIGADO!', this.x, y-17+bob); ctx.textAlign='left';
     }
   }
   getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
@@ -14575,6 +15564,10 @@ class Room {
     this.npc = null; // SetchNPC
     this.cupGame = null; // SetchCupGame
     this.indianaNPC = null; // Indiana Jones NPC (Chicote 100%)
+    this.jlNPC = null;   // JL NPC (passivo IO-IO)
+    this.oliNPC = null;  // Oli NPC (item especial de Xadrez)
+    this.jlGiftGiven = false;
+    this.oliGiftGiven = false;
     this.indianaGiftGiven = false; // garante 100% Chicote
     this.rareItemCollected = false;
     this.buildWalls(seedRand);
@@ -14843,6 +15836,17 @@ class Room {
       if(available.length){
         const pick=available[Math.floor(rng()*available.length)];
         const it=new WeaponItem(randRange(140, CANVAS_W-140), randRange(100, CANVAS_H-100), pick);
+        tryPlace(it);
+      }
+    }
+    // ===== DISQUETE DA VIDA - item de CONTINUE (rara, mas generosa) =====
+    // Concede 1 continue: ao morrer com ele salvo, volta pra última sala e recupera 1 coração.
+    // Sem limite de empilhamento - quem acha outro continua guardando.
+    const disqueteChance = this.type==='treasure' ? DISQUETE_VIDA_SPAWN_TREASURE : DISQUETE_VIDA_SPAWN;
+    if(rng() < disqueteChance && !this.isRare && !this.isMiniboss && !this.isBossStair && !this.isHacker && !this.isPartyHorde && this.items.length < 4){
+      if(!this.items.some(it=> it.type==='disquete_vida')){
+        const it = new DisqueteVidaItem(randRange(140, CANVAS_W-140), randRange(100, CANVAS_H-100));
+        it.spawnDelay = 200;
         tryPlace(it);
       }
     }
@@ -15277,6 +16281,12 @@ class Room {
     // NPC Indiana Jones - garante Chicote 100% (requisito) na Sala Setch - visual Indiana Jones
     this.indianaNPC = new IndianaJonesNPC(CANVAS_W/2 + 168, CANVAS_H/2 - 28);
     this.indianaGiftGiven = false;
+    // NPC JL - dá o passivo IO-IO (ao levar dano, invoca io-io orbital)
+    this.jlNPC = new JLNPC(CANVAS_W/2 - 196, CANVAS_H/2 - 20);
+    this.jlGiftGiven = false;
+    // NPC Oli - dá o item especial de Xadrez (Torre/Bispo/Rainha/Rei)
+    this.oliNPC = new OliNPC(CANVAS_W/2 - 196, CANVAS_H/2 + 60);
+    this.oliGiftGiven = false;
     // Marca sala como ainda não limpa (precisa vencer minigame para considerar limpa)
     return true;
   }
@@ -15496,6 +16506,8 @@ class Room {
       if(this.npc) this.npc.update(dt, player);
       if(this.cupGame) this.cupGame.update(dt);
       if(this.indianaNPC) this.indianaNPC.update(dt, player);
+      if(this.jlNPC) this.jlNPC.update(dt, player);
+      if(this.oliNPC) this.oliNPC.update(dt, player);
     }
     // atualiza spikes (anim)
     for(const s of this.spikes) s.update(dt);
@@ -16309,6 +17321,7 @@ class Room {
         else if(it.type==='raio') col='#00e5ff';
         else if(it.isUpgrade) col = it.rarity.color;
         else if(it.type==='double_shot') col='#5a8fd4';
+        else if(it.type==='disquete_vida') col=DISQUETE_VIDA_COLOR;
         for(let k=0;k<12;k++){ const ang=Math.random()*Math.PI*2, sp=randRange(1.2,4); globalParticles.push(new Particle(it.x, it.y, Math.cos(ang)*sp, Math.sin(ang)*sp, randRange(260,420), col, randInt(2,4))); }
         // efeito extra para muito rara
         if(it.isUpgrade && it.rarity.id==='MUITO_RARA'){
@@ -16797,19 +17810,33 @@ class Room {
       if(this.npc) this.npc.draw(ctx);
       if(this.cupGame) this.cupGame.draw(ctx);
       if(this.indianaNPC) this.indianaNPC.draw(ctx);
+      if(this.jlNPC) this.jlNPC.draw(ctx);
+      if(this.oliNPC) this.oliNPC.draw(ctx);
       // Hint se não venceu e está perto - mostra ambos NPCs
       if(!this.setchCleared && this.npc && this.cupGame && this.cupGame.state==='idle'){
-        ctx.fillStyle='rgba(0,0,0,0.62)'; ctx.fillRect(CANVAS_W/2 - 112, CANVAS_H/2 + 100, 224, 14);
+        ctx.fillStyle='rgba(0,0,0,0.62)'; ctx.fillRect(CANVAS_W/2 - 168, CANVAS_H/2 + 100, 336, 14);
         ctx.fillStyle='#ffd700'; ctx.font='5px monospace'; ctx.textAlign='center';
-        ctx.fillText('[E] SETCH COPINHOS | [E] INDIANA CHICOTE 100%', CANVAS_W/2, CANVAS_H/2 + 109); ctx.textAlign='left';
+        ctx.fillText('[E] SETCH COPINHOS | [E] JL IO-IO | [E] OLI XADREZ | [E] INDIANA CHICOTE', CANVAS_W/2, CANVAS_H/2 + 109); ctx.textAlign='left';
       }
       if(this.indianaNPC && !this.indianaGiftGiven){
         ctx.fillStyle='rgba(210,166,121,0.92)'; ctx.font='5px monospace'; ctx.textAlign='center';
         ctx.fillText('▼ INDIANA: CHICOTE 100% [E] ▼', this.indianaNPC.x, this.indianaNPC.y - 20); ctx.textAlign='left';
       }
+      if(this.jlNPC && !this.jlGiftGiven && !this.player.hasIoiPassive){
+        ctx.fillStyle='rgba(255,138,128,0.92)'; ctx.font='5px monospace'; ctx.textAlign='center';
+        ctx.fillText('▼ JL: PASSIVO IO-IO [E] ▼', this.jlNPC.x, this.jlNPC.y - 22); ctx.textAlign='left';
+      }
+      if(this.oliNPC && !this.oliGiftGiven){
+        ctx.fillStyle='rgba(192,132,252,0.92)'; ctx.font='5px monospace'; ctx.textAlign='center';
+        ctx.fillText('▼ OLI: XADREZ ♞ [E] ▼', this.oliNPC.x, this.oliNPC.y - 22); ctx.textAlign='left';
+      }
       if(this.setchCleared || this.indianaGiftGiven){
         ctx.fillStyle='rgba(74,222,128,0.88)'; ctx.font='6px monospace'; ctx.textAlign='center';
-        const txt = this.setchCleared && this.indianaGiftGiven ? '✓ SETCH & INDIANA COMPLETOS • PORTAS LIBERADAS' : this.setchCleared ? '✓ JOGO VENCIDO • PORTAS LIBERADAS' : '✓ CHICOTE ADQUIRIDO • PORTAS LIBERADAS';
+        const allGifts = this.indianaGiftGiven && this.jlGiftGiven && this.oliGiftGiven;
+        const txt = allGifts ? '✓ SETCH, JL, OLI & INDIANA COMPLETOS • PORTAS LIBERADAS'
+          : (this.setchCleared && this.indianaGiftGiven) ? '✓ SETCH & INDIANA COMPLETOS • PORTAS LIBERADAS'
+          : this.setchCleared ? '✓ JOGO VENCIDO • PORTAS LIBERADAS'
+          : '✓ CHICOTE ADQUIRIDO • PORTAS LIBERADAS';
         ctx.fillText(txt, CANVAS_W/2, CANVAS_H-12); ctx.textAlign='left';
       }
     }
@@ -17727,6 +18754,7 @@ class Game {
     this.rooms = [];
     this.roomLookup = new Map();
     this.currentRoom = null;
+    this.lastRoom = null; // DISQUETE DA VIDA: última sala atravessada (destino do continue)
     this.exitRoom = null;
     this.player = new Player(CANVAS_W/2, CANVAS_H/2);
     this.bullets = []; // player + enemy bullets juntos (owner diferencia)
@@ -17739,6 +18767,7 @@ class Game {
     this.allies = []; // aliados Stand da Flecha (temporários)
     this.gatoAntivirus = []; // Gato Antivírus azul (companheiro incomum persistente)
     this.oliPieces = []; // Oli - peças de xadrez (Torre/Bispo/Rainha/Rei)
+    this.ioiOrbits = []; // IO-IO (passivo do JL) - io-ios orbitais invocados ao levar dano
     this.oliPawns = []; // Oli - peões invocados pelo Rei
     this.selectedCharacterId = null; // escolhido no seletor
     this.seed = 0;
@@ -18267,12 +19296,15 @@ class Game {
     this.player.rayMatematicoReady=false;
     this.player.swordChargeTime=0; this.player.isSwordCharging=false; this.player.swordChargeDir=null; this.player.swordHeavyReady=false;
     this.player.swordCombo=0; this.player.swordComboTimer=0;
+    this.player.chicoteChargeTime=0; this.player.isChicoteCharging=false; this.player.chicoteChargeDir=null; this.player.chicoteHeavyReady=false;
     this.player.swordGuardianActive=false; this.player.swordGuardianCharges=0; this.player.swordGuardianTimer=0;
     this.player.motosserraCharge=0; this.player.motosserraChargeMax=MOTOSSERRA_CHARGE_MAX; this.player.motosserraIdleTimer=0;
     this.player.activeFist=null; this.player.activeFists=[]; this.player.meleeAnim=0;
     // CHICOTE - reseta puxão e chapeu no novo jogo
     this.player.hasIndianaHat=false;
     this.player.isChicotePulling=false; this.player.chicoteTarget=null; this.player.chicoteWhipRef=null;
+    // IO-IO - reseta passivo no novo jogo
+    this.player.hasIoiPassive=false; this.player.ioiCooldown=0;
     // Fix Ash bug: Ash não pode ter especial nem secundária herdada da partida anterior (limpa após perder)
     if(this.player.characterId==='ash'){
       this.player.secondaryWeapon = null;
@@ -18287,7 +19319,10 @@ class Game {
       this.player.bastaoProjectile=null;
       this.player.isBastaoCharging=false;
     }
-    this.bullets=[]; this.meleeSwings=[]; this.fists=[]; this.bastaoProjectiles=[]; this.lazerBeams=[]; this.chicoteWhips=[]; this.particles=[]; this.allies=[]; this.gatoAntivirus=[]; this.oliPieces=[]; this.oliPawns=[];
+    this.bullets=[]; this.meleeSwings=[]; this.fists=[]; this.bastaoProjectiles=[]; this.lazerBeams=[]; this.chicoteWhips=[]; this.particles=[]; this.allies=[]; this.gatoAntivirus=[]; this.oliPieces=[]; this.oliPawns=[]; this.ioiOrbits=[];
+    // DISQUETE DA VIDA: run nova zera os continues e o histórico de sala
+    this.player.continues = 0;
+    this.lastRoom = null;
     this.player.didDashThisFrame = false;
     this._lastHp = undefined; this._lastWeapon = undefined; this._lastDoubleShot = undefined;
     this._hasFlameNotified = false;
@@ -18356,10 +19391,14 @@ class Game {
     if(this.player.isBastaoCharging) this.player.cancelBastaoCharge();
     if(this.player.isCharging) this.player.cancelCharge();
     if(this.player.isSwordCharging) this.player.cancelSwordCharge();
+    this.player.chicoteChargeTime=0; this.player.isChicoteCharging=false; this.player.chicoteChargeDir=null; this.player.chicoteHeavyReady=false;
+    // DISQUETE DA VIDA: continues carry entre atos, mas o histórico de sala não (novo mapa)
+    this.lastRoom = null;
     this.bullets = [];
     this.bastaoProjectiles=[]; this.meleeSwings=[]; this.fists=[]; this.lazerBeams=[]; this.chicoteWhips=[];
     this.particles = [];
     this.allies = []; this.gatoAntivirus=[]; this.oliPieces = []; this.oliPawns = []; // aliados, gato e xadrez são por andar, limpa ao trocar de andar (gato respawnará se passiva ativa)
+    this.ioiOrbits = []; // io-ios são por sala, limpa ao trocar de andar
     // Corrige bug da luva presa ao trocar de andar: limpa estado completo
     this.player.activeFists = [];
     this.player.activeFist = null;
@@ -18558,6 +19597,74 @@ class Game {
     this._toastTimer = setTimeout(()=> this.toast.classList.add('hidden'), ms);
   }
 
+  // ===== DISQUETE DA VIDA - continue =====
+  // Chamado no lugar do game over quando o jogador morre com pelo menos 1 continue salvo.
+  // Devolve true se o continue foi usado (jogo segue), false se não havia nenhum.
+  // Efeito: recupera 1 coração, devolve o jogador à última sala atravessada e despeja
+  // uma chuva de glifos 0 e 1 verdes ao redor do personagem.
+  useLifeContinue(){
+    if(!this.player || typeof this.player.useContinue!=='function') return false;
+    if(!this.player.hasContinue()) return false;
+    this.player.useContinue(); // consome 1
+
+    // 1) Destino: última sala atravessada. Sem histórico (morreu na 1ª sala), revive no lugar.
+    const dest = (this.lastRoom && this.lastRoom !== this.currentRoom) ? this.lastRoom : this.currentRoom;
+    const moved = !!(dest && dest !== this.currentRoom);
+    if(moved){
+      this.currentRoom = dest;
+      dest.visited = true;
+    }
+
+    // 2) Posiciona no centro da sala de destino, longe de paredes
+    const p = this.player;
+    p.x = CANVAS_W/2; p.y = CANVAS_H/2;
+    p.vx = 0; p.vy = 0;
+
+    // 3) Recupera 1 coração (nunca deixa em 0, senão morre de novo no mesmo frame)
+    p.hp = Math.max(DISQUETE_VIDA_HP, Math.min(p.maxHp, p.hp + DISQUETE_VIDA_HP));
+    p.invulnTimer = Math.max(p.invulnTimer || 0, 1400); // proteção ao renascer
+
+    // 4) Limpa estados de combate para não morrer de novo imediatamente
+    p.isChicotePulling = false; p.chicoteTarget = null; p.chicoteWhipRef = null;
+    if(p.isCharging) p.cancelCharge();
+    if(p.isSwordCharging) p.cancelSwordCharge();
+    if(p.isChicoteCharging) p.cancelChicoteCharge();
+    if(p.isRayMatematicoCharging) p.cancelRayMatematicoCharge();
+    p.activeFists = []; p.activeFist = null; p.bastaoProjectile = null;
+    this.bullets = []; this.meleeSwings = []; this.fists = [];
+    this.bastaoProjectiles = []; this.lazerBeams = []; this.chicoteWhips = [];
+    if(this.motosserraZone) this.motosserraZone.active = false;
+    p.motosserraActive = false;
+    this.transitionCooldown = 500;
+
+    // 5) Chuva de glifos 0 e 1 em verde ao redor do personagem
+    const room = this.currentRoom;
+    for(let k=0;k<34;k++){
+      const a = Math.random()*Math.PI*2, sp = randRange(1.4, 4.2);
+      this.particles.push(new StarParticle(
+        p.x + Math.cos(a)*randRange(2, 22), p.y + Math.sin(a)*randRange(2, 22),
+        Math.cos(a)*sp, Math.sin(a)*sp - 0.5,
+        randRange(600, 1050), DISQUETE_VIDA_COLOR, randRange(2.6, 4.2),
+        Math.random()<0.5 ? '0' : '1'
+      ));
+    }
+    // anel verde-expansivo no chão
+    if(room && room.explosions) room.explosions.push({x:p.x, y:p.y, radius:16, life:620, max:620, isDisqueteSave:true});
+    this.shake = Math.max(this.shake||0, 70);
+
+    const where = moved ? `${dest.gx},${dest.gy}` : 'onde caiu';
+    this.showToast(`💾 DISQUETE DA VIDA! Voltou pra sala ${where} • +1 coração • restam ${p.continues}`, 3000);
+    return true;
+  }
+
+  // Decide o destino da morte: usa um continue salvo ou deixa a morte ser definitiva.
+  // Retorna true se o jogo deve continuar rodando.
+  handlePlayerDeath(){
+    if(this.player && this.player.isAlive()) return true;
+    if(this.useLifeContinue()) return true; // continue consumido: jogo segue normalmente
+    return false; // sem continue: mantém o game over
+  }
+
   checkRoomTransition(){
     if(this.transitionCooldown>0) return;
     if(!this.currentRoom || !this.player) return;
@@ -18589,6 +19696,8 @@ class Game {
           console.warn('Corrigindo próxima sala vazia fechada', nx,ny);
           next.enemies = [];
         }
+        // DISQUETE DA VIDA: guarda a sala de onde veio (destino do continue)
+        this.lastRoom = this.currentRoom;
         this.currentRoom=next;
         const wasVisited=next.visited;
         next.visited=true;
@@ -18607,6 +19716,7 @@ class Game {
         this.player.vx=0; this.player.vy=0;
         if(this.player.isCharging) this.player.cancelCharge();
         if(this.player.isSwordCharging) this.player.cancelSwordCharge();
+        if(this.player.isChicoteCharging) this.player.cancelChicoteCharge();
         // Limpa projéteis corpo a corpo e punhos entre salas para não levar para próxima sala
         this.bullets = this.bullets.filter(b=> b.owner!=='player' || dist(b.x,b.y,this.player.x,this.player.y)<120);
         this.lazerBeams = [];
@@ -18631,6 +19741,7 @@ class Game {
         // Garante que estados de carga não fiquem presos
         if(this.player.isCharging) this.player.cancelCharge();
         if(this.player.isSwordCharging) this.player.cancelSwordCharge();
+        if(this.player.isChicoteCharging) this.player.cancelChicoteCharge();
         // Oli - teleporta peças para perto do jogador ao trocar de sala (persistem no andar)
         if(this.oliPieces && this.oliPieces.length){
           for(const pc of this.oliPieces){
@@ -18703,8 +19814,26 @@ class Game {
         return true;
       }
     }
+    // Prioridade JL (passivo IO-IO) e Oli (item especial de Xadrez)
+    if(room.jlNPC && !room.jlGiftGiven && !room.jlNPC.giftGiven && !this.player.hasIoiPassive){
+      const nearJL = dist(this.player.x, this.player.y, room.jlNPC.x, room.jlNPC.y) < JL_INTERACT_RANGE;
+      if(nearJL){ room.jlNPC.tryGiveGift(this.player, this, room); return true; }
+    }
+    if(room.oliNPC && !room.oliGiftGiven && !room.oliNPC.giftGiven){
+      const nearOli = dist(this.player.x, this.player.y, room.oliNPC.x, room.oliNPC.y) < OLI_NPC_INTERACT_RANGE;
+      if(nearOli){ room.oliNPC.tryGiveGift(this.player, this, room); return true; }
+    }
     if(!room.npc || !room.cupGame) {
       // Se só tem Indiana e ainda não deu gift, dá hint
+      // JL e Oli continuam acessíveis mesmo sem o minigame do Setch
+      if(room.jlNPC && !room.jlGiftGiven && !this.player.hasIoiPassive){
+        const nearJL2 = dist(this.player.x, this.player.y, room.jlNPC.x, room.jlNPC.y) < JL_INTERACT_RANGE + 18;
+        if(nearJL2){ this.showToast('JL: Aproxime-se e pressione [E] para ganhar o passivo IO-IO!', 1400); return true; }
+      }
+      if(room.oliNPC && !room.oliGiftGiven){
+        const nearOli2 = dist(this.player.x, this.player.y, room.oliNPC.x, room.oliNPC.y) < OLI_NPC_INTERACT_RANGE + 18;
+        if(nearOli2){ this.showToast('Oli: Aproxime-se e pressione [E] para ganhar o item especial de Xadrez!', 1400); return true; }
+      }
       if(room.indianaNPC && !room.indianaGiftGiven){
         const nearInd2 = dist(this.player.x, this.player.y, room.indianaNPC.x, room.indianaNPC.y) < CHICOTE_INTERACT_RANGE + 18;
         if(nearInd2) this.showToast('Indiana: Aproxime-se e pressione [E] para ganhar o Chicote! 100%', 1400);
@@ -18722,6 +19851,15 @@ class Game {
           return true;
         }
       }
+      // JL e Oli também continuam disponíveis depois de vencer
+      if(room.jlNPC && !room.jlGiftGiven && !room.jlNPC.giftGiven && !this.player.hasIoiPassive){
+        const nearJL3 = dist(this.player.x, this.player.y, room.jlNPC.x, room.jlNPC.y) < JL_INTERACT_RANGE;
+        if(nearJL3){ room.jlNPC.tryGiveGift(this.player, this, room); return true; }
+      }
+      if(room.oliNPC && !room.oliGiftGiven && !room.oliNPC.giftGiven){
+        const nearOli3 = dist(this.player.x, this.player.y, room.oliNPC.x, room.oliNPC.y) < OLI_NPC_INTERACT_RANGE;
+        if(nearOli3){ room.oliNPC.tryGiveGift(this.player, this, room); return true; }
+      }
       return false; // já venceu, não precisa mais jogar
     }
     const cg=room.cupGame;
@@ -18730,7 +19868,7 @@ class Game {
     // Estado idle: E perto do NPC inicia o jogo
     if(cg.state==='idle'){
       if(!nearNPC) {
-        if(room.indianaNPC && !room.indianaGiftGiven) this.showToast('Aproxime-se: Setch [E] COPINHOS ou Indiana [E] CHICOTE 100%', 1100);
+        if(room.indianaNPC && !room.indianaGiftGiven) this.showToast('Aproxime-se: Setch [E] COPINHOS | JL [E] IO-IO | Oli [E] XADREZ | Indiana [E] CHICOTE', 1300);
         else this.showToast('Chegue mais perto de Setch para jogar [E]', 1100);
         return true; // consome E para não ativar especial por engano
       }
@@ -18891,6 +20029,7 @@ class Game {
     // cancela cargas se estiver carregando
     if(this.player.isCharging) this.player.cancelCharge();
     if(this.player.isSwordCharging) this.player.cancelSwordCharge();
+    if(this.player.isChicoteCharging) this.player.cancelChicoteCharge();
     if(this.player.isRayMatematicoCharging) this.player.cancelRayMatematicoCharge();
     // limpa fist se trocando enquanto está ativo
     if(this.player.activeFist && !this.player.activeFist.dead){
@@ -19330,6 +20469,15 @@ class Game {
       cat.update(dt, this.currentRoom.enemies, walls, this.particles);
     }
     // Oli - peças de xadrez (Torre/Bispo/Rainha/Rei) - cada uma com mecânica única, reconhece Oli como dono
+    // IO-IO (passivo do JL) - io-ios orbitais: giram em volta do jogador causando dano por contato
+    for(let i=this.ioiOrbits.length-1;i>=0;i--){
+      const oi=this.ioiOrbits[i];
+      const alive = oi.update(dt, this.currentRoom.enemies, walls, this.particles);
+      if(!alive || oi.dead){
+        for(let k=0;k<8;k++) this.particles.push(new Particle(oi.x,oi.y, randRange(-1.2,1.2), randRange(-1.2,0.6), 240, '#e53935', 1.6));
+        this.ioiOrbits.splice(i,1);
+      }
+    }
     for(let i=this.oliPieces.length-1;i>=0;i--){
       const piece=this.oliPieces[i];
       let alive=true;
@@ -19392,6 +20540,7 @@ class Game {
     const isRayMatematico = w && w.isRayMatematico;
     const isCarregada = w && w.isCharged && !isRayMatematico;
     const isSword = w && w.isSword;
+    const isChicote = w && w.isChicote;
     if(isRayMatematico){
       // ===== LAZER CODIFICADO com MECÂNICA DO LASER (carga + timing) =====
       const isRayMinigame = this.player.rayMatematicoMinigameActive;
@@ -19702,6 +20851,58 @@ class Game {
         this.player.motosserraActive = false;
         if(this.motosserraZone) this.motosserraZone.active = false;
       }
+    } else if(isChicote){
+      // ===== CHICOTE: toque = golpe leve em leque (média distância) | segurar = ataque antigo (grapple + explosão) =====
+      if(shootVec){
+        if(!this.player.isChicoteCharging){
+          if(this.player.canShoot()) this.player.startChicoteCharge(shootVec);
+        } else {
+          this.player.updateChicoteCharge(dt, shootVec);
+          const prog = this.player.getChicoteChargeProgress();
+          // partículas de carga: couro enrolando + vento subindo
+          if(Math.random() < 0.22 + prog*0.26){
+            const col = prog > 0.88 ? '#ffd700' : prog > 0.5 ? '#c98a52' : '#a0522d';
+            this.particles.push(new Particle(
+              this.player.x + shootVec.x*randRange(2,12) + randRange(-3,3),
+              this.player.y + shootVec.y*randRange(2,12) + randRange(-3,3),
+              randRange(-0.5,0.5), randRange(-0.8,0.2), 190, col, 1.6 + prog*0.8));
+          }
+          // vento aumenta conforme carrega
+          if(prog > 0.5 && Math.random() < 0.22){
+            const ang=Math.random()*Math.PI*2, r=10+prog*8;
+            this.particles.push(new Particle(this.player.x+Math.cos(ang)*r, this.player.y+Math.sin(ang)*r, randRange(-0.4,0.4), randRange(-1,-0.2), 210, 'rgba(180,220,255,0.7)', 1.5));
+          }
+          if(prog >= 1 && Math.random() < 0.3){
+            this.particles.push(new Particle(this.player.x, this.player.y-8, randRange(-0.7,0.7), -1.2, 170, '#ffd700', 1.8));
+          }
+          if(prog > 0.9 && Math.random() < 0.16) this.shake=Math.max(this.shake, 8);
+        }
+      } else {
+        if(this.player.isChicoteCharging){
+          const progBefore = this.player.getChicoteChargeProgress();
+          const obj = this.player.releaseChicoteCharge();
+          if(obj){
+            this.chicoteWhips.push(obj);
+            if(obj.isChicoteLash){
+              // ===== LEVE: leque de couro + vento =====
+              const n=Math.round(4 + progBefore*2);
+              for(let i=0;i<n;i++){
+                const a=Math.atan2(obj.dirY,obj.dirX) + randRange(-0.5,0.5);
+                this.particles.push(new Particle(
+                  this.player.x + Math.cos(a)*randRange(4,14), this.player.y + Math.sin(a)*randRange(4,14),
+                  Math.cos(a)*randRange(1.0,2.6)+randRange(-0.7,0.7), Math.sin(a)*randRange(1.0,2.6)+randRange(-0.7,0.7),
+                  170, progBefore > 0.5 ? '#c98a52' : '#a0522d', 1.9));
+              }
+              this.shake=Math.max(this.shake, 30);
+            } else {
+              // ===== CARREGADO: mesmo feedback do chicote antigo (chicote na parede + puxão + explosão) =====
+              for(let i=0;i<8;i++) this.particles.push(new Particle(this.player.x, this.player.y, randRange(-1.6,1.6), randRange(-1.4,0.3), 220, '#ffd700', 2));
+              this.shake=Math.max(this.shake, 60);
+              this.showToast('🧨 CHICOTE CARREGADO! Vai na parede e puxa!', 1000);
+            }
+          }
+        }
+      }
     } else {
       // Outras armas: NORMAL, SHOTGUN, RAIO, METRALHADORA, BAZUCA, LUVA
       if(shootVec && this.player.canShoot()){
@@ -19709,7 +20910,7 @@ class Game {
         for(const obj of newObjs){
           if(obj instanceof MeleeSwing) this.meleeSwings.push(obj);
           else if(obj instanceof RocketFist){ this.fists.push(obj); this.player.activeFist=obj; }
-          else if(typeof ChicoteWhip!=='undefined' && obj instanceof ChicoteWhip){ this.chicoteWhips.push(obj); }
+          else if(obj && (obj.isChicoteLash || (typeof ChicoteWhip!=='undefined' && obj instanceof ChicoteWhip))){ this.chicoteWhips.push(obj); }
           else this.bullets.push(obj);
         }
         if(newObjs.length>0){
@@ -20448,6 +21649,11 @@ class Game {
     this.checkExitPortal();
 
     if(!this.player.isAlive()){
+      // DISQUETE DA VIDA: se houver continue salvo, ele salva o jogador em vez de encerrar o jogo.
+      if(this.handlePlayerDeath()){
+        this.updateHUD();
+        return; // jogo continua normalmente no mesmo frame
+      }
       this.state='GAMEOVER';
       const title=document.getElementById('gameOverTitle');
       const stats=document.getElementById('gameOverStats');
@@ -20592,6 +21798,24 @@ class Game {
           this.chargeBar.style.boxShadow = '0 0 8px rgba(74,222,128,0.35)';
         } else {
           this.chargeBar.style.boxShadow = 'none';
+        }
+      } else if(this.player.weapon && this.player.weapon.isChicote){
+        // CHICOTE - barra: 0% = golpe leve em leque, 100% = pesado (grapple + explosão)
+        this.chargeBar.style.display='flex';
+        const charging = this.player.isChicoteCharging;
+        const pct = charging ? clamp(this.player.getChicoteChargeProgress()*100, 0, 100) : 0;
+        this.chargeFill.style.width = pct + '%';
+        if(charging){
+          this.chargeFill.style.background = pct>92 ? 'linear-gradient(90deg,#8b4513,#ffd700)' : pct>50 ? 'linear-gradient(90deg,#6b3a11,#c98a52)' : 'linear-gradient(90deg,#4a2410,#8b4513)';
+          if(this.chargeLabel) this.chargeLabel.textContent = pct>=99 ? 'PESADO PRONTO! Solte p/ puxar' : `CARGA ${pct.toFixed(0)}% • solte antes = leque leve`;
+          if(pct>=99) this.chargeBar.style.boxShadow='0 0 10px rgba(255,215,0,0.5)';
+          else if(pct>60) this.chargeBar.style.boxShadow='0 0 6px rgba(180,220,255,0.28)';
+          else this.chargeBar.style.boxShadow='none';
+        } else {
+          this.chargeFill.style.background = this.player.canShoot() ? 'linear-gradient(90deg,#4a2410,#8b4513)' : 'linear-gradient(90deg,#333,#555)';
+          this.chargeFill.style.width = '0%';
+          if(this.chargeLabel) this.chargeLabel.textContent = this.player.shootCooldown>0 ? 'RECARREGANDO...' : 'TOQUE = leque • SEGURE = puxão na parede';
+          this.chargeBar.style.boxShadow='none';
         }
       } else {
         this.chargeBar.style.display='none';
@@ -20918,6 +22142,8 @@ class Game {
       try{ for(const al of this.allies) al.draw(ctx); }catch(e){ console.error('Ally draw error', e); }
       try{ for(const cat of (this.gatoAntivirus||[])) cat.draw(ctx); }catch(e){ console.error('Gato draw error', e); }
       try{ for(const pc of (this.oliPieces||[])) pc.draw(ctx); }catch(e){ console.error('Oli piece draw error', e); }
+      // IO-IO (passivo do JL) - io-ios orbitais desenhados junto dos aliados
+      try{ for(const oi of (this.ioiOrbits||[])) oi.draw(ctx); }catch(e){ console.error('IoiOrbit draw error', e); }
       try{ for(const pw of (this.oliPawns||[])) pw.draw(ctx); }catch(e){ console.error('Oli pawn draw error', e); }
       try{
         if(isNaN(this.player.x) || isNaN(this.player.y)){
@@ -21006,6 +22232,24 @@ class Game {
       ctx.fillStyle='rgba(0,0,0,0.45)'; ctx.fillRect(0,0, CANVAS_W, 36);
       ctx.strokeStyle='rgba(255,255,255,0.06)'; ctx.beginPath(); ctx.moveTo(0,36); ctx.lineTo(CANVAS_W,36); ctx.stroke();
       drawHealth(ctx, 12, 7, this.player.hp, this.player.maxHp, this.player.boneHearts|0);
+      // ===== DISQUETE DA VIDA - contador de continues salvos (💾 xN) =====
+      const conts = this.player.continues|0;
+      if(conts > 0){
+        const cx0 = 12 + Math.ceil(this.player.maxHp/2)*22 + 8, cy0 = 18;
+        const pulse = 0.5 + Math.sin(Date.now()*0.005)*0.3;
+        ctx.fillStyle = `rgba(34,197,94,${0.16 + pulse*0.14})`;
+        ctx.fillRect(cx0 - 3, cy0 - 11, 16 + String(conts).length*8, 15);
+        ctx.strokeStyle = `rgba(74,222,128,${0.45 + pulse*0.35})`;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(cx0 - 3, cy0 - 11, 16 + String(conts).length*8, 15);
+        // disquete em miniatura
+        ctx.fillStyle = '#1f2a24'; ctx.fillRect(cx0, cy0 - 8, 10, 9);
+        ctx.fillStyle = DISQUETE_VIDA_COLOR; ctx.fillRect(cx0 + 1, cy0 - 7, 8, 3.4);
+        ctx.fillStyle = '#c3cec8'; ctx.fillRect(cx0 + 1, cy0 - 1, 3, 1.6);
+        ctx.fillStyle = '#fff';
+        ctx.font = '7px "Press Start 2P"'; ctx.textAlign='left';
+        ctx.fillText(`x${conts}`, cx0 + 13, cy0);
+      }
       const dashPct = this.player.dashCooldown<=0 ? 1 : 1 - (this.player.dashCooldown / DASH_COOLDOWN);
       ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(CANVAS_W - 132, 10, 110, 14);
       ctx.fillStyle='rgba(255,255,255,0.15)'; ctx.fillRect(CANVAS_W -130, 12, 106, 10);
@@ -21038,6 +22282,15 @@ class Game {
         const prog=this.player.getSwordChargeProgress();
         ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(108,30,60,5);
         ctx.fillStyle= prog>0.92 ? '#ffffff' : prog>0.5 ? '#e8e8e8' : '#a0a0a0';
+        ctx.fillRect(109,31,58*prog,3);
+        if(prog>=0.99){ ctx.fillStyle='rgba(255,215,0,0.92)'; ctx.font='5px monospace'; ctx.textAlign='left'; ctx.fillText('PESADO PRONTO!',108,38); }
+        else if(prog>0.5){ ctx.fillStyle='rgba(255,255,255,0.72)'; ctx.font='4px monospace'; ctx.textAlign='left'; ctx.fillText('carregando pesado...',108,38); }
+      }
+      // CHICOTE - mini barra de carga (leque leve -> pesado)
+      if(wn==='CHICOTE' && this.player.isChicoteCharging){
+        const prog=this.player.getChicoteChargeProgress();
+        ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(108,30,60,5);
+        ctx.fillStyle= prog>=0.99 ? '#ffd700' : prog>0.5 ? '#c98a52' : '#8b4513';
         ctx.fillRect(109,31,58*prog,3);
         if(prog>=0.99){ ctx.fillStyle='rgba(255,215,0,0.92)'; ctx.font='5px monospace'; ctx.textAlign='left'; ctx.fillText('PESADO PRONTO!',108,38); }
         else if(prog>0.5){ ctx.fillStyle='rgba(255,255,255,0.72)'; ctx.font='4px monospace'; ctx.textAlign='left'; ctx.fillText('carregando pesado...',108,38); }
