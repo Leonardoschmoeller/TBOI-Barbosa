@@ -339,7 +339,6 @@ html, body {
 .character-select.large .char-card{ min-height: 140px; }
 .character-footer{ display:flex; align-items:center; gap:12px; padding:14px; border-top:1px solid rgba(255,255,255,0.07); background: rgba(0,0,0,0.18); flex-wrap:wrap; }
 .character-footer .character-hint{ margin:0; flex:1; text-align:right; }
-.special-icon.is-67{ font-family:'Press Start 2P', monospace; font-size:11px; letter-spacing:1px; font-weight:900; }
 /* Loadout no painel de controles */
 .controls-loadout{ background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(0,0,0,0.08)); border:1px solid rgba(255,255,255,0.07); border-radius:10px; padding:12px; margin:0 12px 12px; display:flex; flex-direction:column; gap:8px; }
 .controls-loadout.hidden{ display:none !important; }
@@ -584,7 +583,7 @@ html, body {
   background: #0a0a12;
 }
 
-/* ============ HUD - HIERARQUIA: MAPA > INFO IMPORTANTE > SECUNDÁRIA ============ */
+/* ============ HUD - desenhado no canvas, aqui só overlays (swapHint) ============ */
 #hud {
   position: absolute;
   inset: 0;
@@ -594,112 +593,6 @@ html, body {
   justify-content: space-between;
   padding: 0;
 }
-/* Barra superior - TUDO NO TOPO, ultra compacta, não rouba mapa - AUTO-HIDE */
-.hud-top {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  right: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  background: rgba(10,10,18,0.52);
-  border: 1px solid rgba(255,255,255,0.07);
-  border-radius: 10px;
-  padding: 6px 8px;
-  backdrop-filter: blur(10px) saturate(1.2);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.30);
-  pointer-events: none;
-  z-index: 5;
-  opacity: 0.94;
-  transition: opacity 0.25s ease, transform 0.25s ease;
-}
-.hud-top:hover { opacity: 1; }
-.hud-top-row{
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  flex-wrap: wrap;
-}
-.hud-top-extra{
-  justify-content: flex-start;
-  gap: 6px;
-  padding-top: 4px;
-  border-top: 1px solid rgba(255,255,255,0.06);
-}
-/* Bottom - barra única compacta, sobre o mapa com blur, não bloco grande - recolhível */
-.hud-bottom {
-  position: absolute;
-  bottom: 8px;
-  left: 8px;
-  right: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  background: rgba(10,10,18,0.46);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 10px;
-  padding: 4px 6px;
-  backdrop-filter: blur(10px) saturate(1.2);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.26);
-  pointer-events: none;
-  flex-wrap: wrap;
-  opacity: 0.90;
-  transition: opacity 0.25s ease, transform 0.25s ease;
-}
-.hud-bottom.idle { opacity: 0.55; } /* quando sem interação, fica translúcido */
-.hud-top.idle { opacity: 0.58; }
-.hud-left, .hud-center, .hud-right { display: flex; align-items: center; gap: 10px; }
-.hud-left { justify-content: flex-start; }
-.hud-center { position: static; transform: none; background: transparent; border: none; padding: 0; backdrop-filter: none; }
-.hud-right {
-  position: static;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-}
-/* Componentes HUD compactos */
-.hud-hearts { display: flex; gap: 3px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6)); }
-.hud-heart{ width: 24px; height: 24px; }
-.hud-weapon, .hud-dash, .hud-temp, .hud-charge, .hud-luva, .hud-upgrades, .hud-special {
-  background: rgba(0,0,0,0.48);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 8px;
-  padding: 5px 8px;
-  backdrop-filter: blur(6px);
-}
-.hud-weapon{ padding: 6px 10px; }
-.weapon-name { font-size: 7px; letter-spacing: 1px; color: #ffcc00; }
-.weapon-name.shotgun { color: #ff8c42; text-shadow: 0 0 6px rgba(255,140,66,0.6); }
-.weapon-name.raio { color: #00e5ff; text-shadow: 0 0 8px rgba(0,229,255,0.7); }
-.weapon-name.carregada { color: #a78bfa; text-shadow: 0 0 8px rgba(167,139,250,0.7); }
-.weapon-name.bazuca { color: #ff3b30; text-shadow: 0 0 8px rgba(255,59,48,0.7); }
-.weapon-name.raio_matematico { color: #7af2ff; text-shadow: 0 0 8px rgba(122,242,255,0.7); }
-.hud-floor { font-size: 7px; letter-spacing: 1.2px; color: var(--accent2); background: rgba(255,204,0,0.10); border: 1px solid rgba(255,204,0,0.22); border-radius: 6px; padding: 4px 8px; white-space: nowrap; }
-.hud-floor.phase2 { color: #ff8c42; background: rgba(255,140,66,0.14); border-color: rgba(255,140,66,0.32); }
-.hud-floor.phase3 { color: #00ff88; background: rgba(0,255,136,0.10); border-color: rgba(0,255,136,0.28); }
-.hud-floor.phase4 { color: #d946ef; background: rgba(217,70,239,0.12); border-color: rgba(217,70,239,0.32); box-shadow: 0 0 10px rgba(217,70,239,0.22); }
-.hud-floor.phase5 { color: #ffd700; background: rgba(255,215,0,0.14); border-color: rgba(255,215,0,0.42); box-shadow: 0 0 12px rgba(255,215,0,0.32); animation: rarePulse 1.4s infinite alternate; }
-.hud-floor.phase6 { color: #ffb700; background: rgba(255,183,0,0.14); border-color: rgba(255,183,0,0.42); box-shadow: 0 0 12px rgba(255,183,0,0.32); animation: rarePulse 1.4s infinite alternate; }
-.hud-floor.party { color: #ff6b9d; background: rgba(255,107,157,0.14); border-color: rgba(255,107,157,0.38); box-shadow: 0 0 12px rgba(255,107,157,0.28); animation: rarePulse 1.2s infinite alternate; }
-.hud-floor.rare { color: #ffd700; background: rgba(255,215,0,0.16); border-color: rgba(255,215,0,0.38); animation: rarePulse 1.2s infinite alternate; }
-@keyframes rarePulse { from{box-shadow:0 0 6px rgba(255,215,0,0.2);} to{box-shadow:0 0 12px rgba(255,215,0,0.4);} }
-.hud-temp, .hud-charge, .hud-luva{ min-width: 118px; padding: 5px 8px; gap: 6px; }
-.temp-bar, .charge-bar, .dash-bar, .special-bar, .luva-bar{ height: 6px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.12); }
-.temp-bar{ width: 64px; background: #1a0a0a; } .charge-bar{ width: 64px; background: #1a1030; } .luva-bar{ width: 64px; background: #1a0f0a; } .dash-bar{ width: 56px; background: #1a1625; } .special-bar{ width: 78px; background: #1a1a22; }
-.temp-fill, .charge-fill, .dash-fill, .special-fill, .luva-fill{ height:100%; border-radius:999px; transition: width 0.1s linear; }
-.hud-upgrades{ min-width: 110px; max-width: 220px; }
-.upgrade-list{ display:flex; gap:4px; flex-wrap:wrap; align-items:center; max-width: 160px; }
-.upgrade-chip{ font-size:6px; padding:2px 5px; border-radius:999px; }
-.hud-label{ font-size:6px; letter-spacing:0.8px; color: var(--accent3); white-space:nowrap; }
-.hud-room, .hud-enemies{ font-size:6.5px; letter-spacing:0.8px; color: rgba(255,255,255,0.92); white-space:nowrap; }
-.hud-hint{ font-family: system-ui, sans-serif; font-size:9px; letter-spacing:0.3px; color: rgba(255,255,255,0.55); background: rgba(0,0,0,0.42); padding: 4px 8px; border-radius: 6px; border:1px solid rgba(255,255,255,0.06); }
-.hud-seed{ font-size:6px; color: rgba(255,255,255,0.32); letter-spacing:0.8px; }
 
 /* Swap hint - menor, não cobre mapa */
 .swap-hint {
@@ -727,23 +620,6 @@ html, body {
 }
 .swap-hint.hidden{ display:none; }
 @keyframes swapPulse{ from{transform:translateX(-50%) scale(0.98);} to{transform:translateX(-50%) scale(1.01);} }
-
-/* HUD Especial - compacto mas legível */
-.hud-special{ display:flex; flex-direction:column; gap:4px; min-width: 148px; max-width: 180px; padding:5px 8px; }
-.hud-special.cooldown{ border-color: rgba(255,59,48,0.30); background: rgba(30,10,10,0.62); }
-.hud-special.ready{ border-color: rgba(74,222,128,0.30); background: rgba(10,30,18,0.58); }
-.hud-special.active{ border-color: rgba(0,217,255,0.42); background: rgba(10,25,35,0.66); }
-.special-main{ display:flex; align-items:center; gap:7px; }
-.special-circle-wrap{ width:34px; height:34px; position:relative; display:grid; place-items:center; flex-shrink:0; }
-.special-circle{ width:34px; height:34px; transform: rotate(-90deg); }
-.special-circle-bg{ fill:none; stroke: rgba(255,255,255,0.08); stroke-width:3; }
-.special-circle-fill{ fill:none; stroke: #ffcc00; stroke-width:3; stroke-linecap: round; stroke-dasharray: 100.53; stroke-dashoffset: 0; transition: stroke-dashoffset 0.15s linear; }
-.special-icon{ position:absolute; inset:0; display:grid; place-items:center; font-size:13px; line-height:1; text-align:center; pointer-events:none; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6)); }
-.special-icon.is-67{ font-family:'Press Start 2P', monospace; font-size:10px; letter-spacing:0.5px; font-weight:900; }
-.special-info{ min-width:84px; }
-.special-name{ font-size:6px; letter-spacing:0.7px; }
-.special-status{ font-size:9px; }
-.special-bar{ width:72px; height:5px; }
 
 /* Toast - deslocado para não cobrir centro do mapa */
 .toast{
@@ -775,32 +651,11 @@ html, body {
 /* ============ RESPONSIVO - MAPA SEMPRE PRIORIDADE ============ */
 @media (max-width: 1024px){
   #gameContainer{ width: 96vw; max-height: 84vh; border-radius:12px; }
-  .hud-top{ top:6px; left:6px; right:6px; padding:4px 8px; gap:6px; }
-  .hud-bottom{ left:6px; right:6px; bottom:6px; padding:5px 6px; gap:6px; }
-  .hud-hint{ display:none; }
 }
 @media (max-width: 768px){
   #app:has(#gameContainer:not(.hidden)){ padding:0; }
   #gameContainer{ width:100vw; height:auto; aspect-ratio:16/9; max-height:100dvh; border:none; border-radius:0; }
   #gameCanvas{ width:100%; height:100%; object-fit: contain; background:#0a0a12; }
-  .hud-top{ top:4px; left:4px; right:4px; flex-wrap:wrap; justify-content:space-between; gap:4px; padding:4px 6px; border-radius:8px; }
-  .hud-heart{ width:20px; height:20px; }
-  .hud-floor, .hud-room, .hud-enemies{ font-size:6px; }
-  .hud-bottom{
-    left:4px; right:4px; bottom:4px;
-    display:grid;
-    grid-template-columns: 1fr 1fr;
-    gap:6px;
-    padding:6px;
-    max-height: 32vh;
-    overflow-y:auto;
-    scrollbar-width: thin;
-  }
-  .hud-weapon{ grid-column:1/2; }
-  .hud-dash{ grid-column:2/3; }
-  .hud-special{ grid-column:1/3; max-width:none; min-width:0; }
-  .hud-temp, .hud-charge, .hud-upgrades{ grid-column:1/3; min-width:0; max-width:none; }
-  .hud-right{ display:none; }
   .swap-hint{ bottom: auto; top: 52px; font-size:10px; padding:5px 10px; }
   .toast{ bottom: auto; top: 50%; transform:translate(-50%, -50%); max-width:88%; }
   /* Drawer para controles secundários em mobile */
@@ -814,9 +669,6 @@ html, body {
   .controls-header-top{ flex-direction:column; align-items:flex-start; }
 }
 @media (max-width: 480px){
-  .hud-top{ gap:3px; }
-  .dash-bar{ width:42px; } .temp-bar, .charge-bar{ width:48px; } .special-bar{ width:56px; }
-  .hud-label{ font-size:5.5px; }
   .control-item{ flex-direction:column; align-items:flex-start; }
   .controls-grid.modern{ grid-template-columns: 1fr; }
   .arsenal-grid{ grid-template-columns: 1fr; }
@@ -827,7 +679,6 @@ html, body {
 @media (max-height: 500px) and (orientation: landscape){
   .menu-content{ transform:scale(0.86); }
   #gameContainer{ width:100vw; height:100dvh; max-height:100dvh; border-radius:0; }
-  .hud-bottom{ max-height:40vh; }
 }
 
 /* Melhorias de foco no mapa - borda sutil e vignette mais leve para não esconder área */
@@ -858,30 +709,6 @@ html, body {
 }
 #sidePanel.open{ display:block; }
 
-.hud-toggle{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  width:28px; height:28px;
-  background: rgba(255,255,255,0.08);
-  border:1px solid rgba(255,255,255,0.12);
-  border-radius:6px;
-  color: var(--text);
-  font-size:14px;
-  line-height:1;
-  cursor:pointer;
-  pointer-events:auto;
-  flex-shrink:0;
-  transition: background 0.15s, transform 0.08s;
-}
-.hud-toggle:hover{ background: rgba(255,255,255,0.14); }
-.hud-toggle:active{ transform:scale(0.96); }
-.hud-bottom.collapsed, .hud-top-extra.collapsed{ display:none !important; }
-.hud-bottom{ transition: opacity 0.2s ease, transform 0.2s ease; }
-.hud-bottom.collapsed{ opacity:0; transform: translateY(8px); }
-@media (max-width:768px){
-  .hud-toggle{ width:26px; height:26px; font-size:13px; }
-}
 /* Barra de filtros/controles sobre o mapa (quando houver) */
 .map-toolbar{
   position:absolute;

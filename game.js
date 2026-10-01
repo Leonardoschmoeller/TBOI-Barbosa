@@ -16,6 +16,8 @@
 // ===================== CONSTANTES =====================
 const CANVAS_W = 960;
 const CANVAS_H = 540;
+const HUD_BAR_H = 44;                                    // altura da faixa de HUD no canvas
+const HUD_BTN = { x: CANVAS_W-34, y: 5, w: 26, h: 20 };  // botão de pausa (clique) + rótulo ESC
 const WALL_THICK = 22;
 const DOOR_W = 90;
 const DOOR_H = 70;
@@ -18674,6 +18676,18 @@ class MapGenerator {
   }
 }
 
+// Retângulo arredondado (fallback para navegadores sem ctx.roundRect)
+function roundRectPath(ctx, x, y, w, h, r=4){
+  r = Math.min(r, w/2, h/2);
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y); ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r); ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h); ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r); ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
+
 // ===================== FUNÇÃO drawHealth =====================
 // Agora suporta Bone Hearts (recipientes cinza/cibernéticos) no final da barra.
 // hp/maxHp incluem HP dentro dos ossos (top layer no final). boneHearts = número de recipientes cinza.
@@ -18789,37 +18803,11 @@ class Game {
     this.gameOverScreen = document.getElementById('gameOverScreen');
     this.pauseScreen = document.getElementById('pauseScreen');
     this.gameContainer = document.getElementById('gameContainer');
-    this.hudEnemies = document.getElementById('hudEnemies');
-    this.hudRoom = document.getElementById('hudRoom');
-    this.hudFloor = document.getElementById('hudFloor');
-    this.hudDashFill = document.getElementById('dashFill');
-    this.hudSeed = document.getElementById('hudSeed');
-    this.hudHeartsDom = document.getElementById('hudHearts');
-    this.hudWeapon = document.getElementById('weaponName');
     this.toast = document.getElementById('toast');
     this.swapHint = document.getElementById('swapHint');
-    this.tempBar = document.getElementById('tempBar');
-    this.tempFill = document.getElementById('tempFill');
-    this.tempLabel = document.getElementById('tempLabel');
-    this.chargeBar = document.getElementById('chargeBar');
-    this.chargeFill = document.getElementById('chargeFill');
-    this.chargeLabel = document.getElementById('chargeLabel');
-    this.luvaBar = document.getElementById('luvaBar');
-    this.luvaFill = document.getElementById('luvaFill');
-    this.luvaLabel = document.getElementById('luvaLabel');
-    this.laserBar = document.getElementById('laserBar');
-    this.laserFill = document.getElementById('laserFill');
-    this.laserLabel = document.getElementById('laserLabel');
-    this.upgradeHud = document.getElementById('upgradeHud');
-    this.upgradeList = document.getElementById('upgradeList');
-    // HUD Itens Especiais (E + cooldown)
-    this.specialHud = document.getElementById('specialHud');
-    this.specialName = document.getElementById('specialName');
-    this.specialStatus = document.getElementById('specialStatus');
-    this.specialFill = document.getElementById('specialFill');
-    this.specialCircle = document.getElementById('specialCircle');
-    this.specialIcon = document.getElementById('specialIcon');
     this._hudIdleTimer=0;
+    this._hudIdle=false;
+    this._hudMouse={x:-1,y:-1};
 
     this.bindUI();
     this.resizeCanvas();
@@ -18924,37 +18912,36 @@ class Game {
       if(isPauseKey && this.state==='PLAYING'){ e.preventDefault(); this.pause(); }
       else if(isPauseKey && this.state==='PAUSED'){ e.preventDefault(); this.resume(); }
     });
-    // Toggle info extra no topo (recolher/expandir) - libera mapa
-    const btnToggleHud=document.getElementById('btnToggleHud');
-    const hudExtra=document.querySelector('.hud-top-extra');
-    const hudBottom=document.querySelector('.hud-bottom');
-    const toggleTarget = hudExtra || hudBottom;
-    if(btnToggleHud && toggleTarget){
-      btnToggleHud.addEventListener('click', ()=>{
-        toggleTarget.classList.toggle('collapsed');
-        const isCollapsed = toggleTarget.classList.contains('collapsed');
-        btnToggleHud.textContent = isCollapsed ? '≡' : '×';
-        // também recolhe bottom se existir (compatibilidade)
-        if(hudBottom && hudBottom!==toggleTarget) hudBottom.classList.toggle('collapsed', isCollapsed);
-      });
-    }
-    // Setch: clique nos copos para escolher (mouse)
+    // Setch: clique nos copos para escolher (mouse) + botão de pausa do HUD
     if(this.canvas){
       this.canvas.addEventListener('click', (e)=>{
-        if(!this.isInSetchRoom()) return;
-        const room=this.currentRoom;
-        if(!room || !room.cupGame) return;
-        if(room.cupGame.state!=='waiting' || !room.cupGame.interactive) return;
         const rect=this.canvas.getBoundingClientRect();
         const scaleX=CANVAS_W/rect.width;
         const scaleY=CANVAS_H/rect.height;
         const x=(e.clientX - rect.left)*scaleX;
         const y=(e.clientY - rect.top)*scaleY;
+        if((this.state==='PLAYING' || this.state==='PAUSED') && this.isHudPauseHit(x,y)){
+          this.togglePause();
+          return;
+        }
+        if(!this.isInSetchRoom()) return;
+        const room=this.currentRoom;
+        if(!room || !room.cupGame) return;
+        if(room.cupGame.state!=='waiting' || !room.cupGame.interactive) return;
         const idx=room.cupGame.hitTest(x,y);
         if(idx!==-1){
           this.trySetchChoice(idx);
         }
       });
+      this.canvas.addEventListener('mousemove', (e)=>{
+        const rect=this.canvas.getBoundingClientRect();
+        this._hudMouse.x=(e.clientX - rect.left)*(CANVAS_W/rect.width);
+        this._hudMouse.y=(e.clientY - rect.top)*(CANVAS_H/rect.height);
+        const overPause = this.isHudPauseHover();
+        const overSetch = !overPause && this.isInSetchRoom() && this.currentRoom && this.currentRoom.cupGame && this.currentRoom.cupGame.state==='waiting' && this.currentRoom.cupGame.interactive;
+        this.canvas.style.cursor = (overPause || overSetch) ? 'pointer' : 'crosshair';
+      });
+      this.canvas.addEventListener('mouseleave', ()=>{ this._hudMouse.x=-1; this._hudMouse.y=-1; });
     }
   }
   showCharacterSelect(){
@@ -19311,7 +19298,6 @@ class Game {
       this.player.weapon = this.player.primaryWeapon;
       this.player.equippedSpecial = null;
       this._lastSpecialId = null;
-      if(this.specialHud) this.specialHud.style.display='none';
     }
     // JG bastão já aplicado via applyCharacterToPlayer, mas garante hasBastao true no início
     if(this.player.characterId==='jg'){
@@ -19414,7 +19400,6 @@ class Game {
     this.floor = floor;
     this.floorTransitioning=false;
     this.updateFloorVisual();
-    this.hudSeed.textContent = `SEED ${this.seed} • F${floor}`;
     // toast específico
     if(floor===1) { /* já mostrado em startGame */ }
     else this.showToast(`➤ Cyber Requiem • Ato ${floor} - ${FLOOR_THEMES[floor].name} • ${this.rooms.length} salas • Rede cibernética instável`, 2600);
@@ -20415,7 +20400,6 @@ class Game {
     if(this.player.characterId==='ash' && this.player.equippedSpecial){
       this.player.equippedSpecial = null;
       this._lastSpecialId = null;
-      if(this.specialHud) this.specialHud.style.display='none';
     }
     // Atualiza cooldown/duração do item especial equipado (ÚNICO timer confiável, sem múltiplos setTimeout)
     if(this.player.equippedSpecial){
@@ -21651,7 +21635,6 @@ class Game {
     if(!this.player.isAlive()){
       // DISQUETE DA VIDA: se houver continue salvo, ele salva o jogador em vez de encerrar o jogo.
       if(this.handlePlayerDeath()){
-        this.updateHUD();
         return; // jogo continua normalmente no mesmo frame
       }
       this.state='GAMEOVER';
@@ -21668,459 +21651,16 @@ class Game {
 
     // HUD auto-hide: fica mais translúcido quando ocioso para não atrapalhar mapa (vida/itens)
     const isMoving = this.input.getMoveVector().x!==0 || this.input.getMoveVector().y!==0 || !!this.input.getShootVector() || this.input.isDashPressed();
-    const hudTopEl=document.querySelector('.hud-top');
-    const hudBottomEl=document.querySelector('.hud-bottom');
     if(isMoving || this.player.shootCooldown>0 || this.player.dashTimer>0){
       this._hudIdleTimer=0;
-      hudTopEl?.classList.remove('idle');
-      hudBottomEl?.classList.remove('idle');
+      this._hudIdle=false;
     } else {
       this._hudIdleTimer+=dt;
-      if(this._hudIdleTimer>1800){
-        hudTopEl?.classList.add('idle');
-        hudBottomEl?.classList.add('idle');
-      }
+      if(this._hudIdleTimer>1800) this._hudIdle=true;
     }
 
     this.input.update();
-    this.updateHUD();
     }catch(e){ console.error('Game update error', e); }
-  }
-
-  updateHUD(){
-    if(this.hudHeartsDom){
-      this.hudHeartsDom.innerHTML='';
-      const totalHearts = Math.ceil(this.player.maxHp / 2);
-      const boneHearts = this.player.boneHearts |0;
-      const redCap = BONE_HEART_RED_CAPACITY;
-      for(let i=0;i<totalHearts;i++){
-        const hp = clamp(this.player.hp - i*2, 0, 2);
-        const isBone = i >= totalHearts - boneHearts;
-        const el=document.createElement('div'); el.className='hud-heart'; el.title = isBone ? 'Coração Cibernético (Bone) - recipiente cinza' : 'Coração Vermelho';
-        const c=document.createElement('canvas'); c.width=28; c.height=28; const cx=c.getContext('2d');
-        cx.clearRect(0,0,28,28);
-        const size=22; cx.save(); cx.translate(3,3);
-        cx.fillStyle='rgba(0,0,0,0.35)'; drawHeartPath(cx,1,2,size); cx.fill();
-        if(isBone){
-          // Bone Heart HUD - ciano acinzentado metálico
-          cx.fillStyle='#1a2530'; drawHeartPath(cx,0,0,size); cx.fill();
-          cx.strokeStyle='#4a6a7a'; cx.lineWidth=1.4; cx.stroke();
-          if(hp>=2){ cx.fillStyle='#8ecae6'; drawHeartPath(cx,0,0,size); cx.fill(); cx.fillStyle='rgba(255,255,255,0.72)'; cx.beginPath(); cx.arc(6,5,2.0,0,Math.PI*2); cx.fill(); cx.strokeStyle='rgba(0,229,255,0.45)'; cx.lineWidth=1.0; drawHeartPath(cx,0,0,size); cx.stroke(); }
-          else if(hp===1){ cx.save(); cx.beginPath(); drawHeartPath(cx,0,0,size); cx.clip(); cx.fillStyle='#8ecae6'; cx.fillRect(0,0,size/2+0.5,size); cx.restore(); cx.strokeStyle='rgba(0,229,255,0.35)'; cx.lineWidth=1.0; drawHeartPath(cx,0,0,size); cx.stroke(); }
-          else { cx.strokeStyle='rgba(140,160,180,0.14)'; cx.lineWidth=1; cx.beginPath(); cx.moveTo(size*0.5,4); cx.lineTo(size*0.5 -2,8); cx.lineTo(size*0.5+1,11); cx.lineTo(size*0.5,15); cx.stroke(); }
-        } else {
-          cx.fillStyle='#2a1a1a'; drawHeartPath(cx,0,0,size); cx.fill();
-          cx.strokeStyle='#5a2a2a'; cx.lineWidth=1.5; cx.stroke();
-          if(hp>=2){ cx.fillStyle='#ff3b30'; drawHeartPath(cx,0,0,size); cx.fill(); cx.fillStyle='rgba(255,255,255,0.7)'; cx.beginPath(); cx.arc(6,5,2.2,0,Math.PI*2); cx.fill(); }
-          else if(hp===1){ cx.save(); cx.beginPath(); drawHeartPath(cx,0,0,size); cx.clip(); cx.fillStyle='#ff3b30'; cx.fillRect(0,0,size/2+0.5,size); cx.restore(); }
-          else { cx.strokeStyle='rgba(255,255,255,0.06)'; cx.lineWidth=1; cx.beginPath(); cx.moveTo(size*0.5,4); cx.lineTo(size*0.5 -2,8); cx.lineTo(size*0.5+1,11); cx.lineTo(size*0.5,15); cx.stroke(); }
-        }
-        cx.restore();
-        el.appendChild(c); this.hudHeartsDom.appendChild(el);
-      }
-    }
-    const pct = this.player.dashCooldown<=0 ? 100 : clamp(100 - (this.player.dashCooldown / DASH_COOLDOWN)*100, 0, 100);
-    this.hudDashFill.style.width = pct+'%';
-    this.hudDashFill.style.opacity = this.player.dashCooldown<=0 ? '1' : '0.7';
-    this.hudDashFill.style.background = this.player.dashCooldown<=0 ? 'linear-gradient(90deg,#00d9ff,#7af)' : 'linear-gradient(90deg,#555,#777)';
-    // temperatura metralhadora
-    if(this.tempBar && this.tempFill){
-      if(this.player.weapon && this.player.weapon.name==='METRALHADORA'){
-        this.tempBar.style.display='flex';
-        const tpct = clamp(this.player.miniHeat / METRALHADORA_HEAT_MAX * 100, 0, 100);
-        this.tempFill.style.width = tpct+'%';
-        if(this.player.isOverheated){
-          this.tempFill.style.background='linear-gradient(90deg,#ff1a1a,#ff6a00)';
-          if(this.tempLabel) this.tempLabel.textContent='SUPERAQUECIDA! ' + Math.round(tpct)+'%';
-        } else {
-          this.tempFill.style.background = tpct>75 ? 'linear-gradient(90deg,#ff3b30,#ffcc00)' : tpct>45 ? 'linear-gradient(90deg,#ff6a00,#ffcc00)' : 'linear-gradient(90deg,#00ff88,#ffcc00)';
-          if(this.tempLabel) this.tempLabel.textContent='TEMP '+Math.round(tpct)+'%';
-        }
-      } else {
-        this.tempBar.style.display='none';
-      }
-    }
-    // barra carregada (arma comum com carga) + MOTOSSERRA cura + DEV Raio Matemático
-    if(this.chargeBar && this.chargeFill){
-      if(this.player.weapon && this.player.weapon.name==='RAIO_MATEMATICO'){
-        this.chargeBar.style.display='flex';
-        const prog = this.player.getRayMatematicoProgress();
-        const pct = clamp(prog*100, 0, 100);
-        this.chargeFill.style.width = pct + '%';
-        const hasSobremesa = this.player.hasSobremesa();
-        const miniCount = this.player.rayMatematicoFiredThresholds ? this.player.rayMatematicoFiredThresholds.size : 0;
-        if(this.player.isRayMatematicoCharging){
-          // Gradiente ciano -> branco quando pronto, pulso no 100%
-          this.chargeFill.style.background = pct>92 ? 'linear-gradient(90deg,#7af2ff,#ffffff)' : pct>55 ? 'linear-gradient(90deg,#1a8fb3,#7af2ff)' : 'linear-gradient(90deg,#0a4a5e,#1a8fb3)';
-          const sobStr = hasSobremesa ? ` • 🧁 ${miniCount}/4 mini` : '';
-          if(this.chargeLabel) this.chargeLabel.textContent = pct>=99 ? `PRONTO! ${pct.toFixed(0)}% • SOLTE!${sobStr}` : `LAZER ${pct.toFixed(0)}% • Segure...${sobStr}`;
-          if(pct>=99) this.chargeBar.style.boxShadow='0 0 10px rgba(184,255,251,0.55)';
-          else if(pct>70) this.chargeBar.style.boxShadow='0 0 6px rgba(122,242,255,0.32)';
-          else this.chargeBar.style.boxShadow='none';
-        } else {
-          this.chargeFill.style.background = this.player.canShoot() ? 'linear-gradient(90deg,#0a4a5e,#1a8fb3)' : 'linear-gradient(90deg,#333,#555)';
-          this.chargeFill.style.width = '0%';
-          if(this.chargeLabel) this.chargeLabel.textContent = this.player.shootCooldown>0 ? 'RECARREGANDO...' : `PRONTA • segure seta [🧁 ${hasSobremesa ? 'ON' : 'OFF'}]`;
-          this.chargeBar.style.boxShadow='none';
-        }
-      } else if(this.player.weapon && this.player.weapon.name==='CARREGADA'){
-        this.chargeBar.style.display='flex';
-        const prog = this.player.getChargeProgress();
-        const pct = clamp(prog*100, 0, 100);
-        this.chargeFill.style.width = pct + '%';
-        if(this.player.isCharging){
-          this.chargeFill.style.background = pct>85 ? 'linear-gradient(90deg,#d8b4fe,#ffffff)' : pct>45 ? 'linear-gradient(90deg,#7c3aed,#a78bfa)' : 'linear-gradient(90deg,#4c1d95,#7c3aed)';
-          if(this.chargeLabel) this.chargeLabel.textContent = pct>=99 ? 'MÁX • ' + pct.toFixed(0)+'% • '+this.player.getChargeDamage().toFixed(1)+' dano' : 'CARGA '+pct.toFixed(0)+'% • '+this.player.getChargeDamage().toFixed(1)+' dano';
-        } else {
-          this.chargeFill.style.background = 'linear-gradient(90deg,#4c1d95,#7c3aed)';
-          this.chargeFill.style.width = '0%';
-          if(this.chargeLabel) this.chargeLabel.textContent = this.player.canShoot() ? 'PRONTA • segure seta' : 'RECARREGANDO...';
-        }
-      } else if(this.player.weapon && this.player.weapon.name==='MOTOSSERRA'){
-        this.chargeBar.style.display='flex';
-        const pct = clamp(this.player.getMotosserraChargePct()*100, 0, 100);
-        this.chargeFill.style.width = pct + '%';
-        if(pct>=100){
-          this.chargeFill.style.background = 'linear-gradient(90deg,#4ade80,#ffffff)';
-          if(this.chargeLabel) this.chargeLabel.textContent = '♥ CURA PRONTA! +1 coração';
-        } else if(pct>75){
-          this.chargeFill.style.background = 'linear-gradient(90deg,#ff3b30,#ffcc00)';
-          if(this.chargeLabel) this.chargeLabel.textContent = `SERRA ${pct.toFixed(0)}% • ${Math.ceil((100-pct)/20)} hits p/ curar`;
-        } else if(pct>35){
-          this.chargeFill.style.background = 'linear-gradient(90deg,#ff2a1a,#ff8c42)';
-          if(this.chargeLabel) this.chargeLabel.textContent = `SERRA ${pct.toFixed(0)}% • ataque reto curto`;
-        } else {
-          this.chargeFill.style.background = 'linear-gradient(90deg,#7a1a1a,#ff2a1a)';
-          if(this.chargeLabel) this.chargeLabel.textContent = `SERRA ${pct.toFixed(0)}% • 5 hits = +1♥`;
-        }
-        // brilho quando quase cheia
-        if(pct>85){
-          this.chargeBar.style.boxShadow = '0 0 8px rgba(74,222,128,0.35)';
-        } else {
-          this.chargeBar.style.boxShadow = 'none';
-        }
-      } else if(this.player.weapon && this.player.weapon.isChicote){
-        // CHICOTE - barra: 0% = golpe leve em leque, 100% = pesado (grapple + explosão)
-        this.chargeBar.style.display='flex';
-        const charging = this.player.isChicoteCharging;
-        const pct = charging ? clamp(this.player.getChicoteChargeProgress()*100, 0, 100) : 0;
-        this.chargeFill.style.width = pct + '%';
-        if(charging){
-          this.chargeFill.style.background = pct>92 ? 'linear-gradient(90deg,#8b4513,#ffd700)' : pct>50 ? 'linear-gradient(90deg,#6b3a11,#c98a52)' : 'linear-gradient(90deg,#4a2410,#8b4513)';
-          if(this.chargeLabel) this.chargeLabel.textContent = pct>=99 ? 'PESADO PRONTO! Solte p/ puxar' : `CARGA ${pct.toFixed(0)}% • solte antes = leque leve`;
-          if(pct>=99) this.chargeBar.style.boxShadow='0 0 10px rgba(255,215,0,0.5)';
-          else if(pct>60) this.chargeBar.style.boxShadow='0 0 6px rgba(180,220,255,0.28)';
-          else this.chargeBar.style.boxShadow='none';
-        } else {
-          this.chargeFill.style.background = this.player.canShoot() ? 'linear-gradient(90deg,#4a2410,#8b4513)' : 'linear-gradient(90deg,#333,#555)';
-          this.chargeFill.style.width = '0%';
-          if(this.chargeLabel) this.chargeLabel.textContent = this.player.shootCooldown>0 ? 'RECARREGANDO...' : 'TOQUE = leque • SEGURE = puxão na parede';
-          this.chargeBar.style.boxShadow='none';
-        }
-      } else {
-        this.chargeBar.style.display='none';
-        this.chargeBar.style.boxShadow='none';
-      }
-    }
-    // barra luva - carga foguete
-    if(this.luvaBar && this.luvaFill){
-      if(this.player.weapon && this.player.weapon.isLuva){
-        this.luvaBar.style.display='flex';
-        const pct = clamp(this.player.luvaCharge / this.player.luvaChargeMax * 100, 0, 100);
-        this.luvaFill.style.width = pct+'%';
-        if(pct>=99.5){
-          this.luvaFill.style.background = 'linear-gradient(90deg,#ffd700,#ffffff)';
-          if(this.luvaLabel) this.luvaLabel.textContent = 'FOGUETE PRONTO! [ATIRE]';
-          this.luvaBar.style.boxShadow='0 0 10px rgba(255,215,0,0.45)';
-        } else if(this.player.luvaIsCharging){
-          this.luvaFill.style.background = pct>60 ? 'linear-gradient(90deg,#ff3b30,#ffd700)' : 'linear-gradient(90deg,#ff3b30,#ff8c42)';
-          if(this.luvaLabel) this.luvaLabel.textContent = `CARGA ${pct.toFixed(0)}% • ${Math.round(lerp(LUVA_PUNCH_BASE, LUVA_PUNCH_MIN, pct/100))}ms soco`;
-          this.luvaBar.style.boxShadow='none';
-        } else {
-          this.luvaFill.style.background = 'linear-gradient(90deg,#ff3b30,#ff8c42)';
-          if(this.luvaLabel) this.luvaLabel.textContent = `LUVA ${pct.toFixed(0)}% • segure ataque`;
-          this.luvaBar.style.boxShadow='none';
-        }
-      } else {
-        this.luvaBar.style.display='none';
-        this.luvaBar.style.boxShadow='none';
-      }
-    }
-    // melhorias por arma (mostra raridade, nome, nível, compatíveis) - com níveis até 3
-    if(this.upgradeHud && this.upgradeList){
-      const wName = this.player.weapon ? this.player.weapon.name : null;
-      let ids = [];
-      let all = [];
-      if(wName){
-        const specific = this.player.weaponUpgrades[wName]||[];
-        const generic = this.player.weaponUpgrades['ALL']||[];
-        all = [...specific];
-        for(const gid of generic){
-          const def = UPGRADE_MAP.get(gid);
-          if(!def) continue;
-          const compat = def.compatible || [def.weapon];
-          if(compat.includes(wName) || compat.includes('ALL') || def.weapon==='ALL'){
-            if(!all.includes(gid)) all.push(gid);
-          }
-        }
-        ids = [...all];
-      }
-      // inclui melhorias especiais (ex: Circuito Ágil - recarga E) - sempre visível
-      const specialIds = this.player.weaponUpgrades['SPECIAL']||[];
-      for(const sid of specialIds){ if(!ids.includes(sid)) ids.push(sid); }
-      // dedup
-      ids = [...new Set(ids)];
-      if(ids.length>0){
-        this.upgradeHud.style.display='flex';
-        this.upgradeList.innerHTML='';
-        for(const uid of ids){
-          const def = UPGRADE_MAP.get(uid);
-          if(!def) continue;
-          const r = RARITY[def.rarity];
-          const lvl = this.player.upgradeLevels.get(uid) || 1;
-          const maxLv = def.maxLevel || 1;
-          const el=document.createElement('div');
-          el.className='upgrade-chip';
-          el.style.borderColor = r.border;
-          el.style.background = r.bg;
-          el.style.color = r.color;
-          if(r.id==='MUITO_RARA') el.style.boxShadow = '0 0 6px ' + r.glow;
-          const compat = def.compatible || [def.weapon];
-          const compatStr = compat.includes('ALL') ? 'TODAS' : compat.join(',');
-          el.title = `${r.name} ${def.name} ${maxLv>1?`Nv${lvl}/${maxLv}`:''} [${compatStr}]: ${def.desc}`;
-          el.textContent = `${def.name}${maxLv>1?` ${lvl}/${maxLv}`:''}`;
-          // bolinha cor arma + nível
-          const dot=document.createElement('span');
-          dot.className='upgrade-dot';
-          dot.style.background = r.color;
-          if(r.id==='MUITO_RARA') dot.style.background = r.gold;
-          el.prepend(dot);
-          // pontos de nível
-          if(maxLv>1){
-            const dots=document.createElement('span');
-            dots.style.fontSize='5px';
-            dots.style.marginLeft='3px';
-            dots.textContent = '•'.repeat(lvl) + '○'.repeat(maxLv-lvl);
-            el.appendChild(dots);
-          }
-          this.upgradeList.appendChild(el);
-        }
-      } else {
-        // mostra total de melhorias se houver em outras armas (inclui níveis)
-        let totalLevels = 0;
-        for(const v of this.player.upgradeLevels.values()) totalLevels+=v;
-        const totalIds = this.player.obtainedUpgrades ? this.player.obtainedUpgrades.size : 0;
-        const displayTotal = totalLevels || totalIds;
-        if(displayTotal>0){
-          this.upgradeHud.style.display='flex';
-          this.upgradeList.innerHTML=`<span style="font-size:6px;color:#8a8198">${displayTotal} níveis • troque arma para ver</span>`;
-        } else {
-          this.upgradeHud.style.display='none';
-        }
-      }
-    }
-    const curEnemies=this.currentRoom?this.currentRoom.enemies.length:0;
-    const totalEnemies=this.rooms.reduce((a,r)=>a+r.enemies.length,0);
-    const locked=this.currentRoom && !this.currentRoom.isCleared();
-    this.hudEnemies.textContent=`INIMIGOS: ${curEnemies} ${locked?'🔒':''} • TOTAL: ${totalEnemies}`;
-    this.hudRoom.textContent=`SALA ${this.currentRoom?`${this.currentRoom.gx},${this.currentRoom.gy}`:'-'} • ${this.roomsExplored}/${this.rooms.length}`;
-    if(this.hudFloor){
-      // se sala boss/mini/festa/hacker, mostra indicação especial (prioridade Hacker > Boss)
-      if(this.currentRoom && this.currentRoom.isHacker){
-        const locked=!this.currentRoom.isCleared() && !this.currentRoom.hackerDefeated;
-        if(this.currentRoom.hackerDefeated){
-          this.hudFloor.textContent=`✓ HACKER ANIQUILADO - FASE ${this.floor}`;
-          this.hudFloor.className='hud-floor rare';
-        } else {
-          const hacker=this.currentRoom.enemies.find(e=>e.type==='hacker');
-          const hpTxt=hacker?` ${Math.ceil(hacker.hp)}/${hacker.maxHp} HP`:'';
-          const phaseTxt=hacker?` F${hacker.getPhase()}`:'';
-          this.hudFloor.textContent=locked?`◉ HACKER${hpTxt}${phaseTxt} - FASE ${this.floor}`:`◉ HACKER - FASE ${this.floor}`;
-          this.hudFloor.className='hud-floor hacker';
-        }
-      } else if(this.currentRoom && this.currentRoom.isPartyHorde){
-        const locked = !this.currentRoom.isCleared();
-        if(this.currentRoom.partyHordeDefeated){
-          this.hudFloor.textContent = `♪ FESTA VENCIDA! - FASE ${this.floor}`;
-          this.hudFloor.className = 'hud-floor rare';
-        } else {
-          const wave = this.currentRoom.partyWave;
-          const total = PARTY_HORDE_WAVES;
-          const ene = this.currentRoom.enemies.length;
-          this.hudFloor.textContent = locked ? `★ FESTA HORDA ONDA ${wave}/${total} • ${ene} INIMIGOS - FASE ${this.floor}` : `★ FESTA HORDA - FASE ${this.floor}`;
-          this.hudFloor.className = 'hud-floor party';
-        }
-      } else if(this.currentRoom && this.currentRoom.isBossStair){
-        const locked = !this.currentRoom.isCleared() && !this.currentRoom.bossStairDefeated;
-        if(this.currentRoom.bossStairDefeated){
-          this.hudFloor.textContent = `✓ BOSS ESCADA VENCIDO - FASE ${this.floor}`;
-          this.hudFloor.className = 'hud-floor rare';
-        } else {
-          const boss=this.currentRoom.enemies.find(e=> e.type==='stair_boss');
-          const hpTxt=boss? ` ${Math.ceil(boss.hp)}/${boss.maxHp} HP` : '';
-          this.hudFloor.textContent = locked ? `◉ BOSS ESCADA${hpTxt} - FASE ${this.floor}` : `◉ BOSS ESCADA - FASE ${this.floor}`;
-          this.hudFloor.className = 'hud-floor phase5';
-        }
-      } else if(this.currentRoom && this.currentRoom.isSetch){
-        const locked = !this.currentRoom.isCleared();
-        if(this.currentRoom.setchCleared){
-          this.hudFloor.textContent = `✓ SALA SETCH VENCIDA! - FASE ${this.floor} (2×)`;
-          this.hudFloor.className = 'hud-floor rare';
-        } else {
-          const cg=this.currentRoom.cupGame;
-          let stateTxt='';
-          if(cg){
-            if(cg.state==='showing') stateTxt=' MEMORIZE!';
-            else if(cg.state==='shuffling') stateTxt=' EMBARALHANDO...';
-            else if(cg.state==='waiting') stateTxt=' ESCOLHA 1/2/3!';
-            else if(cg.state==='revealing') stateTxt= cg.result==='win' ? ' ✓ ACERTOU!' : ' ✗ ERROU!';
-          }
-          this.hudFloor.textContent = locked ? `◉ SALA SETCH${stateTxt} - FASE ${this.floor} (2×)` : `◉ SALA SETCH - FASE ${this.floor}`;
-          this.hudFloor.className = 'hud-floor party';
-        }
-      } else if(this.currentRoom && this.currentRoom.isHacker){
-        const hacker=this.currentRoom.enemies.find(e=> e.type==='hacker');
-        const locked = !this.currentRoom.isCleared() && !this.currentRoom.hackerDefeated;
-        if(this.currentRoom.hackerDefeated){
-          this.hudFloor.textContent = `✓ HACKER ANIQUILADO - FASE ${this.floor}`;
-          this.hudFloor.className = 'hud-floor rare';
-        } else {
-          const pct=hacker? ` ${Math.ceil(hacker.hp)}/${hacker.maxHp} HP` : '';
-          this.hudFloor.textContent = locked ? `◉ HACKER ${hacker?hacker.getPhaseName():''}${pct} - FASE ${this.floor}` : `◉ HACKER - FASE ${this.floor}`;
-          this.hudFloor.className = 'hud-floor phase6';
-        }
-      } else if(this.currentRoom && this.currentRoom.isMiniboss){
-        const locked = !this.currentRoom.isCleared();
-        this.hudFloor.textContent = locked ? `◉ MINIBOSS - FASE ${this.floor}` : `✓ MINIBOSS VENCIDO - FASE ${this.floor}`;
-        this.hudFloor.className = locked ? 'hud-floor phase4' : 'hud-floor rare';
-      } else if(this.currentRoom && this.currentRoom.isRare){
-        this.hudFloor.textContent=`★ SALA RARA ★ - FASE ${this.floor}`;
-        this.hudFloor.className='hud-floor rare';
-      } else {
-        this.hudFloor.textContent=`FASE ${this.floor} • ${FLOOR_THEMES[this.floor].name}`;
-        this.hudFloor.className='hud-floor';
-        if(this.floor===2) this.hudFloor.classList.add('phase2');
-        else if(this.floor===3) this.hudFloor.classList.add('phase3');
-        else if(this.floor===4) this.hudFloor.classList.add('phase4');
-        else if(this.floor===5) this.hudFloor.classList.add('phase5');
-        else if(this.floor===6) this.hudFloor.classList.add('phase6');
-      }
-    }
-    if(this.hudWeapon){
-      // mostra arma equipada + secundária se existir (usa displayName para LAZER CODIFICADO)
-      const getDisp = (w)=> w.displayName || (w.name==='RAIO_MATEMATICO' ? 'LAZER CODIFICADO' : w.name);
-      let txt = getDisp(this.player.weapon);
-      if(this.player.secondaryWeapon){
-        const otherW = this.player.weapon === this.player.primaryWeapon ? this.player.secondaryWeapon : this.player.primaryWeapon;
-        const other = getDisp(otherW);
-        txt += ` [Q:${other}]`;
-      } else {
-        txt += ` [Q]`;
-      }
-      if(this.player.hasFlameTrail) txt += ` 🔥`;
-      if(this.player._hasSwiftBoots) txt += ` 💨`;
-      if(this.player.hasNoclip) txt += ` ◈`;
-      if(this.player.hasDillianShield) txt += ` 🛡️`;
-      if(this.player.hasDoubleShot) txt += ` x2`;
-      if(this.player.weapon.hasPochita) txt += ` 🪚x3`;
-      this.hudWeapon.textContent=txt;
-      this.hudWeapon.className='weapon-name';
-      if(this.player.weapon.name==='SHOTGUN') this.hudWeapon.classList.add('shotgun');
-      else if(this.player.weapon.name==='RAIO') this.hudWeapon.classList.add('raio');
-      else if(this.player.weapon.name==='CARREGADA') this.hudWeapon.classList.add('carregada');
-      else if(this.player.weapon.name==='BAZUCA') this.hudWeapon.classList.add('bazuca');
-      else if(this.player.weapon.name==='ESPADA') this.hudWeapon.classList.add('espada');
-      else if(this.player.weapon.name==='LUVA') this.hudWeapon.classList.add('luva');
-      else if(this.player.weapon.name==='MOTOSSERRA') this.hudWeapon.classList.add('motosserra');
-      else if(this.player.weapon.name==='BASTAO') this.hudWeapon.classList.add('bastao');
-      else if(this.player.weapon.name==='RAIO_MATEMATICO') this.hudWeapon.classList.add('raio_matematico');
-
-      if(this.player.hasFlameTrail) this.hudWeapon.classList.add('has-flame');
-    }
-    // ===== HUD Especial (E) - barra + círculo de cooldown + nome habilidade dinâmica =====
-    if(this.specialHud){
-      const sp = this.player.equippedSpecial;
-      if(!sp){
-        this.specialHud.style.display='none';
-      } else {
-        this.specialHud.style.display='flex';
-        // nome e ícone - para Flecha Stand mostra habilidade sorteada dinamicamente
-        if(this.specialName){
-          if(sp.id==='flecha_stand'){
-            const abilName = sp.currentAbility ? sp.currentAbility.name : 'Aleatória';
-            this.specialName.textContent = `${sp.name} › ${abilName}`;
-            this.specialName.title = sp.currentAbility ? sp.currentAbility.desc : 'Pressione E: sorteia Lentidão / Aliado / Paralisia';
-          } else {
-            this.specialName.textContent = sp.name;
-            this.specialName.title = sp.description||'';
-          }
-        }
-        if(this.specialIcon){
-          this.specialIcon.textContent = sp.icon;
-          // Corrige bug de ícone: 67 precisa fonte menor e centralizado, emojis precisam sans-serif
-          if(sp.icon==='67'){
-            this.specialIcon.classList.add('is-67');
-            this.specialIcon.style.fontFamily="'Press Start 2P', monospace";
-            this.specialIcon.style.fontSize='10px';
-          } else {
-            this.specialIcon.classList.remove('is-67');
-            this.specialIcon.style.fontFamily='';
-            this.specialIcon.style.fontSize='13px';
-          }
-          // Garante cor do ícone conforme especial para melhor contraste
-          this.specialIcon.style.color = sp.id==='farmar_aura' ? '#fff' : '#fff';
-        }
-        // status texto: "Pronto!" ou "Cooldown: 14s" ou "Ativo: 3s" + habilidade quando Flecha
-        let status = sp.getStatusText();
-        if(sp.id==='flecha_stand' && sp.currentAbility){
-          // Ex: "Habilidade: Lentidão em Massa | Cooldown: 7s"
-          if(sp.isOnCooldown()) status=`Habilidade: ${sp.currentAbility.name} | Cooldown: ${sp.getRemainingSeconds()}s`;
-          else if(sp.isActive) status=`Habilidade: ${sp.currentAbility.name} | Ativo: ${Math.ceil(sp.durationRemaining/1000)}s`;
-          else status=`Habilidade: ${sp.currentAbility.name} | Pronto!`;
-        } else if(sp.id==='flecha_stand'){
-          status += ' | Habilidade: Aleatória';
-        }
-        if(this.specialStatus) this.specialStatus.textContent = status;
-        // classe visual
-        this.specialHud.classList.remove('cooldown','ready','active');
-        let pct = 0; // 0..100 para barra
-        let circleOffset = 0;
-        const circ = 2*Math.PI*16; // ~100.53
-        if(sp.isActive){
-          this.specialHud.classList.add('active');
-          pct = sp.getDurationPercent()*100;
-          // círculo mostra tempo restante de duração (diminui)
-          circleOffset = circ * (1 - pct/100);
-          if(this.specialFill){
-            this.specialFill.style.width = pct+'%';
-          }
-        } else if(sp.isOnCooldown()){
-          this.specialHud.classList.add('cooldown');
-          pct = sp.getCooldownPercent()*100;
-          // barra mostra cooldown restante (100 => cheio, 0 => zerado)
-          // Queremos barra cheia = cooldown cheio, vazia = pronto
-          // Então usamos pct direto
-          circleOffset = circ * (pct/100);
-          if(this.specialFill){
-            this.specialFill.style.width = pct+'%';
-          }
-        } else {
-          this.specialHud.classList.add('ready');
-          pct = 100;
-          circleOffset = 0;
-          if(this.specialFill) this.specialFill.style.width='100%';
-        }
-        if(this.specialCircle){
-          this.specialCircle.style.strokeDasharray = circ;
-          this.specialCircle.style.strokeDashoffset = circleOffset;
-          this.specialCircle.style.stroke = sp.color || '#ffcc00';
-        }
-        // Corrige barra fill cor conforme especial (para farmar aura rosa)
-        if(this.specialFill){
-          this.specialFill.style.background = sp.color || '#ffcc00';
-        }
-      }
-    }
   }
 
   draw(){
@@ -22229,8 +21769,17 @@ class Game {
       }catch(e){ console.error('Motosserra zone draw error', e); }
       for(const p of this.particles) p.draw(ctx);
       // HUD faixa superior - Bone Hearts no final
-      ctx.fillStyle='rgba(0,0,0,0.45)'; ctx.fillRect(0,0, CANVAS_W, 36);
-      ctx.strokeStyle='rgba(255,255,255,0.06)'; ctx.beginPath(); ctx.moveTo(0,36); ctx.lineTo(CANVAS_W,36); ctx.stroke();
+      ctx.save();
+      ctx.globalAlpha = this._hudIdle ? 0.55 : 1;
+      const barGrad = ctx.createLinearGradient(0,0,0,HUD_BAR_H);
+      barGrad.addColorStop(0,'rgba(8,8,16,0.90)');
+      barGrad.addColorStop(0.68,'rgba(8,8,16,0.74)');
+      barGrad.addColorStop(1,'rgba(8,8,16,0.22)');
+      ctx.fillStyle=barGrad; ctx.fillRect(0,0, CANVAS_W, HUD_BAR_H);
+      ctx.save(); ctx.globalAlpha*=0.55;
+      ctx.fillStyle=theme.accent||'#8a6cff'; ctx.fillRect(0, HUD_BAR_H-1, CANVAS_W*0.36, 1);
+      ctx.restore();
+      ctx.fillStyle='rgba(255,255,255,0.08)'; ctx.fillRect(CANVAS_W*0.36, HUD_BAR_H-1, CANVAS_W*0.64, 1);
       drawHealth(ctx, 12, 7, this.player.hp, this.player.maxHp, this.player.boneHearts|0);
       // ===== DISQUETE DA VIDA - contador de continues salvos (💾 xN) =====
       const conts = this.player.continues|0;
@@ -22251,10 +21800,26 @@ class Game {
         ctx.fillText(`x${conts}`, cx0 + 13, cy0);
       }
       const dashPct = this.player.dashCooldown<=0 ? 1 : 1 - (this.player.dashCooldown / DASH_COOLDOWN);
-      ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(CANVAS_W - 132, 10, 110, 14);
-      ctx.fillStyle='rgba(255,255,255,0.15)'; ctx.fillRect(CANVAS_W -130, 12, 106, 10);
-      ctx.fillStyle = this.player.dashCooldown<=0 ? '#00d9ff' : '#666'; ctx.fillRect(CANVAS_W -130, 12, 106*dashPct, 10);
-      ctx.fillStyle='#fff'; ctx.font='7px "Press Start 2P"'; ctx.textAlign='center'; ctx.fillText(this.player.dashCooldown<=0?'DASH PRONTO':'DASH...', CANVAS_W -77, 20); ctx.textAlign='left';
+      const dashReady = this.player.dashCooldown<=0;
+      // painel do dash
+      const dx0 = CANVAS_W - 178, dy0 = 5, dw = 138, dh = 20;
+      roundRectPath(ctx, dx0, dy0, dw, dh, 6);
+      ctx.fillStyle = dashReady ? 'rgba(0,217,255,0.10)' : 'rgba(255,255,255,0.04)'; ctx.fill();
+      ctx.strokeStyle = dashReady ? 'rgba(0,217,255,0.35)' : 'rgba(255,255,255,0.09)'; ctx.lineWidth=1; ctx.stroke();
+      roundRectPath(ctx, dx0+6, dy0+7, 68, 7, 3.5);
+      ctx.fillStyle='rgba(255,255,255,0.10)'; ctx.fill();
+      if(dashReady){
+        ctx.save(); ctx.shadowColor='rgba(0,217,255,0.85)'; ctx.shadowBlur=6;
+        roundRectPath(ctx, dx0+6, dy0+7, 68*dashPct, 7, 3.5); ctx.fillStyle='#00d9ff'; ctx.fill();
+        ctx.restore();
+      } else {
+        roundRectPath(ctx, dx0+6, dy0+7, 68*dashPct, 7, 3.5); ctx.fillStyle='#5b6478'; ctx.fill();
+      }
+      ctx.font='5px "Press Start 2P"'; ctx.textAlign='right';
+      ctx.fillStyle = dashReady ? '#7af2ff' : 'rgba(255,255,255,0.55)';
+      ctx.fillText(dashReady?'DASH PRONTO':'DASH...', dx0+dw-6, dy0+14);
+      ctx.textAlign='left';
+      this.drawHudInfo(ctx);
       // info arma no canvas (canto levemente) + personagem
       const wn=this.player.weapon.name;
       let wLabel = wn==='SHOTGUN' ? 'SHOTGUN [5x]' : wn==='RAIO' ? 'RAIO ⚡ [pierce]' : wn==='RAIO_MATEMATICO' ? 'LAZER CODIFICADO [Brimstone]' : wn==='LASER' ? 'LASER ◉ [carga→timing]' : wn==='CARREGADA' ? 'CARREGADA [carga]' : wn==='BAZUCA' ? 'BAZUCA 💥 [área]' : wn==='METRALHADORA' ? 'METRALHADORA [temp]' : wn==='ESPADA' ? 'ESPADA ⚔️ [combo+onda]' : wn==='LUVA' ? 'LUVA 🥊 x2 [dual]' : wn==='MOTOSSERRA' ? 'MOTOSSERRA 🪚 [curto reto + cura]' : wn==='BASTAO' ? 'BASTÃO 🏏 [gira/retorna]' : 'NORMAL';
@@ -22264,6 +21829,11 @@ class Game {
         if(this.player.characterId==='jg' && !this.player.hasBastao) wLabel += ' • SEM BASTÃO';
         else if(this.player.characterId==='jl') wLabel += ' • 67';
       }
+      if(this.player.hasFlameTrail) wLabel+=' 🔥';
+      if(this.player._hasSwiftBoots) wLabel+=' 💨';
+      if(this.player.hasNoclip) wLabel+=' ◈';
+      if(this.player.hasDillianShield) wLabel+=' 🛡';
+      if(this.player.hasDoubleShot) wLabel+=' x2';
       ctx.fillStyle=wColor;
       if(wn==='LUVA'){
         ctx.font='6px sans-serif';
@@ -22381,6 +21951,7 @@ class Game {
       }
       // minimapa
       this.drawMinimap(ctx);
+      ctx.restore();
       if(this.currentRoom.isRare){
         ctx.fillStyle='rgba(255,215,0,0.95)'; ctx.font='7px "Press Start 2P"'; ctx.textAlign='center';
         ctx.fillText('★ SALA RARA ★', CANVAS_W/2, CANVAS_H - 14); ctx.textAlign='left';
@@ -22405,6 +21976,191 @@ class Game {
       ctx.fillStyle='rgba(255,59,48,0.04)'; for(let y=0;y<CANVAS_H;y+=24) for(let x=0;x<CANVAS_W;x+=24) if((x+y)%48===0) ctx.fillRect(x,y,24,24);
     }
     }catch(e){ console.error('Game draw outer error', e); }finally{ try{ if(_saved) ctx.restore(); }catch(_){} }
+  }
+
+  // HUD informational desenhado no canvas (substitui o HUD DOM do topo)
+  drawHudInfo(ctx){
+    const p=this.player, room=this.currentRoom;
+    const curEnemies = room?room.enemies.length:0;
+    const totalEnemies = this.rooms.reduce((a,r)=>a+r.enemies.length,0);
+    const locked = room && !room.isCleared();
+    let tag='FASE '+this.floor, tagColor='#ffcc00';
+    const specialRoom = room && (room.isHacker || room.isPartyHorde || room.isBossStair || room.isSetch || room.isMiniboss || room.isRare);
+    if(!specialRoom){
+      const th = FLOOR_THEMES[this.floor];
+      if(th && th.name) tag += ` • ${th.name}`;
+    }
+    if(room){
+      if(room.isHacker){
+        const h=room.enemies.find(e=>e.type==='hacker');
+        if(room.hackerDefeated){ tag='✓ HACKER ANIQUILADO'; tagColor='#ffd700'; }
+        else { tag=`◉ HACKER${h?` ${Math.ceil(h.hp)}/${h.maxHp}`:''}`; tagColor='#d946ef'; }
+      } else if(room.isPartyHorde){
+        if(room.partyHordeDefeated){ tag='♪ FESTA VENCIDA'; tagColor='#ffd700'; }
+        else { tag=`★ FESTA ONDA ${room.partyWave}/${PARTY_HORDE_WAVES} • ${room.enemies.length} INIM`; tagColor='#ff6b9d'; }
+      } else if(room.isBossStair){
+        const b=room.enemies.find(e=>e.type==='stair_boss');
+        if(room.bossStairDefeated){ tag='✓ BOSS ESCADA VENCIDO'; tagColor='#ffd700'; }
+        else { tag=`◉ BOSS ESCADA${b?` ${Math.ceil(b.hp)}/${b.maxHp}`:''}`; tagColor='#ffb700'; }
+      } else if(room.isSetch){
+        const cg=room.cupGame;
+        let st='';
+        if(cg){
+          if(cg.state==='showing') st=' MEMORIZE!';
+          else if(cg.state==='shuffling') st=' EMBARALHANDO...';
+          else if(cg.state==='waiting') st=' ESCOLHA 1/2/3!';
+          else if(cg.state==='revealing') st = cg.result==='win' ? ' ✓ ACERTOU!' : ' ✗ ERROU!';
+        }
+        tag=`◉ SALA SETCH${st}`; tagColor='#ff6b9d';
+      } else if(room.isMiniboss){
+        tag = locked ? '◉ MINIBOSS' : '✓ MINIBOSS VENCIDO';
+        tagColor = locked ? '#d946ef' : '#ffd700';
+      } else if(room.isRare){
+        tag='★ SALA RARA ★'; tagColor='#ffd700';
+      }
+    }
+    // ===== painel central: fase + sala/inimigos =====
+    const infoLine = `SALA ${room?`${room.gx},${room.gy}`:'-'} • ${this.roomsExplored}/${this.rooms.length} • INIMIGOS ${curEnemies}${locked?' 🔒':''}/${totalEnemies}`;
+    ctx.font='6px "Press Start 2P"'; const tagW=ctx.measureText(tag).width;
+    ctx.font='5px "Press Start 2P"'; const infoW=ctx.measureText(infoLine).width;
+    const pw = Math.min(Math.max(tagW, infoW) + 34, 400);
+    const px = clamp(CANVAS_W/2 - pw/2, 352, CANVAS_W - 190 - pw);
+    roundRectPath(ctx, px, 5, pw, 32, 8);
+    ctx.fillStyle='rgba(255,255,255,0.05)'; ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.09)'; ctx.lineWidth=1; ctx.stroke();
+    roundRectPath(ctx, px+5, 10, 3, 22, 1.5); ctx.fillStyle=tagColor; ctx.fill();
+    ctx.textAlign='center';
+    ctx.font='6px "Press Start 2P"'; ctx.fillStyle=tagColor;
+    ctx.fillText(tag, px+pw/2, 18);
+    ctx.font='5px "Press Start 2P"'; ctx.fillStyle='rgba(255,255,255,0.88)';
+    ctx.fillText(infoLine, px+pw/2, 31);
+    ctx.textAlign='left';
+    // ===== TEMP metralhadora =====
+    if(p.weapon && p.weapon.name==='METRALHADORA'){
+      const tpct = clamp(p.miniHeat / METRALHADORA_HEAT_MAX * 100, 0, 100);
+      if(tpct>0.5 || p.isOverheated){
+        const over = !!p.isOverheated;
+        roundRectPath(ctx, 106, 29, 68, 7, 3.5);
+        ctx.fillStyle = over ? 'rgba(255,59,48,0.16)' : 'rgba(255,255,255,0.07)'; ctx.fill();
+        if(over){ ctx.strokeStyle='rgba(255,59,48,0.55)'; ctx.lineWidth=1; ctx.stroke(); }
+        roundRectPath(ctx, 109, 31, 62*clamp(tpct/100,0,1), 3, 1.5);
+        ctx.fillStyle = over ? '#ff1a1a' : tpct>75 ? '#ff3b30' : tpct>45 ? '#ff6a00' : '#00ff88';
+        ctx.fill();
+        ctx.font='4px monospace';
+        ctx.fillStyle = over ? 'rgba(255,110,90,0.98)' : 'rgba(255,255,255,0.8)';
+        ctx.fillText(over ? `SUPERAQUECIDA! ${Math.round(tpct)}%` : `TEMP ${Math.round(tpct)}%`, 108, 40);
+      }
+    }
+    // ===== Especial [E] =====
+    const sp = p.equippedSpecial;
+    const rx0 = CANVAS_W - 178;
+    if(sp){
+      let st = sp.getStatusText();
+      if(sp.id==='flecha_stand'){
+        const an = sp.currentAbility ? sp.currentAbility.name : 'Aleatória';
+        st = sp.isOnCooldown() ? `${an} • CD ${sp.getRemainingSeconds()}s`
+          : sp.isActive ? `${an} • ${Math.ceil(sp.durationRemaining/1000)}s`
+          : `${an} • Pronto!`;
+      }
+      const active = !!sp.isActive, cooling = !!sp.isOnCooldown();
+      roundRectPath(ctx, rx0, 28, 138, 14, 6);
+      ctx.fillStyle = active ? 'rgba(0,217,255,0.10)' : cooling ? 'rgba(255,255,255,0.04)' : 'rgba(255,204,0,0.07)';
+      ctx.fill();
+      ctx.strokeStyle = active ? 'rgba(0,217,255,0.38)' : cooling ? 'rgba(255,255,255,0.08)' : 'rgba(255,204,0,0.30)';
+      ctx.lineWidth=1; ctx.stroke();
+      ctx.font='4px "Press Start 2P"';
+      ctx.fillStyle = active ? '#7af2ff' : cooling ? 'rgba(255,255,255,0.55)' : (sp.color||'#ffcc00');
+      ctx.fillText(`${sp.icon} ${sp.name} [E]`, rx0+6, 34);
+      ctx.textAlign='right'; ctx.fillText(st, rx0+132, 34); ctx.textAlign='left';
+      const spct = active ? sp.getDurationPercent()*100 : cooling ? sp.getCooldownPercent()*100 : 100;
+      roundRectPath(ctx, rx0+6, 36, 126, 2, 1);
+      ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fill();
+      if(spct>0){ roundRectPath(ctx, rx0+6, 36, 126*clamp(spct/100,0,1), 2, 1); ctx.fillStyle=sp.color||'#ffcc00'; ctx.fill(); }
+    }
+    // ===== botão de pausa (clique) + dica ESC =====
+    const b=HUD_BTN, isPaused=this.state==='PAUSED';
+    const hover=this.isHudPauseHover();
+    roundRectPath(ctx, b.x, b.y, b.w, b.h, 6);
+    ctx.fillStyle = isPaused ? 'rgba(0,217,255,0.18)' : hover ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.07)';
+    ctx.fill();
+    ctx.strokeStyle = isPaused ? 'rgba(0,217,255,0.60)' : hover ? 'rgba(255,255,255,0.38)' : 'rgba(255,255,255,0.14)';
+    ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle = hover||isPaused ? '#ffffff' : '#dfe7f5';
+    if(isPaused){
+      ctx.beginPath();
+      ctx.moveTo(b.x+10, b.y+6); ctx.lineTo(b.x+17, b.y+10.5); ctx.lineTo(b.x+10, b.y+15);
+      ctx.closePath(); ctx.fill();
+    } else {
+      ctx.fillRect(b.x+9, b.y+6, 3.5, 9);
+      ctx.fillRect(b.x+14, b.y+6, 3.5, 9);
+    }
+    ctx.font='4px "Press Start 2P"'; ctx.textAlign='center';
+    ctx.fillStyle = hover ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.42)';
+    ctx.fillText(isPaused ? 'RETOMAR' : 'ESC ⏸', b.x+b.w/2, b.y+b.h+9);
+    ctx.textAlign='left';
+    // ===== Melhorias por arma (chips) =====
+    let ids=[];
+    const wName = p.weapon ? p.weapon.name : null;
+    if(wName){
+      const all=[...(p.weaponUpgrades[wName]||[])];
+      for(const gid of (p.weaponUpgrades['ALL']||[])){
+        const def = UPGRADE_MAP.get(gid); if(!def) continue;
+        const compat = def.compatible || [def.weapon];
+        if((compat.includes(wName) || compat.includes('ALL') || def.weapon==='ALL') && !all.includes(gid)) all.push(gid);
+      }
+      ids=[...all];
+    }
+    for(const sid of (p.weaponUpgrades['SPECIAL']||[])) if(!ids.includes(sid)) ids.push(sid);
+    ids=[...new Set(ids)];
+    ctx.font='4px "Press Start 2P"';
+    if(ids.length>0){
+      let cx2 = 58;
+      const chips=[];
+      for(const uid of ids){
+        const def = UPGRADE_MAP.get(uid); if(!def) continue;
+        const r = RARITY[def.rarity];
+        const lvl = p.upgradeLevels.get(uid) || 1, maxLv = def.maxLevel || 1;
+        const label = `${def.name}${maxLv>1?` ${lvl}/${maxLv}`:''}`;
+        const bw = ctx.measureText(label).width + 9;
+        if(cx2+bw > CANVAS_W-140) break;
+        chips.push({x:cx2, w:bw, label, r});
+        cx2 += bw+3;
+      }
+      roundRectPath(ctx, 4, CANVAS_H-30, Math.max(cx2, 52)+2, 15, 7);
+      ctx.fillStyle='rgba(10,10,18,0.55)'; ctx.fill();
+      ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.lineWidth=1; ctx.stroke();
+      ctx.fillStyle='rgba(255,255,255,0.55)';
+      ctx.fillText('MELHORIAS', 9, CANVAS_H-20);
+      for(const c of chips){
+        roundRectPath(ctx, c.x, CANVAS_H-27, c.w, 9, 4.5);
+        ctx.fillStyle=c.r.bg; ctx.fill();
+        ctx.strokeStyle=c.r.border; ctx.lineWidth=1; ctx.stroke();
+        ctx.fillStyle=c.r.color; ctx.fillText(c.label, c.x+4.5, CANVAS_H-20);
+      }
+    } else {
+      let totalLevels=0; for(const v of p.upgradeLevels.values()) totalLevels+=v;
+      const totalIds = p.obtainedUpgrades ? p.obtainedUpgrades.size : 0;
+      const displayTotal = totalLevels || totalIds;
+      if(displayTotal>0){
+        roundRectPath(ctx, 4, CANVAS_H-30, 210, 14, 7);
+        ctx.fillStyle='rgba(10,10,18,0.55)'; ctx.fill();
+        ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.lineWidth=1; ctx.stroke();
+        ctx.fillStyle='rgba(160,152,180,0.9)';
+        ctx.fillText(`${displayTotal} níveis • troque arma [Q] p/ ver`, 9, CANVAS_H-20);
+      }
+    }
+    ctx.fillStyle='rgba(255,255,255,0.28)';
+    ctx.fillText(`SEED ${this.seed}`, 8, CANVAS_H-7);
+  }
+
+  isHudPauseHit(x,y){
+    return x>=HUD_BTN.x-2 && x<=HUD_BTN.x+HUD_BTN.w+2 && y>=HUD_BTN.y-2 && y<=HUD_BTN.y+HUD_BTN.h+11;
+  }
+  isHudPauseHover(){
+    const m=this._hudMouse;
+    if(!m || m.x<0) return false;
+    if(this.state!=='PLAYING' && this.state!=='PAUSED') return false;
+    return this.isHudPauseHit(m.x, m.y);
   }
 
   drawMinimap(ctx){

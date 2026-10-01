@@ -199,7 +199,7 @@
                   <span class="cc-keys"><span class="key wide">E</span></span>
                 </div>
                 <p class="cc-desc">Ativa item equipado. <b>Espada Flamejante</b> explosão 120px • <b>Escudo</b> absorve <b>1 dano</b> (5s ou até absorver) • <b>Flecha Stand</b> sorteia lentidão/aliado/paralisia.</p>
-                <span class="cc-hint">Prioridade: pegar/trocar no chão > ativar. Cooldown na HUD com círculo.</span>
+                <span class="cc-hint">Prioridade: pegar/trocar no chão > ativar. Cooldown na HUD (barra no topo).</span>
               </div>
               <div class="control-card accent-gold">
                 <div class="control-card-head">
@@ -440,8 +440,10 @@
             <span class="hud-legend-item">♥ Vida</span>
             <span class="hud-legend-item">DASH barra</span>
             <span class="hud-legend-item">ARMA [Q]</span>
-            <span class="hud-legend-item">ESPECIAL [E] círculo</span>
+            <span class="hud-legend-item">SALA/INIMIGOS centro</span>
+            <span class="hud-legend-item">ESPECIAL [E] barra</span>
             <span class="hud-legend-item">TEMP/CARGA barras</span>
+            <span class="hud-legend-item">MELHORIAS chips</span>
             <span class="hud-legend-item">MAPA 5×5</span>
           </div>
         </div>
@@ -468,70 +470,8 @@
     <!-- Área do Jogo -->
     <div id="gameContainer" class="hidden">
       <canvas id="gameCanvas" width="960" height="540"></canvas>
-      <!-- HUD DOM - TUDO NO TOPO PARA NÃO ATRAPALHAR -->
+      <!-- HUD é desenhado no canvas (ver draw/drawHudInfo em game.js) - aqui só overlays -->
       <div id="hud">
-        <div id="hudTop" class="hud-top">
-          <div class="hud-top-row hud-top-main">
-            <div id="hudHearts" class="hud-hearts" aria-label="Vida"></div>
-            <div id="hudDash" class="hud-dash">
-              <span class="hud-label">DASH</span>
-              <div class="dash-bar"><div id="dashFill" class="dash-fill"></div></div>
-            </div>
-            <span id="hudFloor" class="hud-floor">FASE 1</span>
-            <span id="hudRoom" class="hud-room">SALA 1-1</span>
-            <span id="hudEnemies" class="hud-enemies">INIMIGOS: 0</span>
-            <button id="btnPause" class="hud-toggle" title="Pausar (ESC)" aria-label="Pausar">⏸</button>
-            <button id="btnToggleHud" class="hud-toggle" title="Recolher/expandir informações" aria-label="Toggle HUD">≡</button>
-          </div>
-          <div class="hud-top-row hud-top-extra">
-            <div id="hudWeapon" class="hud-weapon">
-              <span class="hud-label">ARMA [Q]</span>
-              <span id="weaponName" class="weapon-name">NORMAL [Q]</span>
-            </div>
-            <div id="tempBar" class="hud-temp" style="display:none">
-              <span class="hud-label">TEMP</span>
-              <div class="temp-bar"><div id="tempFill" class="temp-fill"></div></div>
-              <span id="tempLabel" class="temp-label">0%</span>
-            </div>
-            <div id="chargeBar" class="hud-charge" style="display:none">
-              <span class="hud-label">CARGA</span>
-              <div class="charge-bar"><div id="chargeFill" class="charge-fill"></div></div>
-              <span id="chargeLabel" class="charge-label">0%</span>
-            </div>
-            <div id="luvaBar" class="hud-luva" style="display:none">
-              <span class="hud-label">LUVA</span>
-              <div class="luva-bar"><div id="luvaFill" class="luva-fill"></div></div>
-              <span id="luvaLabel" class="luva-label">0%</span>
-            </div>
-            <div id="upgradeHud" class="hud-upgrades" style="display:none">
-              <span class="hud-label">MELHORIAS</span>
-              <div id="upgradeList" class="upgrade-list"></div>
-            </div>
-            <!-- HUD Item Especial (E) - Sistema de cooldown com barra + círculo -->
-            <div id="specialHud" class="hud-special" style="display:none">
-              <span class="hud-label">ESPECIAL [E]</span>
-              <div class="special-main">
-                <div class="special-circle-wrap">
-                  <svg class="special-circle" width="38" height="38" viewBox="0 0 38 38">
-                    <circle class="special-circle-bg" cx="19" cy="19" r="16" />
-                    <circle id="specialCircle" class="special-circle-fill" cx="19" cy="19" r="16" />
-                  </svg>
-                  <span id="specialIcon" class="special-icon">★</span>
-                </div>
-                <div class="special-info">
-                  <span id="specialName" class="special-name">—</span>
-                  <span id="specialStatus" class="special-status">Pronto!</span>
-                  <div class="special-bar"><div id="specialFill" class="special-fill"></div></div>
-                </div>
-              </div>
-            </div>
-            <span id="hudSeed" class="hud-seed"></span>
-          </div>
-        </div>
-        <div class="hud-right" style="display:none">
-          <span class="hud-hint">WASD MOVER • SETAS ATIRAR • SHIFT DASH • Q TROCA • E ESPECIAL</span>
-          <span id="hudSeed2" class="hud-seed"></span>
-        </div>
         <div id="swapHint" class="swap-hint hidden">Pressione Q para trocar</div>
       </div>
     </div>
