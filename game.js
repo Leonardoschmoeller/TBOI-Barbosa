@@ -1939,11 +1939,16 @@ const UPGRADE_DEFS = [
       w.areaH = Math.min((w.areaH||baseH) * (1+UPGRADE_VALUES.MOTOSSERRA_RARA_ANGLE*0.5), baseH*1.6);
       w.offset = Math.min((w.offset||baseOff) * (1+UPGRADE_VALUES.MOTOSSERRA_RARA_ALCANCE*0.6), baseOff*1.4);
   }},
-  { id:'motosserra_muito_rara_pochita', weapon:'MOTOSSERRA', rarity:'MUITO_RARA', name:'Pochita - Chainsaw Man', desc:'Referência Chainsaw Man • 2 motosserras extras à direita e esquerda do personagem (estilo Denji) • +55% dano • +18% alcance • +38% ângulo', apply:(w)=>{
-      // Pochita Chainsaw Man - Denji: 2 motosserras laterais à direita/esquerda do personagem + central, referência visual Chainsaw Man
+  { id:'motosserra_muito_rara_pochita', weapon:'MOTOSSERRA', rarity:'MUITO_RARA', name:'Pochita - Chainsaw Man', desc:'Referência Chainsaw Man • +2 ataques principais nos lados do personagem (serras de verdade, dano real) • +55% dano • +18% alcance • +38% ângulo', apply:(w)=>{
+      // Pochita Chainsaw Man - Denji: 2 ataques principais nos LADOS do personagem + serras visuais na arma
       w.hasPochita = true;
-      w.hasPochitaSideSaws = true; // ativa serras laterais no visual do personagem (direita/esquerda)
-      w.sawCount = 3; // central +2 laterais na arma (lógico 3, visual total 5 com laterais do personagem)
+      w.hasPochitaSideSaws = true; // serras laterais no visual do personagem (direita/esquerda)
+      w.pochitaSideAttacks = POCHITA_SIDE_ATTACKS; // 2 ataques principais laterais (dano real por tick)
+      w.pochitaSideDamage = POCHITA_SIDE_DAMAGE;
+      w.pochitaSideOffset = POCHITA_SIDE_OFFSET;
+      w.pochitaSideW = POCHITA_SIDE_RECT_W;
+      w.pochitaSideH = POCHITA_SIDE_RECT_H;
+      w.sawCount = 1 + POCHITA_SIDE_ATTACKS; // 1 ataque central + 2 ataques principais laterais
       const baseD=WEAPON_MOTOSSERRA.damage;
       w.damage = Math.min(w.damage * (1+UPGRADE_VALUES.MOTOSSERRA_MUITO_RARA_POCHITA_DANO), baseD*UPGRADE_CAPS.MAX_DANO_FACTOR);
       const baseR=WEAPON_MOTOSSERRA.range;
@@ -3432,6 +3437,13 @@ const POCHITA_EXTRA_SAWS = 2;
 const POCHITA_DAMAGE_BONUS = 0.48; // +48% tick (1.45 -> 2.14)
 const POCHITA_RANGE_BONUS = 0.22; // +22% área (62→75, 32→39) - ainda afiado mas maior
 const POCHITA_ANGLE_BONUS = 0.55;
+// POCHITA - ataques principais laterais (referência Denji: serras saem dos dois lados do corpo)
+const POCHITA_SIDE_ATTACKS = 2;   // +2 ataques principais (um à esquerda, um à direita)
+const POCHITA_SIDE_DAMAGE = 0.62; // dano de cada ataque lateral (fração do dano principal)
+const POCHITA_SIDE_OFFSET = 20;   // distância lateral do centro do personagem (alinha com as serras do visual)
+const POCHITA_SIDE_RECT_W = 48;   // comprimento da zona lateral (ao longo da mira)
+const POCHITA_SIDE_RECT_H = 34;   // espessura da zona lateral
+const POCHITA_SIDE_FORWARD = 7;   // leve avanço à frente do personagem
 const MOTOSSERRA_SAW_SPIN_SPEED = 0.72; // AFINADO: ainda mais rápida
 const MOTOSSERRA_HIT_PARTICLES = 6; // AFINADO: ligeiramente menos poluído, mais nítido
 const MOTOSSERRA_VIBRATE_AMP = 1.6; // AFINADO: tremor refinado menos caótico
@@ -13212,18 +13224,23 @@ class Player {
         ctx.fillStyle= hasPochitaAsh ? 'rgba(255,180,60,0.16)' : 'rgba(255,60,60,0.14)'; ctx.beginPath(); ctx.arc(x+12, y+12+bob, 10,0,Math.PI*2); ctx.fill();
         if(this.motosserraActive){ ctx.fillStyle= hasPochitaAsh ? 'rgba(255,180,60,0.28)' : 'rgba(255,60,60,0.26)'; ctx.beginPath(); ctx.arc(x+12, y+12+bob, 13,0,Math.PI*2); ctx.fill(); }
         if(hasPochitaAsh){
-          const sideSpinA = this.animTime * 0.045;
+          // serras laterais alinhadas com a perpendicular da mira (= onde o dano acontece)
+          const aimA = (this.lastDir && (this.lastDir.x || this.lastDir.y)) ? this.lastDir : {x:(this.facing||1), y:0};
+          const aimLenA = Math.hypot(aimA.x, aimA.y) || 1;
+          const ppxA = -aimA.y/aimLenA, ppyA = aimA.x/aimLenA, fpxA = aimA.x/aimLenA, fpyA = aimA.y/aimLenA;
+          const sideSpinA = this.animTime * (this.motosserraActive ? 0.11 : 0.045);
           for(const side of [-1,1]){
-            const sx = this.x + side*19, sy = this.y + bob - 1;
+            const sx = this.x + ppxA*side*POCHITA_SIDE_OFFSET + fpxA*POCHITA_SIDE_FORWARD;
+            const sy = this.y + ppyA*side*POCHITA_SIDE_OFFSET + fpyA*POCHITA_SIDE_FORWARD + bob;
             ctx.fillStyle='rgba(0,0,0,0.16)'; ctx.beginPath(); ctx.ellipse(sx, sy+11, 6, 2.2, 0,0,Math.PI*2); ctx.fill();
-            ctx.strokeStyle='rgba(60,30,10,0.72)'; ctx.lineWidth=2.2; ctx.beginPath(); ctx.moveTo(this.x + side*8, this.y+3+bob); ctx.lineTo(sx, sy+3); ctx.stroke();
-            ctx.strokeStyle='rgba(255,140,60,0.44)'; ctx.lineWidth=1.3; ctx.beginPath(); ctx.moveTo(this.x + side*8, this.y+3+bob); ctx.lineTo(sx, sy+3); ctx.stroke();
-            ctx.fillStyle='#1a0a0a'; ctx.fillRect(sx-5, sy-1, 10, 4);
+            ctx.strokeStyle='rgba(60,30,10,0.72)'; ctx.lineWidth=2.2; ctx.beginPath(); ctx.moveTo(this.x + ppxA*side*6 + fpxA*2, this.y + ppyA*side*6 + fpyA*2 + bob); ctx.lineTo(sx, sy+3); ctx.stroke();
+            ctx.strokeStyle='rgba(255,140,60,0.52)'; ctx.lineWidth=1.3; ctx.beginPath(); ctx.moveTo(this.x + ppxA*side*6 + fpxA*2, this.y + ppyA*side*6 + fpyA*2 + bob); ctx.lineTo(sx, sy+3); ctx.stroke();
+            ctx.fillStyle='#1a0a0a'; ctx.fillRect(sx-6, sy-1.4, 12, 4.6);
             ctx.save(); ctx.translate(sx, sy+2); ctx.rotate(sideSpinA * (side===1?1:-1));
-            ctx.fillStyle='#e8e8e8'; ctx.beginPath(); ctx.arc(0,0, 5.2,0,Math.PI*2); ctx.fill();
-            ctx.strokeStyle='#ff3b30'; ctx.lineWidth=1; for(let i=0;i<6;i++){ const ang=(i/6)*Math.PI*2; ctx.beginPath(); ctx.moveTo(Math.cos(ang)*2.4, Math.sin(ang)*2.4); ctx.lineTo(Math.cos(ang)*5.8, Math.sin(ang)*5.8); ctx.stroke(); }
-            ctx.fillStyle='#1a0a0a'; ctx.beginPath(); ctx.arc(0,0, 1.8,0,Math.PI*2); ctx.fill(); ctx.restore();
-            ctx.fillStyle='rgba(255,180,60,0.20)'; ctx.beginPath(); ctx.arc(sx, sy+2, 8,0,Math.PI*2); ctx.fill();
+            ctx.fillStyle='#e8e8e8'; ctx.beginPath(); ctx.arc(0,0, 6.1,0,Math.PI*2); ctx.fill();
+            ctx.strokeStyle='#ff3b30'; ctx.lineWidth=1.1; for(let i=0;i<6;i++){ const ang=(i/6)*Math.PI*2; ctx.beginPath(); ctx.moveTo(Math.cos(ang)*2.7, Math.sin(ang)*2.7); ctx.lineTo(Math.cos(ang)*6.9, Math.sin(ang)*6.9); ctx.stroke(); }
+            ctx.fillStyle='#1a0a0a'; ctx.beginPath(); ctx.arc(0,0, 2.1,0,Math.PI*2); ctx.fill(); ctx.restore();
+            ctx.fillStyle= this.motosserraActive ? 'rgba(255,190,80,0.32)' : 'rgba(255,180,60,0.20)'; ctx.beginPath(); ctx.arc(sx, sy+2, this.motosserraActive?10.5:8.5, 0,Math.PI*2); ctx.fill();
           }
           ctx.fillStyle='#ff6a00'; ctx.font='bold 5px monospace'; ctx.textAlign='center'; ctx.fillText('CHAINSAW', x+12, y+5+bob); ctx.textAlign='left';
           ctx.fillStyle='#ffb347'; ctx.font='5px monospace'; ctx.textAlign='center'; ctx.fillText('POCHITA x5', x+12, y+7.5+bob); ctx.textAlign='left';
@@ -13258,30 +13275,36 @@ class Player {
         }
         // aura Pochita central
         ctx.fillStyle='rgba(255,180,60,0.14)'; ctx.beginPath(); ctx.arc(x+12, y+12+bob, 16,0,Math.PI*2); ctx.fill();
-        // NOVO: 2 motosserras extras à direita e esquerda do PERSONAGEM (referência Chainsaw Man - Denji)
-        const sideSpin = this.animTime * 0.045;
+        // NOVO: 2 ataques principais (serras) nos LADOS do PERSONAGEM (referência Chainsaw Man - Denji)
+        // Posicionadas na perpendicular da mira: é exatamente onde o dano acontece.
+        const aimP = (this.lastDir && (this.lastDir.x || this.lastDir.y)) ? this.lastDir : {x:(this.facing||1), y:0};
+        const aimLen = Math.hypot(aimP.x, aimP.y) || 1;
+        const ppx = -aimP.y/aimLen, ppy = aimP.x/aimLen, fpx = aimP.x/aimLen, fpy = aimP.y/aimLen;
+        const sideSpin = this.animTime * (this.motosserraActive ? 0.11 : 0.045);
         for(const side of [-1,1]){
-          const sx = this.x + side*19, sy = this.y + bob - 1;
+          const sx = this.x + ppx*side*POCHITA_SIDE_OFFSET + fpx*POCHITA_SIDE_FORWARD;
+          const sy = this.y + ppy*side*POCHITA_SIDE_OFFSET + fpy*POCHITA_SIDE_FORWARD + bob;
           // sombra no chão
           ctx.fillStyle='rgba(0,0,0,0.16)'; ctx.beginPath(); ctx.ellipse(sx, sy+11, 6, 2.2, 0,0,Math.PI*2); ctx.fill();
           // corrente / braço conector até lateral
-          ctx.strokeStyle='rgba(60,30,10,0.72)'; ctx.lineWidth=2.2; ctx.beginPath(); ctx.moveTo(this.x + side*8, this.y+3+bob); ctx.lineTo(sx, sy+3); ctx.stroke();
-          ctx.strokeStyle='rgba(255,180,60,0.44)'; ctx.lineWidth=1.3; ctx.beginPath(); ctx.moveTo(this.x + side*8, this.y+3+bob); ctx.lineTo(sx, sy+3); ctx.stroke();
+          ctx.strokeStyle='rgba(60,30,10,0.72)'; ctx.lineWidth=2.2; ctx.beginPath(); ctx.moveTo(this.x + ppx*side*6 + fpx*2, this.y + ppy*side*6 + fpy*2 + bob); ctx.lineTo(sx, sy+3); ctx.stroke();
+          ctx.strokeStyle='rgba(255,140,60,0.52)'; ctx.lineWidth=1.3; ctx.beginPath(); ctx.moveTo(this.x + ppx*side*6 + fpx*2, this.y + ppy*side*6 + fpy*2 + bob); ctx.lineTo(sx, sy+3); ctx.stroke();
           // base da serra lateral
-          ctx.fillStyle='#1a0a0a'; ctx.fillRect(sx-5, sy-1, 10, 4);
-          ctx.fillStyle='#2a1a0a'; ctx.fillRect(sx-4, sy, 8, 2);
-          // disco serra lateral girando (referência Chainsaw Man)
+          ctx.fillStyle='#1a0a0a'; ctx.fillRect(sx-6, sy-1.4, 12, 4.6);
+          ctx.fillStyle='#2a1a0a'; ctx.fillRect(sx-5, sy-0.4, 10, 2.2);
+          // disco serra lateral girando (referência Chainsaw Man) - ataque principal
           ctx.save(); ctx.translate(sx, sy+2); ctx.rotate(sideSpin * (side===1?1:-1));
-          ctx.fillStyle='#e8e8e8'; ctx.beginPath(); ctx.arc(0,0, 5.4,0,Math.PI*2); ctx.fill();
-          ctx.strokeStyle='#ff3b30'; ctx.lineWidth=1;
-          for(let i=0;i<6;i++){ const ang=(i/6)*Math.PI*2; ctx.beginPath(); ctx.moveTo(Math.cos(ang)*2.4, Math.sin(ang)*2.4); ctx.lineTo(Math.cos(ang)*6, Math.sin(ang)*6); ctx.stroke(); }
-          ctx.fillStyle='#1a0a0a'; ctx.beginPath(); ctx.arc(0,0, 1.9,0,Math.PI*2); ctx.fill();
+          ctx.fillStyle='#e8e8e8'; ctx.beginPath(); ctx.arc(0,0, 6.1,0,Math.PI*2); ctx.fill();
+          ctx.strokeStyle='#ff3b30'; ctx.lineWidth=1.1;
+          for(let i=0;i<6;i++){ const ang=(i/6)*Math.PI*2; ctx.beginPath(); ctx.moveTo(Math.cos(ang)*2.7, Math.sin(ang)*2.7); ctx.lineTo(Math.cos(ang)*6.9, Math.sin(ang)*6.9); ctx.stroke(); }
+          ctx.fillStyle='#1a0a0a'; ctx.beginPath(); ctx.arc(0,0, 2.1,0,Math.PI*2); ctx.fill();
           // dente brilhante
-          ctx.fillStyle='rgba(255,255,255,0.92)'; ctx.beginPath(); ctx.arc(2, -1, 0.8,0,Math.PI*2); ctx.fill();
+          ctx.fillStyle='rgba(255,255,255,0.92)'; ctx.beginPath(); ctx.arc(2.2, -1.1, 0.9,0,Math.PI*2); ctx.fill();
           ctx.restore();
-          // brilho lateral
-          ctx.fillStyle='rgba(255,180,60,0.20)'; ctx.beginPath(); ctx.arc(sx, sy+2, 8.5,0,Math.PI*2); ctx.fill();
+          // brilho lateral (mais forte quando o ataque principal está ativo)
+          ctx.fillStyle= this.motosserraActive ? 'rgba(255,190,80,0.32)' : 'rgba(255,180,60,0.20)'; ctx.beginPath(); ctx.arc(sx, sy+2, this.motosserraActive?10.5:8.5,0,Math.PI*2); ctx.fill();
           if(Math.random()<0.14){ ctx.fillStyle='#ff8c42'; ctx.fillRect(sx+randRange(-2,2), sy+6, 1.2,1.2); }
+          if(this.motosserraActive && Math.random()<0.34){ ctx.fillStyle='#ffcc66'; ctx.fillRect(sx+randRange(-4,4), sy+randRange(-4,4), 1.4,1.4); }
         }
         ctx.fillStyle='#ff6a00'; ctx.font='bold 5px monospace'; ctx.textAlign='center';
         ctx.fillText('CHAINSAW MAN', x+12, y+5+bob); ctx.textAlign='left';
@@ -19058,6 +19081,8 @@ class Game {
     this.hackerArena=null;
     this._hackerTransition=false;
     this.motosserraZone=null;
+    // POCHITA: +2 ataques principais nos lados do personagem (zonas laterais com dano real)
+    this.motosserraSideZones=null;
     // CRONÔMETRO + PLACAR: tempo da run atual e nome do jogador (persistido)
     this.runTime = 0;
     this.playerName = Records.readName();
@@ -20026,6 +20051,7 @@ class Game {
     this.bullets = []; this.meleeSwings = []; this.fists = [];
     this.bastaoProjectiles = []; this.lazerBeams = []; this.chicoteWhips = [];
     if(this.motosserraZone) this.motosserraZone.active = false;
+    if(this.motosserraSideZones) for(const z of this.motosserraSideZones) z.active=false;
     p.motosserraActive = false;
     this.transitionCooldown = 500;
 
@@ -21239,11 +21265,13 @@ class Game {
           this.player.motosserraActive = false;
           this.player.motosserraTick = 0;
           if(this.motosserraZone) this.motosserraZone.active = false;
+          if(this.motosserraSideZones) for(const z of this.motosserraSideZones) z.active = false;
         }
       }
       if(!shootVec && this.player.motosserraActive){
         this.player.motosserraActive = false;
         if(this.motosserraZone) this.motosserraZone.active = false;
+        if(this.motosserraSideZones) for(const z of this.motosserraSideZones) z.active = false;
       }
     } else if(isChicote){
       // ===== CHICOTE: toque = golpe leve em leque (média distância) | segurar = ataque antigo (grapple + explosão) =====
@@ -21351,12 +21379,38 @@ class Game {
       this.motosserraZone.dir = dir;
       this.motosserraZone.angle = Math.atan2(dir.y, dir.x);
       this.motosserraZone.active = true;
+      // POCHITA: posiciona os +2 ataques principais nos LADOS do personagem (zonas com dano real)
+      const sideAttacks = (w2.hasPochita && w2.pochitaSideAttacks) ? w2.pochitaSideAttacks : 0;
+      if(!this.motosserraSideZones) this.motosserraSideZones = [];
+      while(this.motosserraSideZones.length < POCHITA_SIDE_ATTACKS){
+        this.motosserraSideZones.push({active:false, side:0, x:0,y:0,w:0,h:0,cx:0,cy:0, angle:0, hitPulse:0});
+      }
+      if(sideAttacks>0){
+        const perpX = -dir.y, perpY = dir.x;
+        const sideOff = w2.pochitaSideOffset || POCHITA_SIDE_OFFSET;
+        const sideW = w2.pochitaSideW || POCHITA_SIDE_RECT_W;
+        const sideH = w2.pochitaSideH || POCHITA_SIDE_RECT_H;
+        for(let s=0; s<POCHITA_SIDE_ATTACKS; s++){
+          const z = this.motosserraSideZones[s];
+          const side = (s % 2 === 0) ? -1 : 1;
+          const sx = this.player.x + perpX*side*sideOff + dir.x*POCHITA_SIDE_FORWARD;
+          const sy = this.player.y + perpY*side*sideOff + dir.y*POCHITA_SIDE_FORWARD;
+          z.side = side; z.cx = sx; z.cy = sy;
+          z.x = sx - sideW/2; z.y = sy - sideH/2; z.w = sideW; z.h = sideH;
+          z.angle = this.motosserraZone.angle;
+          z.active = s < sideAttacks;
+        }
+      } else {
+        for(const z of this.motosserraSideZones) z.active = false;
+      }
       // vibração e recuo personagem enquanto segura
       this.player.motosserraVibrate = Math.sin(this.player.animTime*0.72)*MOTOSSERRA_VIBRATE_AMP;
       // aplica dano em ticks
       if(this.player.motosserraTick <= 0){
         this.player.motosserraTick = tickInt;
         let hitCount = 0;
+        // POCHITA: alvos já atingidos pela zona central (para os ataques laterais não duplicar dano)
+        const mainHits = (sideAttacks>0) ? new Set() : null;
         for(const e of this.currentRoom.enemies){
           if(e.dead) continue;
           if(e.type==='hacker' && !e.battleStarted) continue;
@@ -21369,6 +21423,7 @@ class Game {
                 const dmg = isCenterH ? w2.damage*1.28 : w2.damage;
                 const diedH=hand.takeDamage(dmg);
                 hand.hitFlash=isCenterH?160:140; hitStair=true; hitCount++;
+                if(mainHits) mainHits.add(hand);
                 for(let k=0;k<4;k++) this.particles.push(new Particle(hand.x, hand.y, randRange(-1.4,1.4), randRange(-1.4,0.6), 180, isCenterH?'#ff8c42':'#ff3b30', 1.8));
                 if(isCenterH) for(let k=0;k<2;k++) this.particles.push(new Particle(hand.x, hand.y, randRange(-0.8,0.8), randRange(-0.8,0.4), 180, '#ffff00', 1.4));
                 if(this.player.motosserraCharge!==undefined) this.player.addMotosserraCharge(isCenterH? MOTOSSERRA_CHARGE_PER_HIT*0.68 : MOTOSSERRA_CHARGE_PER_HIT*0.55);
@@ -21380,6 +21435,7 @@ class Game {
               const dmgB = isCenterB ? w2.damage*1.28 : w2.damage;
               const died=e.takeDamage(dmgB);
               e.hitFlash=isCenterB?180:160; hitCount++; hitStair=true;
+              if(mainHits) mainHits.add(e);
               for(let k=0;k<5;k++) this.particles.push(new Particle(e.x, e.y, randRange(-1.4,1.4), randRange(-1.4,0.6), 180, isCenterB?'#ffd700':'#ff8c42', 2));
               if(isCenterB) this.shake=Math.max(this.shake, 20);
               if(this.player.motosserraCharge!==undefined) this.player.addMotosserraCharge(isCenterB? MOTOSSERRA_CHARGE_PER_HIT*1.15 : MOTOSSERRA_CHARGE_PER_HIT);
@@ -21392,6 +21448,7 @@ class Game {
             const dmg = isCenter ? w2.damage * 1.28 : w2.damage;
             const died=e.takeDamage(dmg);
             e.hitFlash=isCenter?180:140; hitCount++;
+            if(mainHits) mainHits.add(e);
             if(isCenter){
               for(let k=0;k<3;k++) this.particles.push(new Particle(e.x, e.y, randRange(-1,1), randRange(-1,0.4), 220, '#ffff00', 1.8));
               this.shake=Math.max(this.shake, 26);
@@ -21412,6 +21469,55 @@ class Game {
             if(died) for(let k=0;k<10;k++){ const ang2=Math.random()*Math.PI*2; this.particles.push(new Particle(e.x, e.y, Math.cos(ang2)*randRange(1.2,3), Math.sin(ang2)*randRange(1.2,3), 260, '#ff3b30', 2)); }
           }
         }
+        // ===== POCHITA: +2 ATAQUES PRINCIPAIS NOS LADOS DO PERSONAGEM =====
+        // Cada ataque lateral é uma zona própria (hitbox real) que causa dano por tick,
+        // independente da serra central. Referência: Denji com as serras saindo dos braços.
+        if(sideAttacks>0){
+          const sideDmg = w2.damage * (w2.pochitaSideDamage || POCHITA_SIDE_DAMAGE);
+          for(let s=0; s<sideAttacks; s++){
+            const z = this.motosserraSideZones[s];
+            if(!z || !z.active) continue;
+            let sideHit = false;
+            for(const e of this.currentRoom.enemies){
+              if(e.dead || mainHits.has(e)) continue;
+              if(e.type==='hacker' && !e.battleStarted) continue;
+              if(e.type==='stair_boss'){
+                for(const hand of e.getHands()){
+                  if(hand.dead || hand.invulnerable || mainHits.has(hand)) continue;
+                  if(rectCollide(z.x, z.y, z.w, z.h, hand.x-hand.w/2, hand.y-hand.h/2, hand.w, hand.h)){
+                    const diedH=hand.takeDamage(sideDmg);
+                    hand.hitFlash=150; sideHit=true; hitCount++;
+                    for(let k=0;k<3;k++) this.particles.push(new Particle(hand.x, hand.y, randRange(-1.4,1.4), randRange(-1.4,0.6), 180, '#ffcc66', 1.8));
+                    if(this.player.motosserraCharge!==undefined) this.player.addMotosserraCharge(MOTOSSERRA_CHARGE_PER_HIT*0.42);
+                    if(diedH) for(let k=0;k<8;k++){ const ang=Math.random()*Math.PI*2; this.particles.push(new Particle(hand.x, hand.y, Math.cos(ang)*randRange(1.2,3), Math.sin(ang)*randRange(1.2,3), 260, '#ff8c42', 2)); }
+                  }
+                }
+                if(!e.isHeadInvulnerable() && rectCollide(z.x, z.y, z.w, z.h, e.x-e.w/2, e.y-e.h/2, e.w, e.h)){
+                  const died=e.takeDamage(sideDmg);
+                  e.hitFlash=160; sideHit=true; hitCount++;
+                  for(let k=0;k<4;k++) this.particles.push(new Particle(e.x, e.y, randRange(-1.4,1.4), randRange(-1.4,0.6), 180, '#ffcc66', 2));
+                  if(this.player.motosserraCharge!==undefined) this.player.addMotosserraCharge(MOTOSSERRA_CHARGE_PER_HIT*0.5);
+                  if(died) for(let k=0;k<10;k++){ const ang=Math.random()*Math.PI*2; this.particles.push(new Particle(e.x, e.y, Math.cos(ang)*randRange(1.2,3), Math.sin(ang)*randRange(1.2,3), 260, '#ff8c42', 2)); }
+                }
+                continue;
+              }
+              if(rectCollide(z.x, z.y, z.w, z.h, e.x-e.w/2, e.y-e.h/2, e.w, e.h)){
+                const died=e.takeDamage(sideDmg);
+                e.hitFlash=150; sideHit=true; hitCount++;
+                if(!died){
+                  e.motosserraBleed=(e.motosserraBleed||0)+1;
+                  e.motosserraBleedTimer=280;
+                  e.motosserraBleedDmg=0.5;
+                }
+                for(let k=0;k<4;k++) this.particles.push(new Particle(e.x, e.y, randRange(-1.6,1.6), randRange(-1.4,0.6), 180, '#ffcc66', 1.8));
+                for(let k=0;k<2;k++) this.particles.push(new Particle(e.x, e.y, randRange(-1,1), randRange(-1,0.4), 180, '#ffb347', 1.4));
+                if(this.player.motosserraCharge!==undefined) this.player.addMotosserraCharge(MOTOSSERRA_CHARGE_PER_HIT*0.5);
+                if(died) for(let k=0;k<10;k++){ const ang=Math.random()*Math.PI*2; this.particles.push(new Particle(e.x, e.y, Math.cos(ang)*randRange(1.2,3), Math.sin(ang)*randRange(1.2,3), 260, '#ff8c42', 2)); }
+              }
+            }
+            z.hitPulse = sideHit ? 1 : Math.max(0, (z.hitPulse||0) - 0.16);
+          }
+        }
         if(hitCount===0){
           if(this.player.motosserraCharge!==undefined){
             this.player.motosserraCharge=Math.min(this.player.motosserraChargeMax, this.player.motosserraCharge + MOTOSSERRA_CHARGE_PER_TICK_EMPTY * dt / tickInt);
@@ -21428,6 +21534,7 @@ class Game {
       this.player.y = clamp(this.player.y, WALL_THICK+this.player.h/2, CANVAS_H-WALL_THICK-this.player.h/2);
     } else {
       if(this.motosserraZone) this.motosserraZone.active=false;
+      if(this.motosserraSideZones) for(const z of this.motosserraSideZones) z.active=false;
       if(this.player) { this.player.motosserraActive=false; this.player.motosserraTick=0; this.player.motosserraVibrate=0; }
     }
 
@@ -22174,6 +22281,56 @@ class Game {
             const chargePct = this.player.getMotosserraChargePct();
             ctx.fillStyle = isPochita ? `rgba(255,180,60,${0.10+chargePct*0.12})` : `rgba(255,42,26,${0.08+chargePct*0.10})`;
             ctx.beginPath(); ctx.arc(cx, cy, Math.max(areaW,areaH)*0.68, 0, Math.PI*2); ctx.fill();
+          }
+          // POCHITA: +2 ataques principais nos lados do personagem (zonas de dano próprias)
+          if(isPochita && this.motosserraSideZones){
+            const sideSpin = Date.now()*0.013 * 1.35;
+            for(const sz of this.motosserraSideZones){
+              if(!sz.active) continue;
+              const hp = sz.hitPulse || 0;
+              ctx.save();
+              ctx.translate(sz.cx, sz.cy);
+              ctx.rotate(sz.angle || 0);
+              const tremS = (Math.random()-0.5)*MOTOSSERRA_VIBRATE_AMP*1.2;
+              ctx.translate(tremS*sz.side, tremS*0.5);
+              // área do ataque lateral
+              ctx.fillStyle = `rgba(255,180,60,${0.13 + hp*0.16})`;
+              ctx.fillRect(-sz.w/2, -sz.h/2, sz.w, sz.h);
+              ctx.strokeStyle = `rgba(255,190,80,${0.46 + pulse*0.22 + hp*0.3})`;
+              ctx.lineWidth = 1.4;
+              ctx.setLineDash([5,4]);
+              ctx.strokeRect(-sz.w/2, -sz.h/2, sz.w, sz.h);
+              ctx.setLineDash([]);
+              // dentes da serra lateral
+              ctx.strokeStyle = `rgba(255,220,120,${0.5 + hp*0.4})`;
+              ctx.lineWidth = 0.9;
+              for(let i=0;i< sz.w; i+=9){
+                ctx.beginPath(); ctx.moveTo(-sz.w/2 + i, -sz.h/2); ctx.lineTo(-sz.w/2 + i + 3, -sz.h/2 -3); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(-sz.w/2 + i, sz.h/2); ctx.lineTo(-sz.w/2 + i + 3, sz.h/2 +3); ctx.stroke();
+              }
+              // disco principal do ataque lateral
+              ctx.fillStyle = '#ffb347';
+              ctx.beginPath(); ctx.arc(0,0, 6.4, 0, Math.PI*2); ctx.fill();
+              ctx.strokeStyle='#1a0a0a'; ctx.lineWidth=1.1; ctx.stroke();
+              for(let i=0;i<6;i++){
+                const ang = sideSpin*sz.side + (i/6)*Math.PI*2;
+                ctx.beginPath();
+                ctx.moveTo(Math.cos(ang)*3, Math.sin(ang)*3);
+                ctx.lineTo(Math.cos(ang)*(7.6+hp*1.4), Math.sin(ang)*(7.6+hp*1.4));
+                ctx.strokeStyle = '#ff6b35'; ctx.lineWidth=1.2;
+                ctx.stroke();
+              }
+              ctx.fillStyle='#1a0a0a'; ctx.beginPath(); ctx.arc(0,0, 2, 0, Math.PI*2); ctx.fill();
+              // faíscas quando o ataque acerta
+              if(hp>0.5 && Math.random()<0.3){
+                ctx.fillStyle='#ffcc66';
+                ctx.fillRect(randRange(-sz.w/2, sz.w/2), randRange(-sz.h/2, sz.h/2), 1.4, 1.4);
+              }
+              ctx.restore();
+              // brilho do ataque
+              ctx.fillStyle = `rgba(255,180,60,${0.14 + hp*0.18})`;
+              ctx.beginPath(); ctx.arc(sz.cx, sz.cy, 11 + hp*3, 0, Math.PI*2); ctx.fill();
+            }
           }
         }
       }catch(e){ console.error('Motosserra zone draw error', e); }
