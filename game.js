@@ -4198,6 +4198,92 @@ function circleRectCollide(cx, cy, r, rx, ry, rw, rh) {
   return dist(cx, cy, closestX, closestY) < r;
 }
 
+// ===================== CRONÔMETRO DE PARTIDA =====================
+// Tempo de gameplay puro (ms). Só anda com state==='PLAYING' e sem diálogo de boss
+// travado, então pausa não conta e o botão de reiniciar fase NÃO zera (punição real).
+function formatRunTime(ms){
+  const total = Math.max(0, Math.floor((ms||0)/1000));
+  const h = Math.floor(total/3600), m = Math.floor((total%3600)/60), s = total%60;
+  const pad = n => String(n).padStart(2,'0');
+  return h>0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+// ===================== RECORDES / PLACAR (localStorage) =====================
+// Tabelas do menu: quem finalizou (melhor tempo), quem desistiu do Boss da Escada e
+// quem venceu o Hacker. Tudo local: 1 linha por NOME, só o melhor resultado de cada.
+const RECORDS_KEY = 'cyberrequiem.records.v1';
+const PLAYER_NAME_KEY = 'cyberrequiem.name';
+const RECORDS_MAX_ROWS = 10;
+const DEFAULT_PLAYER_NAME = 'ANÔNIMO';
+
+// Remove qualquer caractere que quebre o HTML (nomes vêm de input do usuário) e
+// força MAIÚSCULAS para a mesma pessoa não virar duas linhas ("ana" x "Ana").
+function sanitizePlayerName(raw){
+  const s = String(raw==null?'':raw).replace(/[<>&"'`\\\/]/g,'').replace(/\s+/g,' ').trim().slice(0,12);
+  return (s ? s.toUpperCase() : '') || DEFAULT_PLAYER_NAME;
+}
+
+const Records = {
+  _empty(){ return { completions:[], quits:[], hackerWins:[] }; },
+  read(){
+    try{
+      const raw = localStorage.getItem(RECORDS_KEY);
+      if(!raw) return this._empty();
+      const d = JSON.parse(raw);
+      // Normaliza na LEITURA também: um localStorage adulterado à mão (ou de uma
+      // versão antiga do jogo) não pode injetar HTML no innerHTML das tabelas.
+      const arr = v => Array.isArray(v) ? v
+        .filter(e=> e && typeof e.timeMs==='number' && Number.isFinite(e.timeMs))
+        .map(e=>({ name:sanitizePlayerName(e.name), timeMs:Math.max(0,Math.round(e.timeMs)),
+                   floor:e.floor|0, kills:e.kills|0, seed:e.seed|0, date:e.date|0 }))
+        : [];
+      return { completions:arr(d.completions), quits:arr(d.quits), hackerWins:arr(d.hackerWins) };
+    }catch(e){ return this._empty(); }
+  },
+  write(data){
+    try{ localStorage.setItem(RECORDS_KEY, JSON.stringify(data)); return true; }
+    catch(e){ return false; }   // modo privado / storage cheio: o jogo continua, só não persiste
+  },
+  // "melhor" = menor tempo; na desistência = andar mais avançado (desempate: menor tempo).
+  _isBetter(kind, a, b){
+    if(kind==='quits'){
+      if((a.floor|0)!==(b.floor|0)) return (a.floor|0) > (b.floor|0);
+    }
+    return a.timeMs < b.timeMs;
+  },
+  // kind: 'completions' | 'quits' | 'hackerWins'. Substitui o resultado do mesmo nome.
+  add(kind, entry){
+    const data = this.read();
+    const list = data[kind];
+    if(!list) return data;
+    const e = {
+      name: sanitizePlayerName(entry.name),
+      timeMs: Math.max(0, Math.round(entry.timeMs||0)),
+      floor: entry.floor|0,
+      kills: entry.kills|0,
+      seed: entry.seed|0,
+      date: Date.now(),
+    };
+    const at = list.findIndex(r=> r.name===e.name);
+    if(at===-1) list.push(e);
+    else if(this._isBetter(kind, e, list[at])) list[at] = e;
+    list.sort((x,y)=> this._isBetter(kind, x, y) ? -1 : this._isBetter(kind, y, x) ? 1 : 0);
+    data[kind] = list.slice(0, RECORDS_MAX_ROWS);
+    this.write(data);
+    return data;
+  },
+  total(){ const d=this.read(); return d.completions.length + d.quits.length + d.hackerWins.length; },
+  readName(){
+    try{ return sanitizePlayerName(localStorage.getItem(PLAYER_NAME_KEY)); }
+    catch(e){ return DEFAULT_PLAYER_NAME; }
+  },
+  saveName(name){
+    const n = sanitizePlayerName(name);
+    try{ localStorage.setItem(PLAYER_NAME_KEY, n); }catch(e){}
+    return n;
+  },
+};
+
 // ===================== INPUT HANDLER =====================
 class InputHandler {
   constructor() {
@@ -17249,6 +17335,10 @@ class Room {
       if(!hacker){
         if(this.enemies.length===0){
           this.hackerDefeated=true;
+          // PLACAR: quem venceu o Hacker entra na tabela do menu
+          if(typeof window!=='undefined' && window.game && typeof window.game.saveRecord==='function'){
+            window.game.saveRecord('hackerWins');
+          }
           // Mensagem final requisitada
           for(let k=0;k<52;k++){ const ang=Math.random()*Math.PI*2, sp=randRange(2.4,7.8); const col=['#00ff88','#00e5ff','#ffffff','#c084fc'][randInt(0,3)]; globalParticles.push(new Particle(CANVAS_W/2, CANVAS_H/2, Math.cos(ang)*sp, Math.sin(ang)*sp, randRange(420,820), col, randInt(3,6))); }
           for(let k=0;k<26;k++) globalParticles.push(new Particle(CANVAS_W/2, CANVAS_H/2, randRange(-1.8,1.8), randRange(-1.8,0.6), 620, '#ffffff', 2.6));
@@ -17993,7 +18083,11 @@ class Room {
         ctx.fillStyle='rgba(210,166,121,0.92)'; ctx.font='5px monospace'; ctx.textAlign='center';
         ctx.fillText('▼ INDIANA: CHICOTE 100% [E] ▼', this.indianaNPC.x, this.indianaNPC.y - 20); ctx.textAlign='left';
       }
-      if(this.jlNPC && !this.jlGiftGiven && !this.player.hasIoiPassive){
+      // Room NAO tem this.player (o player chega por update(dt, player)).
+      // Ler this.player.hasIoiPassive lançava TypeError, caia no catch do Game.draw
+      // e a sala inteira ficava preta (so o fundo da fase era desenhado).
+      const _jlPlayer = (typeof window!=='undefined' && window.game && window.game.player) || null;
+      if(this.jlNPC && !this.jlGiftGiven && !(_jlPlayer && _jlPlayer.hasIoiPassive)){
         ctx.fillStyle='rgba(255,138,128,0.92)'; ctx.font='5px monospace'; ctx.textAlign='center';
         ctx.fillText('▼ JL: PASSIVO IO-IO [E] ▼', this.jlNPC.x, this.jlNPC.y - 22); ctx.textAlign='left';
       }
@@ -18964,6 +19058,12 @@ class Game {
     this.hackerArena=null;
     this._hackerTransition=false;
     this.motosserraZone=null;
+    // CRONÔMETRO + PLACAR: tempo da run atual e nome do jogador (persistido)
+    this.runTime = 0;
+    this.playerName = Records.readName();
+    // Token invalida setTimeout pendentes (advanceFloor/enterHackerRoom) quando o
+    // jogador volta pro menu ou reinicia: sem isso o callback roda em cima da run nova.
+    this._transitionToken = 0;
 
     this.menuScreen = document.getElementById('menuScreen');
     this.controlsScreen = document.getElementById('controlsScreen');
@@ -18973,12 +19073,15 @@ class Game {
     this.gameContainer = document.getElementById('gameContainer');
     this.toast = document.getElementById('toast');
     this.swapHint = document.getElementById('swapHint');
+    this.nameInput = document.getElementById('playerNameInput');
+    if(this.nameInput) this.nameInput.value = this.playerName;
     this._hudIdleTimer=0;
     this._hudIdle=false;
     this._hudMouse={x:-1,y:-1};
 
     this.bindUI();
     this.resizeCanvas();
+    this.renderRecords();     // tabelas já aparecem Certain no 1º load
     window.addEventListener('resize', () => this.resizeCanvas());
     requestAnimationFrame((t)=>this.loop(t));
   }
@@ -19057,10 +19160,34 @@ class Game {
     document.getElementById('btnGoMenu').addEventListener('click', ()=> this.goMenu());
     document.getElementById('btnControls').addEventListener('click', ()=> this.showControls());
     document.getElementById('btnBackMenu').addEventListener('click', ()=> this.hideControls());
+    // Nome do jogador (vai para as tabelas de recordes)
+    if(this.nameInput){
+      const commitName = ()=>{
+        const n = Records.saveName(this.nameInput.value);
+        this.playerName = n;
+        this.nameInput.value = n;   // mostra a versão sanitizada
+      };
+      this.nameInput.addEventListener('change', commitName);
+      this.nameInput.addEventListener('blur', commitName);
+      this.nameInput.addEventListener('keydown', (e)=>{
+        e.stopPropagation();           // não rouba as teclas 1-7/ESC do seletor
+        if(e.key==='Enter'){ commitName(); this.nameInput.blur(); }
+      });
+    }
+    const btnClearRecords = document.getElementById('btnClearRecords');
+    if(btnClearRecords) btnClearRecords.addEventListener('click', ()=>{
+      if(!confirm('Apagar TODOS os recordes salvos neste navegador?')) return;
+      try{ localStorage.removeItem(RECORDS_KEY); }catch(e){}
+      this.renderRecords();
+    });
     // Pause menu
     const btnPause=document.getElementById('btnPause');
     if(btnPause) btnPause.addEventListener('click', ()=> this.togglePause());
     document.getElementById('btnResume').addEventListener('click', ()=> this.resume());
+    // REINICIAR FASE: regera só o andar atual, mantendo itens, melhorias e continues.
+    // O cronômetro NÃO zera (senão virar botão de trapaça).
+    const btnRestartFloor=document.getElementById('btnRestartFloor');
+    if(btnRestartFloor) btnRestartFloor.addEventListener('click', ()=> this.restartFloor());
     document.getElementById('btnRestartRun').addEventListener('click', ()=> { this.hidePause(); const cid=this.selectedCharacterId||this.player.characterId||'neutro'; this.startGame(cid); });
     document.getElementById('btnPauseControls').addEventListener('click', ()=> {
       // Funcional: mostra controles por cima do pause e exibe o que os itens equipados fazem
@@ -19105,6 +19232,9 @@ class Game {
         const rect=this.canvas.getBoundingClientRect();
         this._hudMouse.x=(e.clientX - rect.left)*(CANVAS_W/rect.width);
         this._hudMouse.y=(e.clientY - rect.top)*(CANVAS_H/rect.height);
+        // mover o mouse também tira a HUD do modo ocioso (antes ela continuava
+        // translúcida mesmo com o jogador parado, escondendo vida/arma)
+        this._hudIdleTimer=0; this._hudIdle=false;
         const overPause = this.isHudPauseHover();
         const overSetch = !overPause && this.isInSetchRoom() && this.currentRoom && this.currentRoom.cupGame && this.currentRoom.cupGame.state==='waiting' && this.currentRoom.cupGame.interactive;
         this.canvas.style.cursor = (overPause || overSetch) ? 'pointer' : 'crosshair';
@@ -19291,7 +19421,9 @@ class Game {
   updatePauseInfo(){
     if(!this.pauseScreen) return;
     const info=document.getElementById('pauseInfo');
-    if(info) info.textContent=`FASE ${this.floor} • ${FLOOR_THEMES[this.floor]?FLOOR_THEMES[this.floor].name:''} • SALA ${this.currentRoom?`${this.currentRoom.gx},${this.currentRoom.gy}`:'-'} • SEED ${this.seed}`;
+    if(info) info.textContent=`${this.playerName} • FASE ${this.floor} • ${FLOOR_THEMES[this.floor]?FLOOR_THEMES[this.floor].name:''} • SALA ${this.currentRoom?`${this.currentRoom.gx},${this.currentRoom.gy}`:'-'} • SEED ${this.seed}`;
+    const timer=document.getElementById('pauseTimer');
+    if(timer) timer.textContent=formatRunTime(this.runTime);
     const hearts=document.getElementById('pauseHearts');
     if(hearts && this.player) hearts.textContent=`${this.player.hp}/${this.player.maxHp} ♥`;
     const wEl=document.getElementById('pauseWeapon');
@@ -19390,8 +19522,94 @@ class Game {
     if(!prim && !sec) html='<p class="pause-empty" style="padding:8px">Sem armas</p>';
     cont.innerHTML=html;
   }
+  // ===== REINICIAR FASE ATUAL (mantém itens) =====
+  // Regera o andar com seed nova. NÃO chama startGame(), então armas, melhorias,
+  // upgradeLevels, obtainedUpgrades, continues, vida e nome sobrevivem.
+  // Só não deixa o jogador reiniciar no meio de uma transição (estado inconsistente).
+  restartFloor(){
+    if(this.state!=='PAUSED' && this.state!=='PLAYING') return;
+    if(this.floorTransitioning || this._hackerTransition) return;
+    const f = this.floor;
+    // generateFloor() não mexe em hp/armas/melhorias, mas guardamos mesmo assim
+    // como rede de segurança caso uma geração futura passe a resetar algo.
+    const snap = {
+      hp: this.player.hp,
+      ups: this.player.weaponUpgrades, levels: this.player.upgradeLevels,
+      got: this.player.obtainedUpgrades, cont: this.player.continues,
+      bone: this.player.boneHearts,
+    };
+    this.hideBossDialog();
+    this._hackerTransition = false;      // sai da arena do hacker se estiver nela
+    this.hackerArena = null;
+    this.generateFloor(f, Math.floor(Math.random()*1e9));
+    // rede de segurança: se algum reset interno da geração mexer nisso, restaura
+    this.player.hp = snap.hp;
+    this.player.weaponUpgrades = snap.ups;
+    this.player.upgradeLevels = snap.levels;
+    this.player.obtainedUpgrades = snap.got;
+    this.player.continues = snap.cont;
+    this.player.boneHearts = snap.bone;
+    // hidePause() em vez dethis.state='PLAYING': sem isso a tela de pausa ficaria
+    // aberta por cima do jogo reiniciado (o estado voltava a PLAYING atrás dela).
+    this.hidePause();
+    this.lastTime = performance.now();
+    this.transitionCooldown = 320;
+    this.updatePauseInfo();
+    this.showToast(`⟳ Fase ${f} reiniciada • itens e melhorias mantidos • Seed ${this.seed}`, 2600);
+  }
+
+  // Registra um resultado nas tabelas de recordes e atualiza o menu.
+  saveRecord(kind){
+    const entry = {
+      name: this.playerName,
+      timeMs: this.runTime,
+      floor: this.floor,
+      kills: (this.totalEnemiesDefeated|0) + (this.enemiesDefeated|0),
+      seed: this.seed,
+    };
+    Records.add(kind, entry);
+    if(kind==='hackerWins'){
+      const p = (this.runTime/60000).toFixed(2);
+      this.showToast(`◉ HACKER DERROTADO em ${formatRunTime(this.runTime)} (${p} min) — vai pro recordes!`, 3600);
+    }
+    return entry;
+  }
+
+  // Preenche as 3 tabelas do menu principal.
+  renderRecords(){
+    const data = Records.read();
+    const fill=(tbodyId, emptyId, list)=>{
+      const body=document.getElementById(tbodyId), empty=document.getElementById(emptyId);
+      if(!body || !empty) return;
+      if(!list.length){
+        body.innerHTML=''; empty.style.display='block'; return;
+      }
+      empty.style.display='none';
+      body.innerHTML = list.map((r,i)=>{
+        const med = i===0 ? ' class="record-row record-medal"' : ' class="record-row"';
+        return `<tr${med}>
+          <td class="c-pos">${i+1}</td>
+          <td class="c-name">${r.name}</td>
+          <td class="c-time">${formatRunTime(r.timeMs)}</td>
+          <td class="c-floor">${r.floor}</td>
+        </tr>`;
+      }).join('');
+    };
+    fill('recFinishBody','recFinishEmpty',data.completions);
+    fill('recQuitBody','recQuitEmpty',data.quits);
+    fill('recHackerBody','recHackerEmpty',data.hackerWins);
+    const badge=document.getElementById('recordsBadge');
+    if(badge){
+      const n = data.completions.length + data.quits.length + data.hackerWins.length;
+      badge.textContent = n ? `${n} ${n===1?'registro':'registros'}` : 'vazio';
+    }
+  }
+
   goMenu(){
     this.state='MENU';
+    this._transitionToken++;        // cancela advanceFloor/enterHackerRoom pendentes
+    this.floorTransitioning=false;
+    this._hackerTransition=false;
     this.hidePause();
     this.gameOverScreen.classList.remove('active');
     this.gameContainer.classList.add('hidden');
@@ -19404,6 +19622,7 @@ class Game {
     this.gameContainer.classList.remove('phase5');
     this.gameContainer.classList.remove('phase6');
     this.hideBossDialog();
+    this.renderRecords();     // tabelas do menu ficam sempre atualizadas
   }
   resizeCanvas(){ const dpr=Math.min(window.devicePixelRatio||1,2); }
 
@@ -19417,6 +19636,13 @@ class Game {
     } else {
       this.selectedCharacterId=def.id;
     }
+    // Run nova zera o cronômetro (o botão de reiniciar FASE não zera) e invalida
+    // qualquer transição pendente da run anterior.
+    this.runTime = 0;
+    this._transitionToken++;
+    this.floorTransitioning=false;
+    this._hackerTransition=false;
+    this.playerName = Records.saveName(this.nameInput ? this.nameInput.value : this.playerName);
     this.seed = Math.floor(Math.random()*1e9);
     this.floor = 1;
     this.totalEnemiesDefeated = 0;
@@ -19521,6 +19747,7 @@ class Game {
     const defStart=getCharacterDef(this.selectedCharacterId);
     const charInfo=defStart ? ` • ${defStart.icon} ${defStart.displayName}` : '';
     this.showToast(`Cyber Requiem • Ato 1 - Porão${charInfo} • Seed ${this.seed} • ${this.rooms.length} salas`);
+    this.showToast(`JOGADOR: ${this.playerName} • cronômetro rodando`, 2400);
   }
 
   generateFloor(floor, seed){
@@ -19576,6 +19803,7 @@ class Game {
   enterHackerRoom(){
     if(this._hackerTransition) return;
     this._hackerTransition=true;
+    const token=++this._transitionToken;   // setTimeout de 650ms pode ser cancelado (menu/restart)
     this.showToast('▓▒ Escada Corrompida ativada... Teleportando para o Dark Vírus ▒▓', 1800);
     for(let i=0;i<22;i++){ const ang=Math.random()*Math.PI*2; this.particles.push(new Particle(this.player.x, this.player.y, Math.cos(ang)*randRange(1.5,4), Math.sin(ang)*randRange(1.5,4), 420, ['#00ff88','#ff0040','#c084fc'][randInt(0,2)], 3)); }
     this.shake=110;
@@ -19600,6 +19828,7 @@ class Game {
       hackerRoom.hackerLocked=false;
     }
     setTimeout(()=>{
+      if(token!==this._transitionToken) return;   // teleport cancelado
       this.currentRoom=hackerRoom;
       this.currentRoom.visited=true;
       this.roomsExplored++;
@@ -19618,11 +19847,15 @@ class Game {
     if(this.floorTransitioning) return;
     this.floorTransitioning=true;
     this.totalEnemiesDefeated += this.enemiesDefeated;
+    // Token: se o jogador for pro menu / reiniciar a fase durante estes 900ms,
+    // o callback morre aqui em vez de gerar andar em cima da run nova.
+    const token = ++this._transitionToken;
     // cura parcial ao avançar? Não, mantém vida para desafio; mas dá +1 coração se estiver baixo? Balance: não cura automático, depende de itens
     this.showToast(`✓ Ato ${this.floor} concluído — acesso ao próximo nível liberado...`, 1800);
     // partículas descida
     for(let i=0;i<24;i++){ const ang=Math.random()*Math.PI*2; this.particles.push(new Particle(CANVAS_W/2, CANVAS_H/2, Math.cos(ang)*randRange(1,4), Math.sin(ang)*randRange(2,5), 600, '#ffcc00', 3)); }
     setTimeout(()=>{
+      if(token!==this._transitionToken) return;   // transição cancelada (menu/restart)
       const nextFloor = this.floor + 1;
       if(nextFloor > this.maxFloor){
         // vitória total (todas fases incluindo Fase 5)
@@ -19635,21 +19868,25 @@ class Game {
         if(wasHackerVictory){
           title.textContent='⭐ HACKER ANIQUILADO ⭐';
           title.style.color='#00ff88';
+          // PLACAR: quem venceu o Hacker também entra na tabela de quem finalizou
+          this.saveRecord('hackerWins');
+          this.saveRecord('completions');
           const bossPhaseName = (FLOOR_THEMES[HACKER_FLOOR] && FLOOR_THEMES[HACKER_FLOOR].name.trim()) || (FLOOR_THEMES[6] && FLOOR_THEMES[6].name.trim()) || 'MINERADORA DE COINS';
           const allPhases = [1,2,3,4,5,6].map(i=> (FLOOR_THEMES[i] && FLOOR_THEMES[i].name.trim()) || '').join(', ').replace(/, ([^,]*)$/, ' e $1');
-          stats.innerHTML=`você derrotou o criador da escuridão os erros pararam você pode continuar a fazer seu codigo<br><br><span style="color:#00ff88;font-size:13px;letter-spacing:0.8px">Dark Vírus neutralizado • Hacker expurgado na Mineradora</span><br><br>Você venceu o <b>Boss da Escada</b> e o <b>Hacker</b> em <b>Cyber Requiem</b> e estabilizou o <b>${bossPhaseName}</b>!<br>Atos dominados: ${allPhases}!<br><b>${this.roomsExplored}</b> salas finais • <b>${this.totalEnemiesDefeated + this.enemiesDefeated}</b> inimigos • Arma: ${this.player.weapon.name}${this.player.hasFlameTrail?' 🔥':''} ${this.player.powerStarActive?'⭐':''} ${this.player.weapon.hasPochita?' 🪚':''}<br>Seed ${this.seed}<br><span style="color:#8a8198;font-size:12px">Código limpo. O sistema respira novamente.</span>`;
+          stats.innerHTML=`você derrotou o criador da escuridão os erros pararam você pode continuar a fazer seu codigo<br><br><span style="color:#00ff88;font-size:13px;letter-spacing:0.8px">Dark Vírus neutralizado • Hacker expurgado na Mineradora</span><br><br>Você venceu o <b>Boss da Escada</b> e o <b>Hacker</b> em <b>Cyber Requiem</b> e estabilizou o <b>${bossPhaseName}</b>!<br>Atos dominados: ${allPhases}!<br><b>${this.roomsExplored}</b> salas finais • <b>${this.totalEnemiesDefeated + this.enemiesDefeated}</b> inimigos • Arma: ${this.player.weapon.name}${this.player.hasFlameTrail?' 🔥':''} ${this.player.powerStarActive?'⭐':''} ${this.player.weapon.hasPochita?' 🪚':''}<br>Tempo: <b>${formatRunTime(this.runTime)}</b> • Jogador: <b>${this.playerName}</b><br>Seed ${this.seed}<br><span style="color:#8a8198;font-size:12px">Código limpo. O sistema respira novamente.</span>`;
         } else if(wasBossVictory || this.floor===5){
           title.textContent='⭐ REQUIEM CONSUMADO ⭐';
           title.style.color='#ffd700';
+          this.saveRecord('completions');   // PLACAR: finalizou o jogo
           // Cyber Requiem: nomes dos atos
           const bossPhaseName = (FLOOR_THEMES[5] && FLOOR_THEMES[5].name.trim()) || 'VÍRUS SOMBRIO';
           const allPhases = [1,2,3,4,5,6].map(i=> (FLOOR_THEMES[i] && FLOOR_THEMES[i].name.trim()) || '').join(', ').replace(/, ([^,]*)$/, ' e $1');
-          stats.innerHTML=`Sistema purificado com sucesso!<br><span style="color:#ffd700;font-size:15px;letter-spacing:1px">O mundo cibernético está seguro.</span><br><br>Você venceu o <b>Boss da Escada</b> em <b>Cyber Requiem</b> e estabilizou o <b>${bossPhaseName}</b>!<br>Atos dominados: ${allPhases}!<br><b>${this.roomsExplored}</b> salas finais • <b>${this.totalEnemiesDefeated + this.enemiesDefeated}</b> inimigos • Arma: ${this.player.weapon.name}${this.player.hasFlameTrail?' 🔥':''} ${this.player.powerStarActive?'⭐':''}<br>Seed ${this.seed}<br><span style="color:#00ff88;font-size:11px">Dica: Existe uma escada corrompida após o Boss da Escada... Enfrente o Hacker!</span><br><span style="color:#8a8198;font-size:12px">Mundo cibernético estabilizado. Até a próxima incursão.</span>`;
+          stats.innerHTML=`Sistema purificado com sucesso!<br><span style="color:#ffd700;font-size:15px;letter-spacing:1px">O mundo cibernético está seguro.</span><br><br>Você venceu o <b>Boss da Escada</b> em <b>Cyber Requiem</b> e estabilizou o <b>${bossPhaseName}</b>!<br>Atos dominados: ${allPhases}!<br><b>${this.roomsExplored}</b> salas finais • <b>${this.totalEnemiesDefeated + this.enemiesDefeated}</b> inimigos • Arma: ${this.player.weapon.name}${this.player.hasFlameTrail?' 🔥':''} ${this.player.powerStarActive?'⭐':''}<br>Tempo: <b>${formatRunTime(this.runTime)}</b> • Jogador: <b>${this.playerName}</b><br>Seed ${this.seed}<br><span style="color:#00ff88;font-size:11px">Dica: Existe uma escada corrompida após o Boss da Escada... Enfrente o Hacker!</span><br><span style="color:#8a8198;font-size:12px">Mundo cibernético estabilizado. Até a próxima incursão.</span>`;
         } else {
           title.textContent='RÉQUIEM PARCIAL!';
           title.style.color='#4ade80';
           const fourPhases = [1,2,3,4].map(i=> (FLOOR_THEMES[i] && FLOOR_THEMES[i].name.trim()) || '').join(', ').replace(/, ([^,]*)$/, ' e $1');
-          stats.innerHTML=`Você estabilizou ${fourPhases}!<br><b>${this.roomsExplored}</b> salas finais • <b>${this.totalEnemiesDefeated + this.enemiesDefeated}</b> inimigos • Arma: ${this.player.weapon.name}${this.player.hasFlameTrail?' 🔥':''}<br>Seed ${this.seed}<br><span style="color:#8a8198;font-size:12px">Rede cibernética ainda instável — novo ato o aguarda</span>`;
+          stats.innerHTML=`Você estabilizou ${fourPhases}!<br><b>${this.roomsExplored}</b> salas finais • <b>${this.totalEnemiesDefeated + this.enemiesDefeated}</b> inimigos • Arma: ${this.player.weapon.name}${this.player.hasFlameTrail?' 🔥':''}<br>Tempo: <b>${formatRunTime(this.runTime)}</b> • Jogador: <b>${this.playerName}</b><br>Seed ${this.seed}<br><span style="color:#8a8198;font-size:12px">Rede cibernética ainda instável — novo ato o aguarda</span>`;
         }
         this.gameOverScreen.classList.add('active');
         this.floorTransitioning=false;
@@ -19726,11 +19963,13 @@ class Game {
     if(giveUp){
       // SIM: encerra o jogo (Game Over com mensagem especial)
       this.state='GAMEOVER';
+      // PLACAR: entra na tabela de quem desistiu do Boss da Escada
+      this.saveRecord('quits');
       const title=document.getElementById('gameOverTitle');
       const stats=document.getElementById('gameOverStats');
       title.textContent='VOCÊ DESISTIU...';
       title.style.color='#ff8c42';
-      stats.innerHTML=`Você desistiu diante do Boss da Escada na <b>Fase ${this.floor}</b>.<br>Ele permitiu que você partisse, mas a escuridão permanece.<br><br><span style="color:#8a8198;font-size:12px">Tente novamente e escolha NÃO para enfrentar o boss!</span>`;
+      stats.innerHTML=`Você desistiu diante do Boss da Escada na <b>Fase ${this.floor}</b>.<br>Ele permitiu que você partisse, mas a escuridão permanece.<br><br>Tempo: <b>${formatRunTime(this.runTime)}</b> • <b>${this.roomsExplored}</b> salas • <b>${this.totalEnemiesDefeated + this.enemiesDefeated}</b> inimigos<br><span style="color:#8a8198;font-size:12px">Tente novamente e escolha NÃO para enfrentar o boss!</span>`;
       this.gameOverScreen.classList.add('active');
     } else {
       // NÃO: começa a boss fight
@@ -20368,6 +20607,9 @@ class Game {
       console.warn('Player NaN corrigido em update', this.player.x, this.player.y);
       this.player.x = CANVAS_W/2; this.player.y = CANVAS_H/2;
     }
+    // CRONÔMETRO: conta aqui, depois de todos os guards, então não roda pausado,
+    // no menu, nem com o diálogo do boss aberto.
+    this.runTime += Math.max(0, dt);
     if(this.transitionCooldown>0) this.transitionCooldown-=dt;
     try{
     if(this.shake>0) this.shake-=dt;
@@ -21810,7 +22052,7 @@ class Game {
       const stats=document.getElementById('gameOverStats');
       title.textContent='RÉQUIEM INTERROMPIDO';
       title.style.color='#ff3b30';
-      stats.innerHTML=`Cyber Requiem • Ato <b>${this.floor}</b> • Sala ${this.currentRoom.gx},${this.currentRoom.gy} • Explorou <b>${this.roomsExplored}/${this.rooms.length}</b> salas neste ato<br>Derrotou <b>${this.totalEnemiesDefeated + this.enemiesDefeated}</b> inimigos • Arma: ${this.player.weapon.name}<br>Seed: ${this.seed}<br><span style="color:#8a8198;font-size:12px">Mundo cibernético ainda corrompido — tente novamente, o sistema reinicia.</span>`;
+      stats.innerHTML=`Cyber Requiem • Ato <b>${this.floor}</b> • Sala ${this.currentRoom.gx},${this.currentRoom.gy} • Explorou <b>${this.roomsExplored}/${this.rooms.length}</b> salas neste ato<br>Tempo: <b>${formatRunTime(this.runTime)}</b> • Derrotou <b>${this.totalEnemiesDefeated + this.enemiesDefeated}</b> inimigos • Arma: ${this.player.weapon.name}<br>Jogador: <b>${this.playerName}</b> • Seed: ${this.seed}<br><span style="color:#8a8198;font-size:12px">Mundo cibernético ainda corrompido — tente novamente, o sistema reinicia.</span>`;
       this.gameOverScreen.classList.add('active');
     }
 
@@ -22057,7 +22299,7 @@ class Game {
     const slotX = zoneR - slotW;
     const badgeX = hX + heartsW + 6;
     const labelX = badgeX + (badgeW ? badgeW + 6 : 0);
-    const labelMax = Math.max(24, (state ? slotX - 8 : zoneR) - labelX);
+    const labelMax = Math.max(16, (state ? slotX - 8 : zoneR) - labelX);
     const wn = p.weapon ? p.weapon.name : 'NORMAL';
     const wBase = wn==='SHOTGUN' ? 'SHOTGUN [5x]' : wn==='RAIO' ? 'RAIO ⚡ [pierce]' : wn==='RAIO_MATEMATICO' ? 'LAZER COD. [brimstone]' : wn==='LASER' ? 'LASER ◉ [carga]' : wn==='CARREGADA' ? 'CARREGADA [carga]' : wn==='BAZUCA' ? 'BAZUCA 💥 [área]' : wn==='METRALHADORA' ? 'METRALHADORA [temp]' : wn==='ESPADA' ? 'ESPADA ⚔️ [combo]' : wn==='LUVA' ? 'LUVA 🥊 x2 [dual]' : wn==='MOTOSSERRA' ? 'MOTOSSERRA 🪚 [carga]' : wn==='BASTAO' ? 'BASTÃO 🏏 [gira]' : wn==='CHICOTE' ? 'CHICOTE [carga]' : 'NORMAL';
     const extras = [];
@@ -22092,7 +22334,18 @@ class Game {
     roundRectPath(ctx, 4, top, panelR - 4, ph, 7);
     ctx.fillStyle = 'rgba(8,8,16,0.74)'; ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.09)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.save();
+    roundRectPath(ctx, 4, top, panelR - 4, ph, 7); ctx.clip();
     // --- corações ---
+    // Aviso de vida baixa: moldura vermelha pulsante (mais intensa no último coração).
+    const hpPct = p.maxHp>0 ? p.hp/p.maxHp : 0;
+    if(hpPct > 0 && hpPct <= 0.34){
+      const crit = p.hp <= 1;
+      const pulse = 0.5 + Math.sin(Date.now()*(crit?0.011:0.006))*0.5;
+      roundRectPath(ctx, hX-2, hY-1, heartsW+4, hSize+3, 6);
+      ctx.fillStyle = `rgba(255,40,40,${(crit?0.14:0.07) + pulse*(crit?0.20:0.09)})`; ctx.fill();
+      ctx.strokeStyle = `rgba(255,80,68,${0.35 + pulse*(crit?0.55:0.30)})`; ctx.lineWidth = 1; ctx.stroke();
+    }
     drawHealth(ctx, hX, hY, p.hp, p.maxHp, p.boneHearts|0, hSize, hGap);
     // --- disquete da vida (continues) ---
     if(conts > 0){
@@ -22131,6 +22384,7 @@ class Game {
       ctx.fillText(state.label, slotX + slotW - 4, top + 18);
       ctx.textAlign = 'left';
     }
+    ctx.restore();   // fim do recorte do painel
     ctx.textAlign = 'left';
   }
 
@@ -22139,7 +22393,7 @@ class Game {
     const p = this.player;
     if(!p) return;
     const top = 2, ph = HUD_BAR_H - 4;
-    let x = HUD_RIGHT_MIN + 4;
+    let x = HUD_RIGHT_MIN + HUD_PAD;
     // ===== DASH =====
     const dw = 112;
     const dashReady = p.dashCooldown <= 0;
@@ -22162,7 +22416,10 @@ class Game {
     ctx.textAlign = 'left';
     x += dw + 6;
     // ===== ESPECIAL [E] =====
-    const sp = p.equippedSpecial, sw = 150;
+    // Largura dinâmica: o painel ocupa o vão que sobrava entre o dash e a dica ESC
+    // (antes eram ~100px mortos e os nomes longos saíam truncados/reticências).
+    const sp = p.equippedSpecial;
+    const sw = clamp(HUD_BTN.x - 34 - x, 130, 240);
     roundRectPath(ctx, x, top, sw, ph, 7);
     ctx.fillStyle = 'rgba(8,8,16,0.74)'; ctx.fill();
     ctx.strokeStyle = sp && sp.isActive ? 'rgba(0,217,255,0.38)' : 'rgba(255,255,255,0.09)'; ctx.lineWidth = 1; ctx.stroke();
@@ -22179,9 +22436,11 @@ class Game {
       ctx.fillRect(x+2, top+2, sw-4, ph-4);
       ctx.font = '4px "Press Start 2P"'; ctx.textAlign = 'left';
       ctx.fillStyle = active ? '#7af2ff' : cooling ? 'rgba(255,255,255,0.6)' : (sp.color || '#ffcc00');
-      ctx.fillText(fitText(ctx, `${sp.icon} ${sp.name} [E]`, sw - 8 - Math.min(70, ctx.measureText(st).width), 4), x+6, top+8);
+      // o status reserva só o que realmente ocupa (teto maior que os 70px antigos)
+      const stW = clamp(ctx.measureText(st).width, 30, 96);
+      ctx.fillText(fitText(ctx, `${sp.icon} ${sp.name} [E]`, sw - 10 - stW, 4), x+6, top+8);
       ctx.textAlign = 'right';
-      ctx.fillText(fitText(ctx, st, 70, 4), x+sw-5, top+8);
+      ctx.fillText(fitText(ctx, st, stW, 4), x+sw-5, top+8);
       ctx.textAlign = 'left';
       const spct = active ? sp.getDurationPercent()*100 : cooling ? sp.getCooldownPercent()*100 : 100;
       roundRectPath(ctx, x+6, top+13, sw-12, 3, 1.5);
@@ -22192,7 +22451,6 @@ class Game {
       ctx.fillStyle = 'rgba(255,255,255,0.35)';
       ctx.fillText('SEM ESPECIAL [E]', x+6, top+12);
     }
-    x += sw + 8;
     // ===== PAUSA + dica ESC =====
     const b = HUD_BTN, isPaused = this.state === 'PAUSED';
     const hover = this.isHudPauseHover();
@@ -22259,9 +22517,14 @@ class Game {
     }
     // ===== painel de informações no RODAPÉ (fora da faixa da parede e do vão da porta) =====
     const infoLine = `SALA ${room?`${room.gx},${room.gy}`:'-'} • ${this.roomsExplored}/${this.rooms.length} salas • INIMIGOS ${curEnemies}${locked?' 🔒':''}/${totalEnemies}`;
+    // CRONÔMETRO: fica no canto direito da linha de cima do painel de rodapé
+    const timerStr = formatRunTime(this.runTime);
+    ctx.font='4px "Press Start 2P"'; const tLabelW=ctx.measureText('TEMPO').width;
+    ctx.font='5px "Press Start 2P"'; const tValW=ctx.measureText(timerStr).width;
+    const timeW = tLabelW + 4 + tValW;
     ctx.font='5px "Press Start 2P"'; const tagW=ctx.measureText(tag).width;
     ctx.font='4px "Press Start 2P"'; const infoW=ctx.measureText(infoLine).width;
-    const pw = Math.min(Math.max(tagW, infoW) + 26, 520);
+    const pw = Math.min(Math.max(tagW + timeW + 30, infoW) + 26, 560);
     const px = clamp(CANVAS_W/2 - pw/2, 8, CANVAS_W - pw - 8);
     const py = CANVAS_H - 54, ph2 = 21;
     roundRectPath(ctx, px, py, pw, ph2, 8);
@@ -22269,8 +22532,19 @@ class Game {
     ctx.strokeStyle='rgba(255,255,255,0.10)'; ctx.lineWidth=1; ctx.stroke();
     roundRectPath(ctx, px+5, py+4, 3, ph2-8, 1.5); ctx.fillStyle=tagColor; ctx.fill();
     ctx.textAlign='left';
+    // tag encolhe para não encostar no cronômetro
     ctx.font='5px "Press Start 2P"'; ctx.fillStyle=tagColor;
-    ctx.fillText(fitText(ctx, tag, pw-22, 5), px+13, py+9);
+    ctx.fillText(fitText(ctx, tag, Math.max(12, pw - 22 - timeW - 10), 5), px+13, py+9);
+    // label + valor do cronômetro
+    const tX = px + pw - 8 - tValW;
+    ctx.textAlign='right';
+    ctx.font='5px "Press Start 2P"';
+    ctx.fillStyle = this.runTime>0 ? '#7af2ff' : 'rgba(255,255,255,0.35)';
+    ctx.fillText(timerStr, px+pw-8, py+9);
+    ctx.textAlign='left';
+    ctx.font='4px "Press Start 2P"';
+    ctx.fillStyle='rgba(255,255,255,0.42)';
+    ctx.fillText('TEMPO', tX - 4, py+9);
     ctx.font='4px "Press Start 2P"'; ctx.fillStyle='rgba(255,255,255,0.88)';
     ctx.fillText(fitText(ctx, infoLine, pw-22, 4), px+13, py+17);
     ctx.textAlign='left';
@@ -22312,12 +22586,14 @@ class Game {
         const label = `+${overflow}`;
         const bw = ctx.measureText(label).width + 9;
         const ri = rows.length-1;
-        const more = {x: 58 + rW[ri], w: bw, label, r: RARITY.COMUM};
-        if(58 + rW[ri] + bw > CHIP_X_MAX && rows[ri].length){
-          const last = rows[ri][rows[ri].length-1];
-          rW[ri] -= last.w + 3; rows[ri].pop(); more.x = 58 + rW[ri];
+        // Descarta chips do fim da última linha até o "+N" caber. O pop único de antes
+        // só cobria o caso de 1 chip; com "+NN" largo e linha cheia ainda passava da caixa.
+        while(58 + rW[ri] + bw > CHIP_X_MAX && rows[ri].length){
+          const last = rows[ri].pop();
+          rW[ri] -= last.w + 3;
         }
-        rows[ri].push(more); rW[ri] += bw + 3;
+        rows[ri].push({x: 58 + rW[ri], w: bw, label, r: RARITY.COMUM});
+        rW[ri] += bw + 3;
       }
       const rowH = 11, boxH = rows.length * rowH + 5;
       const boxY = CANVAS_H - 12 - boxH;
@@ -22457,7 +22733,11 @@ class Game {
   }
 
   loop(t){
-    const dt=Math.min(34, t - this.lastTime || 16);
+    // BUG FIX: `t - this.lastTime || 16` deixa dt NEGATIVO quando resume() define
+    // lastTime = performance.now() e um frame já enfileirado dispara com t menor
+    // (bases de tempo distintas em alguns navegadores). dt<0 rodava a física ao
+    // contrário por um frame. Math.max(0,...) elimina isso.
+    const dt=Math.min(34, Math.max(0, t - this.lastTime) || 16);
     this.lastTime=t;
     this.update(dt);
     this.draw();

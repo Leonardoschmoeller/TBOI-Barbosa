@@ -26,6 +26,57 @@
         <p class="menu-footer">Cyber Requiem v6.1 • Programadores👤 + Boss Hacker • 6 Fases • Mineradora de Coins • HTML5 Canvas</p>
         <p class="menu-footer">Feito por Leonardo Schmoeller</p>
       </div>
+
+      <!-- RECORDES: 3 tabelas (finalizou / desistiu / venceu o hacker) -->
+      <details class="records-block" id="recordsBlock">
+        <summary class="records-summary">
+          <span class="records-summary-icon">🏆</span>
+          <span class="records-summary-title">RECORDES</span>
+          <span class="records-summary-badge" id="recordsBadge">vazio</span>
+        </summary>
+        <div class="records-grid">
+          <div class="record-card rec-finish">
+            <div class="record-head">
+              <span class="record-title">⭐ FINALIZARAM O JOGO</span>
+              <span class="record-sub">melhor tempo</span>
+            </div>
+            <table class="record-table">
+              <thead><tr><th class="c-pos">#</th><th>Nome</th><th class="c-time">Tempo</th><th class="c-floor">Ato</th></tr></thead>
+              <tbody id="recFinishBody"></tbody>
+            </table>
+            <p class="record-empty" id="recFinishEmpty">Ninguém finalizou ainda. Seja o primeiro!</p>
+          </div>
+
+          <div class="record-card rec-quit">
+            <div class="record-head">
+              <span class="record-title">✖ DESISTIRAM DO BOSS DA ESCADA</span>
+              <span class="record-sub">chegaram mais longe</span>
+            </div>
+            <table class="record-table">
+              <thead><tr><th class="c-pos">#</th><th>Nome</th><th class="c-time">Tempo</th><th class="c-floor">Ato</th></tr></thead>
+              <tbody id="recQuitBody"></tbody>
+            </table>
+            <p class="record-empty" id="recQuitEmpty">Ninguém desistiu ainda. Ninguém é imune ao boss.</p>
+          </div>
+
+          <div class="record-card rec-hacker">
+            <div class="record-head">
+              <span class="record-title">◉ VENCERAM O HACKER</span>
+              <span class="record-sub">melhor tempo</span>
+            </div>
+            <table class="record-table">
+              <thead><tr><th class="c-pos">#</th><th>Nome</th><th class="c-time">Tempo</th><th class="c-floor">Ato</th></tr></thead>
+              <tbody id="recHackerBody"></tbody>
+            </table>
+            <p class="record-empty" id="recHackerEmpty">Ninguém venceu o Hacker ainda. O Dark Vírus continua livre.</p>
+          </div>
+        </div>
+        <div class="records-foot">
+          <span>Recordes salvos neste navegador • 1 linha por nome (só o melhor resultado)</span>
+          <button id="btnClearRecords" class="btn btn-tiny">LIMPAR RECORDES</button>
+        </div>
+      </details>
+
       <div class="bg-decoration"></div>
     </div>
 
@@ -113,6 +164,10 @@
           </div>
         </div>
         <div class="character-footer">
+          <label class="player-name-field" for="playerNameInput">
+            <span class="player-name-label">SEU NOME</span>
+            <input id="playerNameInput" class="player-name-input" type="text" maxlength="12" autocomplete="off" spellcheck="false" placeholder="ANÔNIMO">
+          </label>
           <button id="btnCharBack" class="btn btn-secondary">↩ VOLTAR</button>
           <button id="btnPlayChar" class="btn btn-primary" disabled>▶ JOGAR</button>
           <span id="characterHint" class="character-hint">Selecione um personagem para começar</span>
@@ -487,12 +542,14 @@
           <span id="pauseInfo" class="pause-info">FASE 1 • SALA 2,2 • SEED 0</span>
         </div>
         <div class="pause-stats">
+          <span class="pause-stat"><span class="pause-stat-label">Tempo</span><span id="pauseTimer" class="pause-stat-value">0:00</span></span>
           <span class="pause-stat"><span class="pause-stat-label">Vida</span><span id="pauseHearts" class="pause-stat-value">♥♥♥</span></span>
           <span class="pause-stat"><span class="pause-stat-label">Arma</span><span id="pauseWeapon" class="pause-stat-value">NORMAL</span></span>
           <span class="pause-stat"><span class="pause-stat-label">Inimigos</span><span id="pauseEnemies" class="pause-stat-value">0</span></span>
         </div>
         <div class="pause-buttons">
           <button id="btnResume" class="btn btn-primary">▶ CONTINUAR (ESC)</button>
+          <button id="btnRestartFloor" class="btn btn-secondary">⟳ REINICIAR FASE (mantém itens)</button>
           <button id="btnRestartRun" class="btn btn-secondary">↻ REINICIAR PARTIDA</button>
           <button id="btnPauseControls" class="btn btn-secondary">⌨ CONTROLES</button>
           <button id="btnPauseMenu" class="btn btn-secondary">☰ MENU PRINCIPAL</button>

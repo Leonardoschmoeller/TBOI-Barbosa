@@ -79,6 +79,163 @@ html, body {
 .menu-desc { font-family: system-ui, sans-serif; font-size: 14px; color: var(--muted); margin: 16px 0 28px; letter-spacing: 0.6px; line-height: 1.5; }
 .menu-buttons { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
 .menu-footer { margin-top: 14px; font-family: system-ui, sans-serif; font-size: 11px; color: #5a5470; letter-spacing: 0.8px; }
+
+/* ===================== RECORDES (menu principal) ===================== */
+/* records-block é irmão de .menu-content dentro de #menuScreen (display:flex).
+   Sem forçar column, o flex row colocaria a tabela AO LADO do menu.
+   'safe center' evita cortar o topo quando as tabelas abertas passam da altura. */
+#menuScreen.active{
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  overflow-y:auto;
+  justify-content:safe center;   /* fallback: center, se o browser nao souber 'safe' */
+}
+.records-block{
+  position:relative;
+  z-index:2;
+  flex:0 0 auto;
+  width:min(1020px, 94vw);
+  margin: 12px auto 18px;
+  padding: 0 14px;
+}
+.records-summary{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:11px 14px;
+  cursor:pointer;
+  list-style:none;
+  border:1px solid rgba(255,215,0,0.22);
+  border-radius:10px;
+  background:linear-gradient(180deg, rgba(30,26,46,0.92) 0%, rgba(16,14,26,0.92) 100%);
+  font-family:'Press Start 2P', monospace;
+  font-size:10px;
+  letter-spacing:1px;
+  color:#ffd700;
+  user-select:none;
+}
+.records-summary::-webkit-details-marker{ display:none; }
+.records-summary:hover{ border-color:rgba(255,215,0,0.45); filter:brightness(1.06); }
+.records-summary-icon{ font-size:14px; }
+.records-summary-title{ flex:1; }
+.records-summary-badge{
+  font-family: system-ui, sans-serif;
+  font-size:10px;
+  letter-spacing:0.6px;
+  color:#8a8198;
+  padding:3px 8px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,0.10);
+}
+.records-grid{
+  display:grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap:10px;
+  margin-top:10px;
+}
+@media (max-width: 900px){ .records-grid{ grid-template-columns:1fr; } }
+.record-card{
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:10px;
+  background:rgba(10,9,18,0.88);
+  padding:10px 11px 8px;
+  min-width:0;
+}
+.record-card.rec-finish{ border-color:rgba(0,255,136,0.22); }
+.record-card.rec-quit{ border-color:rgba(255,140,66,0.22); }
+.record-card.rec-hacker{ border-color:rgba(217,70,239,0.24); }
+.record-head{ display:flex; flex-direction:column; gap:2px; margin-bottom:8px; }
+.record-title{
+  font-family:'Press Start 2P', monospace;
+  font-size:8px;
+  letter-spacing:0.6px;
+  color:#e8e4f5;
+}
+.rec-finish .record-title{ color:#7dffc4; }
+.rec-quit .record-title{ color:#ffb183; }
+.rec-hacker .record-title{ color:#f0a6ff; }
+.record-sub{ font-family: system-ui, sans-serif; font-size:10px; color:#6d6785; }
+.record-table{ width:100%; border-collapse:collapse; table-layout:fixed; }
+.record-table th{
+  font-family: system-ui, sans-serif;
+  font-weight:700;
+  font-size:9px;
+  letter-spacing:0.6px;
+  color:#6d6785;
+  text-align:left;
+  padding:3px 4px;
+  border-bottom:1px solid rgba(255,255,255,0.08);
+}
+.record-table td{
+  font-family: system-ui, sans-serif;
+  font-size:11px;
+  color:#cfc9e0;
+  padding:5px 4px;
+  border-bottom:1px solid rgba(255,255,255,0.04);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.record-table th.c-pos, .record-table td.c-pos{ width:20px; text-align:right; color:#6d6785; }
+.record-table th.c-time, .record-table td.c-time{ width:52px; text-align:right; font-weight:700; color:#7af2ff; font-variant-numeric: tabular-nums; }
+.record-table th.c-floor, .record-table td.c-floor{ width:26px; text-align:right; }
+.record-table td.c-name{ font-weight:700; }
+.record-medal td{ color:#fff; background:rgba(255,215,0,0.07); }
+.record-medal td.c-time{ color:#ffd700; }
+.record-empty{
+  margin:6px 2px 2px;
+  font-family: system-ui, sans-serif;
+  font-size:11px;
+  color:#5f5975;
+}
+.records-foot{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-top:9px;
+  font-family: system-ui, sans-serif;
+  font-size:10px;
+  color:#5a5470;
+}
+.btn-tiny{
+  font-family:'Press Start 2P', monospace;
+  font-size:7px;
+  letter-spacing:0.6px;
+  padding:7px 9px;
+  border-radius:7px;
+  border:1px solid rgba(255,255,255,0.14);
+  background:rgba(20,18,32,0.9);
+  color:#8a8198;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.btn-tiny:hover{ color:#ff8c8c; border-color:rgba(255,92,92,0.45); }
+
+/* ===================== CAMPO DE NOME (seleção de personagem) ===================== */
+.player-name-field{ display:flex; flex-direction:column; gap:4px; }
+.player-name-label{
+  font-family:'Press Start 2P', monospace;
+  font-size:7px;
+  letter-spacing:1px;
+  color:#6d6785;
+}
+.player-name-input{
+  font-family:'Press Start 2P', monospace;
+  font-size:9px;
+  letter-spacing:1px;
+  text-transform:uppercase;
+  padding:9px 10px;
+  width:150px;
+  border-radius:8px;
+  border:1px solid rgba(255,255,255,0.14);
+  background:rgba(8,8,16,0.85);
+  color:#7af2ff;
+  outline:none;
+}
+.player-name-input:focus{ border-color:rgba(122,242,255,0.55); box-shadow:0 0 0 3px rgba(122,242,255,0.10); }
+.player-name-input::placeholder{ color:#4b4660; }
 /* ===== Seletor de Personagens Modular ===== */
 .character-select{
   display:grid;
@@ -854,6 +1011,14 @@ html, body {
   padding:12px 10px;
 }
 #btnResume{ grid-column: 1 / -1; }
+/* Reiniciar fase: diferente de reiniciar a partida, pois mantém itens e melhorias */
+#btnRestartFloor{
+  grid-column: 1 / -1;
+  border-color: rgba(122,242,255,0.34) !important;
+  color: #7af2ff !important;
+  background: linear-gradient(180deg, #1b2c38 0%, #14202a 100%) !important;
+}
+#btnRestartFloor:hover{ border-color: #7af2ff !important; filter: brightness(1.12); }
 .pause-collected-section{
   margin: 0 14px 14px;
 }
