@@ -16,11 +16,16 @@
 // ===================== CONSTANTES =====================
 const CANVAS_W = 960;
 const CANVAS_H = 540;
-const HUD_BAR_H = 44;                                    // altura da faixa de HUD no canvas
-const HUD_BTN = { x: CANVAS_W-34, y: 5, w: 26, h: 20 };  // botão de pausa (clique) + rótulo ESC
 const WALL_THICK = 22;
 const DOOR_W = 90;
 const DOOR_H = 70;
+// HUD vive DENTRO da faixa da parede (WALL_THICK=22) -> nunca cobre o chão, itens ou a porta de cima
+const HUD_BAR_H = 24;
+const HUD_PAD = 4;                                        // respiro interno dos painéis do HUD
+const HUD_DOOR_PAD = 14;                                  // margem livre ao redor da porta superior
+const HUD_LEFT_MAX = CANVAS_W/2 - DOOR_W/2 - HUD_DOOR_PAD; // x máximo do painel esquerdo (não invade a porta)
+const HUD_RIGHT_MIN = CANVAS_W/2 + DOOR_W/2 + HUD_DOOR_PAD; // x mínimo do painel direito
+const HUD_BTN = { x: CANVAS_W-34, y: 3, w: 26, h: 18 };  // botão de pausa (clique) + rótulo ESC
 const PLAYER_SIZE = 24;
 const PLAYER_SPEED = 3.0;
 const JL_SPEED_FACTOR = 0.89;       // JL ~11% mais lento que base (um pouco mais lento conforme pedido)
@@ -4148,6 +4153,28 @@ function lerp(a, b, t) { return a + (b - a) * t; }
 function dist(ax, ay, bx, by) { return Math.hypot(bx - ax, by - ay); }
 function randRange(a, b) { return a + Math.random() * (b - a); }
 function randInt(a, b) { return Math.floor(randRange(a, b + 1)); }
+function shadeColor(hex, amt){
+  if(typeof hex!=='string' || hex[0]!=='#') return hex;
+  const n=parseInt(hex.slice(1),16);
+  if(Number.isNaN(n)) return hex;
+  let r=(n>>16)&255, g=(n>>8)&255, b=n&255;
+  if(amt>=0){ r+=(255-r)*amt; g+=(255-g)*amt; b+=(255-b)*amt; }
+  else { r*=(1+amt); g*=(1+amt); b*=(1+amt); }
+  const h=v=>clamp(Math.round(v),0,255).toString(16).padStart(2,'0');
+  return `#${h(r)}${h(g)}${h(b)}`;
+}
+// Encaixa texto numa largura máxima: reduz a fonte e, se preciso, corta com reticências
+function fitText(ctx, text, maxW, font=6, family='"Press Start 2P"', minFont=3.5){
+  let size=font;
+  ctx.font=`${size}px ${family}`;
+  while(size>minFont && ctx.measureText(text).width>maxW){ size-=0.5; ctx.font=`${size}px ${family}`; }
+  if(ctx.measureText(text).width>maxW){
+    let t=text;
+    while(t.length>1 && ctx.measureText(t+'…').width>maxW) t=t.slice(0,-1);
+    text = t+'…';
+  }
+  return text;
+}
 function normalize(x,y){ const l=Math.hypot(x,y)||1; return {x:x/l,y:y/l}; }
 function angleDiff(a,b){ return Math.atan2(Math.sin(b-a), Math.cos(b-a)); }
 
@@ -17343,6 +17370,200 @@ class Room {
     }catch(e){ console.error('Room update error', e); }
   }
 
+  // Muros com profundidade real: gradiente, textura em blocos, bisel externo claro,
+  // base interna escura, rebites/rachaduras por fase e sombra projetada no chão.
+  drawWalls(ctx, theme){
+    const accent = theme.accent || '#8a6cff';
+    const BW = 26, BH = 11;
+    for(const w of this.walls){
+      const tTop = w.y <= 1, tBot = w.y + w.h >= CANVAS_H - 1;
+      const tLeft = w.x <= 1, tRight = w.x + w.w >= CANVAS_W - 1;
+      // corpo do muro: mais claro perto da "frente" e escurecendo na base
+      const g = ctx.createLinearGradient(0, w.y, 0, w.y + w.h);
+      g.addColorStop(0, shadeColor(theme.wallTop, 0.04));
+      g.addColorStop(0.5, theme.wall);
+      g.addColorStop(1, shadeColor(theme.wall, -0.42));
+      ctx.fillStyle = g;
+      ctx.fillRect(w.x, w.y, w.w, w.h);
+      // textura em blocos (hash da posição: estável entre frames, sem tremer)
+      ctx.save();
+      ctx.beginPath(); ctx.rect(w.x, w.y, w.w, w.h); ctx.clip();
+      let row = 0;
+      for(let yy = w.y; yy < w.y + w.h; yy += BH, row++){
+        const off = (row % 2) ? BW/2 : 0;
+        for(let xx = w.x - off; xx < w.x + w.w; xx += BW){
+          const hh = (((xx|0)*73856093) ^ ((yy|0)*19349663)) >>> 0;
+          ctx.fillStyle = `rgba(255,255,255,${(0.016 + (hh % 7) * 0.005).toFixed(3)})`;
+          ctx.fillRect(xx+1, yy+1, BW-2, BH-2);
+          ctx.fillStyle = theme.wallLine;
+          ctx.fillRect(xx, yy, BW, 1);
+          ctx.fillStyle = 'rgba(0,0,0,0.12)';
+          ctx.fillRect(xx, yy+BH-1, BW, 1);
+        }
+      }
+      // detalhes por fase
+      if(theme.id===2){
+        // caverna: rachaduras + bolhas de rocha
+        ctx.fillStyle='rgba(0,0,0,0.22)';
+        for(let yy=w.y+2; yy<w.y+w.h-3; yy+=6){
+          const hh=((yy|0)*2246822519)>>>0;
+          const xx=w.x + 3 + (hh % Math.max(1, Math.floor(w.w/3)));
+          ctx.fillRect(xx, yy, 2, 3);
+        }
+        ctx.fillStyle='rgba(255,255,255,0.05)';
+        for(let xx=w.x+7; xx<w.x+w.w-4; xx+=23){
+          const hh=((xx|0)*374761393)>>>0;
+          ctx.fillRect(xx, w.y + 3 + (hh % Math.max(1, w.h-8)), 2, 2);
+        }
+      } else {
+        // fases tech: rebites + faixa luminosa de acento
+        ctx.fillStyle = 'rgba(0,0,0,0.30)';
+        for(let xx=w.x+10; xx<w.x+w.w-6; xx+=40){
+          const yy = tTop ? w.y + 8 : (tBot ? w.y + w.h - 10 : w.y + 6);
+          ctx.fillRect(xx, yy, 2, 2);
+        }
+        ctx.fillStyle = 'rgba(0,0,0,0.22)';
+        for(let yy=w.y+8; yy<w.y+w.h-6; yy+=40){
+          const xx = tLeft ? w.x + 8 : (tRight ? w.x + w.w - 10 : w.x + 6);
+          ctx.fillRect(xx, yy, 2, 2);
+        }
+      }
+      ctx.restore();
+      // bisel: capa clara na face externa, base escura na face que dá pro chão
+      const cap = shadeColor(theme.wallTop, 0.26), edge = shadeColor(theme.wall, -0.55);
+      ctx.fillStyle = cap;
+      if(tTop)   ctx.fillRect(w.x, w.y, w.w, 3);
+      if(tBot)   ctx.fillRect(w.x, w.y+w.h-3, w.w, 3);
+      if(tLeft)  ctx.fillRect(w.x, w.y, 3, w.h);
+      if(tRight) ctx.fillRect(w.x+w.w-3, w.y, 3, w.h);
+      if(!tTop && !tBot && !tLeft && !tRight){
+        // pilar interno: luz em cima/esquerda, sombra embaixo/direita
+        ctx.fillStyle = shadeColor(theme.wallTop, 0.12);
+        ctx.fillRect(w.x, w.y, w.w, 2); ctx.fillRect(w.x, w.y, 2, w.h);
+        ctx.fillStyle = edge;
+        ctx.fillRect(w.x, w.y+w.h-2, w.w, 2); ctx.fillRect(w.x+w.w-2, w.y, 2, w.h);
+      } else {
+        ctx.fillStyle = edge;
+        if(!tBot)  ctx.fillRect(w.x, w.y+w.h-2, w.w, 2);
+        if(!tTop)  ctx.fillRect(w.x, w.y, w.w, 2);
+        if(!tLeft) ctx.fillRect(w.x, w.y, 2, w.h);
+        if(!tRight)ctx.fillRect(w.x+w.w-2, w.y, 2, w.h);
+      }
+      // friso de acento bem discreto no meio do pano de muro
+      if(tTop || tBot){
+        const yMid = tTop ? w.y + w.h - 6 : w.y + 4;
+        ctx.fillStyle = 'rgba(255,255,255,0.035)'; ctx.fillRect(w.x, yMid, w.w, 1);
+        ctx.fillStyle = `${accent}22`; ctx.fillRect(w.x, yMid + (tTop?1:0), w.w, 1);
+      }
+    }
+    // sombra suave projetada do muro no chão (sem cobrir o vão da porta)
+    const S = 20, dx0 = CANVAS_W/2 - DOOR_W/2, dx1 = CANVAS_W/2 + DOOR_W/2;
+    const dy0 = CANVAS_H/2 - DOOR_H/2, dy1 = CANVAS_H/2 + DOOR_H/2;
+    // topo
+    const gT = ctx.createLinearGradient(0, WALL_THICK, 0, WALL_THICK + S);
+    gT.addColorStop(0,'rgba(0,0,0,0.34)'); gT.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle = gT;
+    if(this.doors.top){ ctx.fillRect(0, WALL_THICK, dx0, S); ctx.fillRect(dx1, WALL_THICK, CANVAS_W-dx1, S); }
+    else ctx.fillRect(0, WALL_THICK, CANVAS_W, S);
+    // base
+    const gB = ctx.createLinearGradient(0, CANVAS_H - WALL_THICK, 0, CANVAS_H - WALL_THICK - S);
+    gB.addColorStop(0,'rgba(0,0,0,0.34)'); gB.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle = gB;
+    if(this.doors.bottom){ ctx.fillRect(0, CANVAS_H - WALL_THICK - S, dx0, S); ctx.fillRect(dx1, CANVAS_H - WALL_THICK - S, CANVAS_W-dx1, S); }
+    else ctx.fillRect(0, CANVAS_H - WALL_THICK - S, CANVAS_W, S);
+    // laterais
+    const gL = ctx.createLinearGradient(WALL_THICK, 0, WALL_THICK + S, 0);
+    gL.addColorStop(0,'rgba(0,0,0,0.32)'); gL.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle = gL;
+    if(this.doors.left){ ctx.fillRect(WALL_THICK, 0, S, dy0); ctx.fillRect(WALL_THICK, dy1, S, CANVAS_H-dy1); }
+    else ctx.fillRect(WALL_THICK, 0, S, CANVAS_H);
+    const gR = ctx.createLinearGradient(CANVAS_W - WALL_THICK, 0, CANVAS_W - WALL_THICK - S, 0);
+    gR.addColorStop(0,'rgba(0,0,0,0.32)'); gR.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle = gR;
+    if(this.doors.right){ ctx.fillRect(CANVAS_W - WALL_THICK - S, 0, S, dy0); ctx.fillRect(CANVAS_W - WALL_THICK - S, dy1, S, CANVAS_H-dy1); }
+    else ctx.fillRect(CANVAS_W - WALL_THICK - S, 0, S, CANVAS_H);
+  }
+
+  // Porta: batente metálico, soleira iluminada e estado (cadeado / seta) bem legíveis.
+  // Desenhada por último dentro da sala, então nenhum outro elemento do mundo passa por cima.
+  drawDoor(ctx, d, locked, theme){
+    const cx = CANVAS_W/2, cy = CANVAS_H/2, t = WALL_THICK;
+    const horiz = d.dir==='top' || d.dir==='bottom';
+    const x = horiz ? cx - DOOR_W/2 : (d.dir==='left' ? 0 : CANVAS_W - t);
+    const y = horiz ? (d.dir==='top' ? 0 : CANVAS_H - t) : cy - DOOR_H/2;
+    const w = horiz ? DOOR_W : t;
+    const h = horiz ? t : DOOR_H;
+    const pulse = 0.5 + Math.sin(Date.now()*0.005)*0.5;
+    // vão
+    ctx.fillStyle = locked ? shadeColor(theme.doorLocked, -0.35) : '#070f0a';
+    ctx.fillRect(x, y, w, h);
+    // gradiente de profundidade dentro do vão
+    const gg = horiz
+      ? ctx.createLinearGradient(0, y, 0, y + h)
+      : ctx.createLinearGradient(x, 0, x + w, 0);
+    gg.addColorStop(0, 'rgba(255,255,255,0.10)');
+    gg.addColorStop(0.45, 'rgba(0,0,0,0)');
+    gg.addColorStop(1, 'rgba(0,0,0,0.55)');
+    ctx.fillStyle = gg; ctx.fillRect(x, y, w, h);
+    // batentes laterais (jambas) em metal
+    const jamb = shadeColor(theme.wallTop, 0.34), jambDark = shadeColor(theme.wall, -0.5);
+    ctx.fillStyle = jamb;
+    if(horiz){ ctx.fillRect(x, y, 2, h); ctx.fillRect(x + w - 2, y, 2, h); }
+    else { ctx.fillRect(x, y, w, 2); ctx.fillRect(x, y + h - 2, w, 2); }
+    ctx.fillStyle = jambDark;
+    if(horiz){ ctx.fillRect(x + 2, y, 1, h); ctx.fillRect(x + w - 3, y, 1, h); }
+    else { ctx.fillRect(x, y + 2, w, 1); ctx.fillRect(x, y + h - 3, w, 1); }
+    // soleira (labio interno) - sempre desenhada, é o que faz a porta "existir" no muro
+    const lipY = d.dir==='top' ? y + h : d.dir==='bottom' ? y - 3 : y;
+    const lipX = d.dir==='left' ? x + w : d.dir==='right' ? x - 3 : x;
+    const lipW = horiz ? w : 3, lipH = horiz ? 3 : h;
+    const glow = locked ? `rgba(255,59,48,${0.25 + pulse*0.45})` : `rgba(74,222,128,${0.35 + pulse*0.5})`;
+    ctx.fillStyle = glow; ctx.fillRect(lipX, lipY, lipW, lipH);
+    ctx.fillStyle = locked ? '#ff6b5e' : '#8dffc0';
+    ctx.fillRect(lipX, lipY, horiz ? w : 1, horiz ? 1 : h);
+    if(locked){
+      // grade + cadeado
+      const plate = theme.id===2 ? '#7a2a10' : '#7a1a10';
+      ctx.fillStyle = plate;
+      if(horiz) ctx.fillRect(x + 6, y + 3, w - 12, h - 6);
+      else ctx.fillRect(x + 3, y + 6, w - 6, h - 12);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      for(let i = 1; i < 4; i++){
+        if(horiz) ctx.fillRect(x + (w/4)*i, y + 3, 1, h - 6);
+        else ctx.fillRect(x + 3, y + (h/4)*i, w - 6, 1);
+      }
+      // corpo do cadeado
+      ctx.fillStyle = '#3a0a00';
+      if(horiz) ctx.fillRect(cx - 2, y + 4, 4, h - 8);
+      else ctx.fillRect(x + 4, cy - 2, w - 8, 4);
+      ctx.fillStyle = '#ffcc00';
+      if(horiz) ctx.fillRect(cx - 8, y + 5, 16, 12);
+      else ctx.fillRect(x + 4, cy - 8, 12, 16);
+      ctx.fillStyle = '#ffe680';
+      if(horiz) ctx.fillRect(cx - 8, y + 5, 16, 3); else ctx.fillRect(x + 4, cy - 8, 12, 3);
+      ctx.fillStyle = '#1a0000';
+      if(horiz) ctx.fillRect(cx - 3, y + 10, 6, 4); else ctx.fillRect(x + 9, cy - 3, 4, 6);
+      // luz de bloqueio vazando para a sala
+      ctx.fillStyle = `rgba(255,59,48,${0.18 + pulse*0.14})`;
+      if(d.dir==='top') ctx.fillRect(cx - 30, y + h, 60, 9);
+      else if(d.dir==='bottom') ctx.fillRect(cx - 30, y - 9, 60, 9);
+      else if(d.dir==='left') ctx.fillRect(x + w, cy - 20, 9, 40);
+      else ctx.fillRect(x - 9, cy - 20, 9, 40);
+    } else {
+      // passagem liberada: seta pulsante (triângulo, sem depender de glifo)
+      ctx.fillStyle = `rgba(74,222,128,${0.10 + pulse*0.10})`;
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = `rgba(122,255,180,${0.75 + pulse*0.25})`;
+      ctx.beginPath();
+      if(d.dir==='top'){ ctx.moveTo(cx, y + 5); ctx.lineTo(cx + 7, y + h - 3); ctx.lineTo(cx - 7, y + h - 3); }
+      else if(d.dir==='bottom'){ ctx.moveTo(cx, y + h - 5); ctx.lineTo(cx + 7, y + 3); ctx.lineTo(cx - 7, y + 3); }
+      else if(d.dir==='left'){ ctx.moveTo(x + 5, cy); ctx.lineTo(x + w - 3, cy + 7); ctx.lineTo(x + w - 3, cy - 7); }
+      else { ctx.moveTo(x + w - 5, cy); ctx.lineTo(x + 3, cy + 7); ctx.lineTo(x + 3, cy - 7); }
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.textAlign = 'left';
+  }
+
   draw(ctx, isCurrent) {
     try{
     const theme = this.theme || FLOOR_THEMES[this.floor] || FLOOR_THEMES[1];
@@ -17392,64 +17613,12 @@ class Room {
       ctx.lineWidth = 2;
       ctx.strokeRect(CANVAS_W/2 - 60, CANVAS_H/2 - 60, 120, 120);
     }
-    // paredes com tema
-    for (const w of this.walls) {
-      ctx.fillStyle = theme.wall;
-      ctx.fillRect(w.x, w.y, w.w, w.h);
-      ctx.fillStyle = theme.wallTop;
-      ctx.fillRect(w.x, w.y, w.w, 4);
-      ctx.fillStyle = theme.wallLine;
-      for(let yy=w.y+8; yy<w.y+w.h; yy+=12) ctx.fillRect(w.x, yy, w.w, 1);
-      // detalhe extra caverna: rachaduras
-      if(theme.id===2){
-        ctx.fillStyle='rgba(0,0,0,0.14)';
-        ctx.fillRect(w.x+6, w.y+6, 2, w.h-12);
-      }
-    }
+    // paredes com tema (muro com profundidade: bisel, textura, sombra interna e detalhes)
+    this.drawWalls(ctx, theme);
     // portas
     const doorRects = this.getDoorRects();
     const locked = !this.isCleared();
-    for (const d of doorRects) {
-      const cx=CANVAS_W/2, cy=CANVAS_H/2;
-      ctx.fillStyle = locked ? theme.doorLocked : '#1a3a1a';
-      if (d.dir==='top') ctx.fillRect(cx - DOOR_W/2, 0, DOOR_W, WALL_THICK);
-      if (d.dir==='bottom') ctx.fillRect(cx - DOOR_W/2, CANVAS_H - WALL_THICK, DOOR_W, WALL_THICK);
-      if (d.dir==='left') ctx.fillRect(0, cy - DOOR_H/2, WALL_THICK, DOOR_H);
-      if (d.dir==='right') ctx.fillRect(CANVAS_W - WALL_THICK, cy - DOOR_H/2, WALL_THICK, DOOR_H);
-      if (locked) {
-        ctx.fillStyle = theme.id===2 ? '#7a2a10' : '#7a1a10';
-        if (d.dir==='top' || d.dir==='bottom') {
-          const y = d.dir==='top' ? 4 : CANVAS_H - WALL_THICK + 4;
-          ctx.fillRect(cx - DOOR_W/2 + 6, y, DOOR_W -12, WALL_THICK -8);
-          ctx.fillStyle = '#3a0a00'; ctx.fillRect(cx -2, y, 4, WALL_THICK -8);
-          ctx.fillStyle = '#ffcc00'; ctx.fillRect(cx -8, y+6, 16, 10);
-          ctx.fillStyle = '#1a0000'; ctx.fillRect(cx -3, y+9, 6, 4);
-        } else {
-          const x = d.dir==='left' ? 4 : CANVAS_W - WALL_THICK +4;
-          ctx.fillRect(x, cy - DOOR_H/2 +6, WALL_THICK -8, DOOR_H -12);
-          ctx.fillStyle = '#3a0a00'; ctx.fillRect(x, cy -2, WALL_THICK -8, 4);
-          ctx.fillStyle = '#ffcc00'; ctx.fillRect(x+4, cy -8, 10, 16);
-        }
-        ctx.fillStyle = 'rgba(255,59,48,0.22)';
-        if (d.dir==='top') ctx.fillRect(cx -30, WALL_THICK, 60, 8);
-        if (d.dir==='bottom') ctx.fillRect(cx -30, CANVAS_H - WALL_THICK -8, 60, 8);
-        if (d.dir==='left') ctx.fillRect(WALL_THICK, cy -20, 8, 40);
-        if (d.dir==='right') ctx.fillRect(CANVAS_W - WALL_THICK -8, cy -20, 8, 40);
-      } else {
-        ctx.fillStyle = '#0a0a14';
-        if (d.dir==='top') ctx.fillRect(cx - DOOR_W/2 +10, 0, DOOR_W -20, WALL_THICK);
-        if (d.dir==='bottom') ctx.fillRect(cx - DOOR_W/2 +10, CANVAS_H - WALL_THICK, DOOR_W -20, WALL_THICK);
-        if (d.dir==='left') ctx.fillRect(0, cy - DOOR_H/2 +10, WALL_THICK, DOOR_H -20);
-        if (d.dir==='right') ctx.fillRect(CANVAS_W - WALL_THICK, cy - DOOR_H/2 +10, WALL_THICK, DOOR_H -20);
-        ctx.fillStyle = 'rgba(74,222,128,0.9)';
-        ctx.font = '12px monospace'; ctx.textAlign='center';
-        if (d.dir==='top') ctx.fillText('▲', cx, 16);
-        if (d.dir==='bottom') ctx.fillText('▼', cx, CANVAS_H -6);
-        if (d.dir==='left') ctx.fillText('◀', 12, cy+4);
-        if (d.dir==='right') ctx.fillText('▶', CANVAS_W -8, cy+4);
-        ctx.textAlign='left';
-      }
-    }
+    for (const d of doorRects) this.drawDoor(ctx, d, locked, theme);
 
     // decoração sala rara (fundo distinto dourado/roxo)
     if(this.isRare){
@@ -18692,9 +18861,8 @@ function roundRectPath(ctx, x, y, w, h, r=4){
 // Agora suporta Bone Hearts (recipientes cinza/cibernéticos) no final da barra.
 // hp/maxHp incluem HP dentro dos ossos (top layer no final). boneHearts = número de recipientes cinza.
 // Visual Bone: base metálica escura + interior ciano acinzentado, preservando identidade Cibernética mas distinguível como recipiente.
-function drawHealth(ctx, x, y, hp, maxHp=6, boneHearts=0) {
+function drawHealth(ctx, x, y, hp, maxHp=6, boneHearts=0, size=22, gap=28) {
   const totalHearts = maxHp / 2;
-  const size = 22, gap = 28;
   const totalBone = boneHearts|0;
   for(let i=0;i<totalHearts;i++){
     const hx = x + i*gap, hy = y;
@@ -21768,190 +21936,18 @@ class Game {
         }
       }catch(e){ console.error('Motosserra zone draw error', e); }
       for(const p of this.particles) p.draw(ctx);
-      // HUD faixa superior - Bone Hearts no final
+      // ===================== HUD =====================
+      // Tudo cabe dentro da faixa da parede (0..WALL_THICK): não cobre o chão, os itens
+      // derrubados e o vão da porta de cima (janela livre HUD_LEFT_MAX..HUD_RIGHT_MIN).
       ctx.save();
-      ctx.globalAlpha = this._hudIdle ? 0.55 : 1;
-      const barGrad = ctx.createLinearGradient(0,0,0,HUD_BAR_H);
-      barGrad.addColorStop(0,'rgba(8,8,16,0.90)');
-      barGrad.addColorStop(0.68,'rgba(8,8,16,0.74)');
-      barGrad.addColorStop(1,'rgba(8,8,16,0.22)');
-      ctx.fillStyle=barGrad; ctx.fillRect(0,0, CANVAS_W, HUD_BAR_H);
-      ctx.save(); ctx.globalAlpha*=0.55;
-      ctx.fillStyle=theme.accent||'#8a6cff'; ctx.fillRect(0, HUD_BAR_H-1, CANVAS_W*0.36, 1);
-      ctx.restore();
-      ctx.fillStyle='rgba(255,255,255,0.08)'; ctx.fillRect(CANVAS_W*0.36, HUD_BAR_H-1, CANVAS_W*0.64, 1);
-      drawHealth(ctx, 12, 7, this.player.hp, this.player.maxHp, this.player.boneHearts|0);
-      // ===== DISQUETE DA VIDA - contador de continues salvos (💾 xN) =====
-      const conts = this.player.continues|0;
-      if(conts > 0){
-        const cx0 = 12 + Math.ceil(this.player.maxHp/2)*22 + 8, cy0 = 18;
-        const pulse = 0.5 + Math.sin(Date.now()*0.005)*0.3;
-        ctx.fillStyle = `rgba(34,197,94,${0.16 + pulse*0.14})`;
-        ctx.fillRect(cx0 - 3, cy0 - 11, 16 + String(conts).length*8, 15);
-        ctx.strokeStyle = `rgba(74,222,128,${0.45 + pulse*0.35})`;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(cx0 - 3, cy0 - 11, 16 + String(conts).length*8, 15);
-        // disquete em miniatura
-        ctx.fillStyle = '#1f2a24'; ctx.fillRect(cx0, cy0 - 8, 10, 9);
-        ctx.fillStyle = DISQUETE_VIDA_COLOR; ctx.fillRect(cx0 + 1, cy0 - 7, 8, 3.4);
-        ctx.fillStyle = '#c3cec8'; ctx.fillRect(cx0 + 1, cy0 - 1, 3, 1.6);
-        ctx.fillStyle = '#fff';
-        ctx.font = '7px "Press Start 2P"'; ctx.textAlign='left';
-        ctx.fillText(`x${conts}`, cx0 + 13, cy0);
-      }
-      const dashPct = this.player.dashCooldown<=0 ? 1 : 1 - (this.player.dashCooldown / DASH_COOLDOWN);
-      const dashReady = this.player.dashCooldown<=0;
-      // painel do dash
-      const dx0 = CANVAS_W - 178, dy0 = 5, dw = 138, dh = 20;
-      roundRectPath(ctx, dx0, dy0, dw, dh, 6);
-      ctx.fillStyle = dashReady ? 'rgba(0,217,255,0.10)' : 'rgba(255,255,255,0.04)'; ctx.fill();
-      ctx.strokeStyle = dashReady ? 'rgba(0,217,255,0.35)' : 'rgba(255,255,255,0.09)'; ctx.lineWidth=1; ctx.stroke();
-      roundRectPath(ctx, dx0+6, dy0+7, 68, 7, 3.5);
-      ctx.fillStyle='rgba(255,255,255,0.10)'; ctx.fill();
-      if(dashReady){
-        ctx.save(); ctx.shadowColor='rgba(0,217,255,0.85)'; ctx.shadowBlur=6;
-        roundRectPath(ctx, dx0+6, dy0+7, 68*dashPct, 7, 3.5); ctx.fillStyle='#00d9ff'; ctx.fill();
-        ctx.restore();
-      } else {
-        roundRectPath(ctx, dx0+6, dy0+7, 68*dashPct, 7, 3.5); ctx.fillStyle='#5b6478'; ctx.fill();
-      }
-      ctx.font='5px "Press Start 2P"'; ctx.textAlign='right';
-      ctx.fillStyle = dashReady ? '#7af2ff' : 'rgba(255,255,255,0.55)';
-      ctx.fillText(dashReady?'DASH PRONTO':'DASH...', dx0+dw-6, dy0+14);
-      ctx.textAlign='left';
-      this.drawHudInfo(ctx);
-      // info arma no canvas (canto levemente) + personagem
-      const wn=this.player.weapon.name;
-      let wLabel = wn==='SHOTGUN' ? 'SHOTGUN [5x]' : wn==='RAIO' ? 'RAIO ⚡ [pierce]' : wn==='RAIO_MATEMATICO' ? 'LAZER CODIFICADO [Brimstone]' : wn==='LASER' ? 'LASER ◉ [carga→timing]' : wn==='CARREGADA' ? 'CARREGADA [carga]' : wn==='BAZUCA' ? 'BAZUCA 💥 [área]' : wn==='METRALHADORA' ? 'METRALHADORA [temp]' : wn==='ESPADA' ? 'ESPADA ⚔️ [combo+onda]' : wn==='LUVA' ? 'LUVA 🥊 x2 [dual]' : wn==='MOTOSSERRA' ? 'MOTOSSERRA 🪚 [curto reto + cura]' : wn==='BASTAO' ? 'BASTÃO 🏏 [gira/retorna]' : 'NORMAL';
-      let wColor = wn==='SHOTGUN' ? 'rgba(255,140,66,0.9)' : wn==='RAIO' ? 'rgba(0,229,255,0.95)' : wn==='RAIO_MATEMATICO' ? 'rgba(184,255,251,0.96)' : wn==='LASER' ? 'rgba(255,26,46,0.96)' : wn==='CARREGADA' ? 'rgba(167,139,250,0.95)' : wn==='BAZUCA' ? 'rgba(255,59,48,0.95)' : wn==='METRALHADORA' ? 'rgba(255,59,48,0.95)' : wn==='ESPADA' ? 'rgba(220,220,230,0.95)' : wn==='LUVA' ? 'rgba(255,60,60,0.95)' : wn==='MOTOSSERRA' ? 'rgba(255,42,26,0.96)' : wn==='BASTAO' ? 'rgba(250,204,21,0.95)' : 'rgba(255,235,59,0.85)';
-      // nome do personagem removido em cima durante o jogo (HUD)
-      if(this.player.characterId){
-        if(this.player.characterId==='jg' && !this.player.hasBastao) wLabel += ' • SEM BASTÃO';
-        else if(this.player.characterId==='jl') wLabel += ' • 67';
-      }
-      if(this.player.hasFlameTrail) wLabel+=' 🔥';
-      if(this.player._hasSwiftBoots) wLabel+=' 💨';
-      if(this.player.hasNoclip) wLabel+=' ◈';
-      if(this.player.hasDillianShield) wLabel+=' 🛡';
-      if(this.player.hasDoubleShot) wLabel+=' x2';
-      ctx.fillStyle=wColor;
-      if(wn==='LUVA'){
-        ctx.font='6px sans-serif';
-      } else {
-        ctx.font='6px "Press Start 2P"';
-      }
-      ctx.fillText(wLabel, 108, 28);
-      // mostra barra carga mini no canvas se carregada e carregando
-      if(wn==='CARREGADA' && this.player.isCharging){
-        const prog = this.player.getChargeProgress();
-        ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(108, 30, 60, 5);
-        ctx.fillStyle = prog>0.85 ? '#ffffff' : prog>0.45 ? '#a78bfa' : '#7c3aed';
-        ctx.fillRect(109, 31, 58*prog, 3);
-      }
-      if(wn==='ESPADA' && this.player.isSwordCharging){
-        const prog=this.player.getSwordChargeProgress();
-        ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(108,30,60,5);
-        ctx.fillStyle= prog>0.92 ? '#ffffff' : prog>0.5 ? '#e8e8e8' : '#a0a0a0';
-        ctx.fillRect(109,31,58*prog,3);
-        if(prog>=0.99){ ctx.fillStyle='rgba(255,215,0,0.92)'; ctx.font='5px monospace'; ctx.textAlign='left'; ctx.fillText('PESADO PRONTO!',108,38); }
-        else if(prog>0.5){ ctx.fillStyle='rgba(255,255,255,0.72)'; ctx.font='4px monospace'; ctx.textAlign='left'; ctx.fillText('carregando pesado...',108,38); }
-      }
-      // CHICOTE - mini barra de carga (leque leve -> pesado)
-      if(wn==='CHICOTE' && this.player.isChicoteCharging){
-        const prog=this.player.getChicoteChargeProgress();
-        ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(108,30,60,5);
-        ctx.fillStyle= prog>=0.99 ? '#ffd700' : prog>0.5 ? '#c98a52' : '#8b4513';
-        ctx.fillRect(109,31,58*prog,3);
-        if(prog>=0.99){ ctx.fillStyle='rgba(255,215,0,0.92)'; ctx.font='5px monospace'; ctx.textAlign='left'; ctx.fillText('PESADO PRONTO!',108,38); }
-        else if(prog>0.5){ ctx.fillStyle='rgba(255,255,255,0.72)'; ctx.font='4px monospace'; ctx.textAlign='left'; ctx.fillText('carregando pesado...',108,38); }
-      }
-      // MOTOSSERRA - barra cura curta reta
-      if(wn==='MOTOSSERRA'){
-        const pct=this.player.getMotosserraChargePct();
-        ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(108,30,60,5);
-        ctx.fillStyle= pct>=1 ? '#ffffff' : pct>0.75 ? '#4ade80' : pct>0.4 ? '#ff8c42' : '#ff2a1a';
-        ctx.fillRect(109,31,58*pct,3);
-        if(pct>=0.99){ ctx.fillStyle='rgba(74,222,128,0.96)'; ctx.font='5px monospace'; ctx.textAlign='left'; ctx.fillText('♥ CURA PRONTA!',108,38); }
-        else if(pct>0.02){ ctx.fillStyle='rgba(255,255,255,0.78)'; ctx.font='4px monospace'; ctx.textAlign='left'; ctx.fillText(`SERRA ${Math.round(pct*100)}%`,108,38); }
-        if(this.player.weapon.hasPochita){
-          ctx.fillStyle='rgba(255,204,102,0.90)'; ctx.font='4px monospace'; ctx.textAlign='left'; ctx.fillText('POCHITA x3 RETO',108,44);
-        } else {
-          ctx.fillStyle='rgba(255,255,255,0.62)'; ctx.font='4px monospace'; ctx.textAlign='left'; ctx.fillText('CURTO RETO',108,44);
-        }
-      }
-      // Dev Raio Matemático - barra carga 100% + sobremesa mini indicadores no canvas
-      if(wn==='RAIO_MATEMATICO' && this.player.isRayMatematicoCharging){
-        const prog=this.player.getRayMatematicoProgress();
-        ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(108,30,60,5);
-        ctx.fillStyle= prog>=0.99 ? '#ffffff' : prog>0.60 ? '#7af2ff' : '#1a8fb3';
-        ctx.fillRect(109,31,58*prog,3);
-        // ticks 25% no canvas (cadência reduzida teleguiada)
-        ctx.fillStyle='rgba(255,255,255,0.45)';
-        for(let i=1;i<4;i++){ const mx=109+(58*(i/4)); ctx.fillRect(mx,31,1,3); }
-        if(prog>=0.99){ ctx.fillStyle='rgba(184,255,251,0.92)'; ctx.font='5px monospace'; ctx.textAlign='left'; ctx.fillText('PRONTO! SOLTE!',108,38); }
-        else { ctx.fillStyle='rgba(255,255,255,0.72)'; ctx.font='4px monospace'; ctx.textAlign='left'; ctx.fillText(`LAZER ${Math.round(prog*100)}%`,108,38); }
-        if(this.player.hasSobremesa()){
-          const cnt=this.player.rayMatematicoFiredThresholds? this.player.rayMatematicoFiredThresholds.size:0;
-          ctx.fillStyle='rgba(255,216,168,0.92)'; ctx.font='4px monospace'; ctx.textAlign='left'; ctx.fillText(`🧁 ${cnt}/4 mini`,108,44);
-        }
-      }
-      if(wn==='LUVA' && this.player.activeFist && !this.player.activeFist.dead){
-        const f=this.player.activeFist;
-        const prog= f.returning? 0.5 + (1 - f.life/4200)*0.5 : (f.traveled/f.maxRange);
-        ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(108,30,60,5);
-        ctx.fillStyle= f.returning? '#ff8a00' : '#ff3b30';
-        ctx.fillRect(109,31,58*clamp(prog,0,1),3);
-        ctx.fillStyle='rgba(255,255,255,0.72)'; ctx.font='4px monospace'; ctx.textAlign='left'; ctx.fillText(f.returning?'RETORNANDO':'LANÇADO',108,38);
-      }
-      // JG Bastão - barra no canvas
-      if(this.player.characterId==='jg'){
-        if(this.player.isBastaoCharging){
-          const prog=this.player.getBastaoChargeProgress();
-          ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(108,30,60,5);
-          ctx.fillStyle= prog>0.92 ? '#ffffff' : prog>0.5 ? '#fde68a' : '#facc15';
-          ctx.fillRect(109,31,58*prog,3);
-          if(prog>=0.99){ ctx.fillStyle='rgba(250,204,21,0.92)'; ctx.font='5px monospace'; ctx.textAlign='left'; ctx.fillText('ARREMESSO PRONTO!',108,38); }
-          else if(prog>0.5){ ctx.fillStyle='rgba(255,255,255,0.72)'; ctx.font='4px monospace'; ctx.textAlign='left'; ctx.fillText('carregando bastão...',108,38); }
-        } else if(!this.player.hasBastao && this.player.bastaoProjectile){
-          const bp=this.player.bastaoProjectile;
-          const prog= bp.returning? 0.5 + (1 - (dist(bp.x,bp.y,this.player.x,this.player.y)/bp.maxRange))*0.5 : (bp.traveled/bp.maxRange);
-          ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(108,30,60,5);
-          ctx.fillStyle= bp.returning? '#facc15' : '#fde68a';
-          ctx.fillRect(109,31,58*clamp(prog,0,1),3);
-          ctx.fillStyle='rgba(255,255,255,0.72)'; ctx.font='4px monospace'; ctx.textAlign='left'; ctx.fillText(bp.returning?'RETORNANDO':'LANÇADO',108,38);
-        } else if(!this.player.hasBastao){
-          ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(108,30,60,5);
-          ctx.fillStyle='#7a6500'; ctx.fillRect(109,31,8,3);
-          ctx.fillStyle='rgba(255,255,255,0.55)'; ctx.font='4px monospace'; ctx.textAlign='left'; ctx.fillText('SEM BASTÃO',108,38);
-        }
-      }
-      // JL Farmar Aura cooldown hint no canvas quando equipado
-      if(this.player.characterId==='jl' && this.player.equippedSpecial && this.player.equippedSpecial.id==='farmar_aura'){
-        const sp=this.player.equippedSpecial;
-        if(sp.isOnCooldown()){
-          ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(108,44,60,4);
-          const pct=sp.getCooldownPercent();
-          ctx.fillStyle='#ff6b9d'; ctx.fillRect(109,45,58*(1-pct),2);
-          ctx.fillStyle='rgba(255,255,255,0.72)'; ctx.font='4px monospace'; ctx.textAlign='left'; ctx.fillText(`67 ${sp.getRemainingSeconds()}s`,108,50);
-        } else if(sp.isActive){
-          ctx.fillStyle='rgba(255,107,157,0.92)'; ctx.font='5px monospace'; ctx.textAlign='left'; ctx.fillText('67 AURA ATIVA!',108,46);
-        }
-      }
-      if(this.player.secondaryWeapon){
-        const other = this.player.weapon === this.player.primaryWeapon ? this.player.secondaryWeapon.name : this.player.primaryWeapon.name;
-        ctx.fillStyle='rgba(255,255,255,0.65)';
-        ctx.font='5px "Press Start 2P"'; ctx.fillText(`[Q]→${other}`, 108, 34);
-      } else {
-        ctx.fillStyle='rgba(255,255,255,0.35)';
-        ctx.font='5px "Press Start 2P"'; ctx.fillText('[Q] sem secundária', 108, 34);
-      }
-      if(this.player.hasFlameTrail){
-        ctx.fillStyle='rgba(255,106,0,0.95)';
-        ctx.font='5px "Press Start 2P"'; ctx.fillText('🔥 RASTRO', 108, 40);
-      }
+      ctx.globalAlpha = this._hudIdle ? 0.62 : 1;
+      this.drawHudTopBar(ctx);   // corações + disquete + arma + barra de estado (esquerda)
+      this.drawHudRightBar(ctx); // dash + especial + pausa (direita)
+      this.drawHudInfo(ctx);     // fase/sala/inimigos (rodapé) + chips de melhorias
       // minimapa
       this.drawMinimap(ctx);
       ctx.restore();
+      
       if(this.currentRoom.isRare){
         ctx.fillStyle='rgba(255,215,0,0.95)'; ctx.font='7px "Press Start 2P"'; ctx.textAlign='center';
         ctx.fillText('★ SALA RARA ★', CANVAS_W/2, CANVAS_H - 14); ctx.textAlign='left';
@@ -21976,6 +21972,248 @@ class Game {
       ctx.fillStyle='rgba(255,59,48,0.04)'; for(let y=0;y<CANVAS_H;y+=24) for(let x=0;x<CANVAS_W;x+=24) if((x+y)%48===0) ctx.fillRect(x,y,24,24);
     }
     }catch(e){ console.error('Game draw outer error', e); }finally{ try{ if(_saved) ctx.restore(); }catch(_){} }
+  }
+
+  // Estado único da arma para o slot da HUD (barra + rótulo).
+  // Antes cada arma desenhava seu próprio bloco no MESMO lugar, empilhando texto por cima
+  // de texto (e por cima dos corações). Agora existe um slot só, com prioridade clara.
+  getWeaponHudState(){
+    const p = this.player, wn = p.weapon ? p.weapon.name : 'NORMAL';
+    if(wn==='CARREGADA' && p.isCharging){
+      const prog = p.getChargeProgress();
+      return { pct: prog, color: prog>0.85 ? '#ffffff' : prog>0.45 ? '#a78bfa' : '#7c3aed',
+               label: prog>0.85 ? 'CARGA' : 'carga', strong: prog>0.85 };
+    }
+    if(wn==='ESPADA' && p.isSwordCharging){
+      const prog = p.getSwordChargeProgress();
+      return { pct: prog, color: prog>0.92 ? '#ffffff' : prog>0.5 ? '#e8e8e8' : '#a0a0a0',
+               label: prog>=0.99 ? 'PESADO!' : 'pesado', strong: prog>=0.99, strongColor:'#ffd700' };
+    }
+    if(wn==='CHICOTE' && p.isChicoteCharging){
+      const prog = p.getChicoteChargeProgress();
+      return { pct: prog, color: prog>=0.99 ? '#ffd700' : prog>0.5 ? '#c98a52' : '#8b4513',
+               label: prog>=0.99 ? 'PESADO!' : 'pesado', strong: prog>=0.99, strongColor:'#ffd700' };
+    }
+    if(wn==='RAIO_MATEMATICO' && p.isRayMatematicoCharging){
+      const prog = p.getRayMatematicoProgress();
+      const cnt = p.hasSobremesa() && p.rayMatematicoFiredThresholds ? p.rayMatematicoFiredThresholds.size : 0;
+      return { pct: prog, color: prog>=0.99 ? '#ffffff' : prog>0.60 ? '#7af2ff' : '#1a8fb3',
+               label: prog>=0.99 ? 'SOLTE!' : (cnt?`lazer ${cnt}/4` : 'lazer'),
+               strong: prog>=0.99, strongColor:'#b8fffb', ticks:true };
+    }
+    if(wn==='MOTOSSERRA'){
+      const pct = p.getMotosserraChargePct();
+      return { pct, color: pct>=1 ? '#ffffff' : pct>0.75 ? '#4ade80' : pct>0.4 ? '#ff8c42' : '#ff2a1a',
+               label: pct>=0.99 ? '♥ CURA' : (p.weapon.hasPochita ? 'pochita' : 'curto'),
+               strong: pct>=0.99, strongColor:'#4ade80' };
+    }
+    if(wn==='LUVA' && p.activeFist && !p.activeFist.dead){
+      const f = p.activeFist;
+      const prog = f.returning ? 0.5 + (1 - f.life/4200)*0.5 : (f.traveled/f.maxRange);
+      return { pct: clamp(prog,0,1), color: f.returning ? '#ff8a00' : '#ff3b30', label: f.returning?'volta':'voo' };
+    }
+    if(p.characterId==='jg'){
+      if(p.isBastaoCharging){
+        const prog = p.getBastaoChargeProgress();
+        return { pct: prog, color: prog>0.92 ? '#ffffff' : prog>0.5 ? '#fde68a' : '#facc15',
+                 label: prog>=0.99 ? 'PRONTO!' : 'bastão', strong: prog>=0.99, strongColor:'#facc15' };
+      }
+      if(!p.hasBastao && p.bastaoProjectile){
+        const bp = p.bastaoProjectile;
+        const prog = bp.returning ? 0.5 + (1 - (dist(bp.x,bp.y,p.x,p.y)/bp.maxRange))*0.5 : (bp.traveled/bp.maxRange);
+        return { pct: clamp(prog,0,1), color: bp.returning ? '#facc15' : '#fde68a', label: bp.returning?'volta':'voo' };
+      }
+      if(!p.hasBastao) return { pct: 0.14, color: '#7a6500', label: 'sem bastão' };
+    }
+    if(p.characterId==='jl' && p.equippedSpecial && p.equippedSpecial.id==='farmar_aura'){
+      const sp = p.equippedSpecial;
+      if(sp.isOnCooldown()) return { pct: 1 - sp.getCooldownPercent(), color: '#ff6b9d', label: `67 ${sp.getRemainingSeconds()}s` };
+      if(sp.isActive) return { pct: 1, color: '#ff6b9d', label: '67 aura', strong: true, strongColor:'#ff6b9d' };
+    }
+    if(wn==='METRALHADORA' && (p.miniHeat > 0 || p.isOverheated)){
+      const tpct = clamp(p.miniHeat / METRALHADORA_HEAT_MAX * 100, 0, 100);
+      const over = !!p.isOverheated;
+      return { pct: tpct/100, color: over ? '#ff1a1a' : tpct>75 ? '#ff3b30' : tpct>45 ? '#ff6a00' : '#00ff88',
+               label: over ? 'OVER!' : `temp ${Math.round(tpct)}%`, strong: over, strongColor:'#ff6b5e' };
+    }
+    return null;
+  }
+
+  // Faixa esquerda do HUD: corações + disquete de continues + arma + slot de estado.
+  // Cada peça é posicionada a partir da largura real da anterior -> nada se sobrepõe.
+  drawHudTopBar(ctx){
+    const p = this.player;
+    if(!p) return;
+    const top = 2, ph = HUD_BAR_H - 4;              // painel cabe inteiro dentro da parede
+    const zoneR = HUD_LEFT_MAX - 6;                // nunca cruza a janela livre da porta
+    const n = Math.max(1, Math.ceil(p.maxHp/2));
+    const hSize = 15, hGap = 20, hX = 10, hY = 4;
+    const heartsW = (n-1)*hGap + hSize;
+    // --- layout (medido antes de pintar, para o painel sair do tamanho certo) ---
+    const conts = p.continues|0;
+    const badgeW = conts > 0 ? 17 + String(conts).length*7 : 0;
+    const state = this.getWeaponHudState();
+    const slotW = state ? 62 : 0;
+    const slotX = zoneR - slotW;
+    const badgeX = hX + heartsW + 6;
+    const labelX = badgeX + (badgeW ? badgeW + 6 : 0);
+    const labelMax = Math.max(24, (state ? slotX - 8 : zoneR) - labelX);
+    const wn = p.weapon ? p.weapon.name : 'NORMAL';
+    const wBase = wn==='SHOTGUN' ? 'SHOTGUN [5x]' : wn==='RAIO' ? 'RAIO ⚡ [pierce]' : wn==='RAIO_MATEMATICO' ? 'LAZER COD. [brimstone]' : wn==='LASER' ? 'LASER ◉ [carga]' : wn==='CARREGADA' ? 'CARREGADA [carga]' : wn==='BAZUCA' ? 'BAZUCA 💥 [área]' : wn==='METRALHADORA' ? 'METRALHADORA [temp]' : wn==='ESPADA' ? 'ESPADA ⚔️ [combo]' : wn==='LUVA' ? 'LUVA 🥊 x2 [dual]' : wn==='MOTOSSERRA' ? 'MOTOSSERRA 🪚 [carga]' : wn==='BASTAO' ? 'BASTÃO 🏏 [gira]' : wn==='CHICOTE' ? 'CHICOTE [carga]' : 'NORMAL';
+    const extras = [];
+    if(p.characterId==='jg' && !p.hasBastao) extras.push('sem bastão');
+    else if(p.characterId==='jl') extras.push('67');
+    if(p.hasFlameTrail) extras.push('🔥');
+    if(p._hasSwiftBoots) extras.push('💨');
+    if(p.hasNoclip) extras.push('◈');
+    if(p.hasDillianShield) extras.push('🛡');
+    if(p.hasDoubleShot) extras.push('x2');
+    let sec = null;
+    if(p.secondaryWeapon) sec = (p.weapon === p.primaryWeapon ? p.secondaryWeapon.name : p.primaryWeapon.name);
+    const wColor = wn==='SHOTGUN' ? 'rgba(255,140,66,0.95)' : wn==='RAIO' ? 'rgba(0,229,255,0.95)' : wn==='RAIO_MATEMATICO' ? 'rgba(184,255,251,0.96)' : wn==='LASER' ? 'rgba(255,26,46,0.96)' : wn==='CARREGADA' ? 'rgba(167,139,250,0.95)' : wn==='BAZUCA' ? 'rgba(255,59,48,0.95)' : wn==='METRALHADORA' ? 'rgba(255,59,48,0.95)' : wn==='ESPADA' ? 'rgba(220,220,230,0.95)' : wn==='LUVA' ? 'rgba(255,60,60,0.95)' : wn==='MOTOSSERRA' ? 'rgba(255,42,26,0.96)' : wn==='BASTAO' ? 'rgba(250,204,21,0.95)' : wn==='CHICOTE' ? 'rgba(194,138,82,0.95)' : 'rgba(255,235,59,0.9)';
+    const fam = '"Press Start 2P"';
+    const wFont = wn==='LUVA' ? 'sans-serif' : fam;
+    let label = wBase, lw = 0;
+    ctx.font = `5px ${wFont}`;
+    const tryAdd = txt=>{
+      const cand = `${label} ${txt}`;
+      if(ctx.measureText(cand).width <= labelMax){ label = cand; return true; }
+      return false;
+    };
+    if(sec) tryAdd(`⇄ ${sec}`);
+    for(const ex of extras){ if(!tryAdd(ex)) break; }
+    ctx.font = `5px ${wFont}`;
+    lw = ctx.measureText(label).width;
+    if(lw > labelMax) label = fitText(ctx, label, labelMax, 5, wFont, 3.5);
+    ctx.font = `5px ${wFont}`;
+    lw = ctx.measureText(label).width;
+    const panelR = Math.min(zoneR, Math.max(labelX + lw + 8, state ? slotX + slotW + 6 : 0, badgeX + badgeW + 8));
+    // --- fundo do painel ---
+    roundRectPath(ctx, 4, top, panelR - 4, ph, 7);
+    ctx.fillStyle = 'rgba(8,8,16,0.74)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.09)'; ctx.lineWidth = 1; ctx.stroke();
+    // --- corações ---
+    drawHealth(ctx, hX, hY, p.hp, p.maxHp, p.boneHearts|0, hSize, hGap);
+    // --- disquete da vida (continues) ---
+    if(conts > 0){
+      const pulse = 0.5 + Math.sin(Date.now()*0.005)*0.3;
+      ctx.fillStyle = `rgba(34,197,94,${0.16 + pulse*0.14})`;
+      ctx.fillRect(badgeX, top + 2, badgeW, ph - 4);
+      ctx.strokeStyle = `rgba(74,222,128,${0.45 + pulse*0.35})`; ctx.lineWidth = 1;
+      ctx.strokeRect(badgeX + .5, top + 2.5, badgeW - 1, ph - 5);
+      ctx.fillStyle = '#1f2a24'; ctx.fillRect(badgeX + 4, top + 5, 9, 8);
+      ctx.fillStyle = DISQUETE_VIDA_COLOR; ctx.fillRect(badgeX + 5, top + 6, 7, 3);
+      ctx.fillStyle = '#c3cec8'; ctx.fillRect(badgeX + 5, top + 10, 3, 1.4);
+      ctx.fillStyle = '#fff'; ctx.font = '6px "Press Start 2P"'; ctx.textAlign = 'left';
+      ctx.fillText(`x${conts}`, badgeX + 15, top + 12);
+    }
+    // --- arma ---
+    ctx.fillStyle = wColor; ctx.font = `5px ${wFont}`;
+    ctx.fillText(label, labelX, top + 13);
+    // --- slot de estado (barra + rótulo) ---
+    if(state){
+      const bw = 56, bx = slotX + 6, by = top + 4;
+      roundRectPath(ctx, slotX, top, slotW, ph, 6);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fill();
+      roundRectPath(ctx, bx, by, bw, 5, 2.5);
+      ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fill();
+      const pct = clamp(state.pct, 0, 1);
+      if(pct > 0){
+        roundRectPath(ctx, bx, by, bw * pct, 5, 2.5);
+        ctx.fillStyle = state.color; ctx.fill();
+      }
+      if(state.ticks){
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        for(let i=1;i<4;i++) ctx.fillRect(bx + bw*(i/4), by, 1, 5);
+      }
+      ctx.font = '4px "Press Start 2P"'; ctx.textAlign = 'right';
+      ctx.fillStyle = state.strong ? (state.strongColor || '#ffffff') : 'rgba(255,255,255,0.72)';
+      ctx.fillText(state.label, slotX + slotW - 4, top + 18);
+      ctx.textAlign = 'left';
+    }
+    ctx.textAlign = 'left';
+  }
+
+  // Faixa direita do HUD: dash, especial [E] e pausa - fora da janela da porta.
+  drawHudRightBar(ctx){
+    const p = this.player;
+    if(!p) return;
+    const top = 2, ph = HUD_BAR_H - 4;
+    let x = HUD_RIGHT_MIN + 4;
+    // ===== DASH =====
+    const dw = 112;
+    const dashReady = p.dashCooldown <= 0;
+    const dashPct = dashReady ? 1 : 1 - (p.dashCooldown / DASH_COOLDOWN);
+    roundRectPath(ctx, x, top, dw, ph, 7);
+    ctx.fillStyle = dashReady ? 'rgba(0,217,255,0.12)' : 'rgba(8,8,16,0.74)'; ctx.fill();
+    ctx.strokeStyle = dashReady ? 'rgba(0,217,255,0.40)' : 'rgba(255,255,255,0.09)'; ctx.lineWidth = 1; ctx.stroke();
+    roundRectPath(ctx, x+6, top+4, 58, 5, 2.5);
+    ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fill();
+    if(dashReady){
+      ctx.save(); ctx.shadowColor = 'rgba(0,217,255,0.85)'; ctx.shadowBlur = 6;
+      roundRectPath(ctx, x+6, top+4, 58*dashPct, 5, 2.5); ctx.fillStyle = '#00d9ff'; ctx.fill();
+      ctx.restore();
+    } else {
+      roundRectPath(ctx, x+6, top+4, 58*dashPct, 5, 2.5); ctx.fillStyle = '#5b6478'; ctx.fill();
+    }
+    ctx.font = '4px "Press Start 2P"'; ctx.textAlign = 'right';
+    ctx.fillStyle = dashReady ? '#7af2ff' : 'rgba(255,255,255,0.6)';
+    ctx.fillText(dashReady ? 'DASH PRONTO' : `DASH ${Math.ceil(p.dashCooldown/100) }s`, x+dw-5, top+8);
+    ctx.textAlign = 'left';
+    x += dw + 6;
+    // ===== ESPECIAL [E] =====
+    const sp = p.equippedSpecial, sw = 150;
+    roundRectPath(ctx, x, top, sw, ph, 7);
+    ctx.fillStyle = 'rgba(8,8,16,0.74)'; ctx.fill();
+    ctx.strokeStyle = sp && sp.isActive ? 'rgba(0,217,255,0.38)' : 'rgba(255,255,255,0.09)'; ctx.lineWidth = 1; ctx.stroke();
+    if(sp){
+      let st = sp.getStatusText();
+      if(sp.id==='flecha_stand'){
+        const an = sp.currentAbility ? sp.currentAbility.name : 'Aleatória';
+        st = sp.isOnCooldown() ? `${an} • CD ${sp.getRemainingSeconds()}s`
+          : sp.isActive ? `${an} • ${Math.ceil(sp.durationRemaining/1000)}s`
+          : `${an} • Pronto!`;
+      }
+      const active = !!sp.isActive, cooling = !!sp.isOnCooldown();
+      ctx.fillStyle = active ? 'rgba(0,217,255,0.10)' : cooling ? 'rgba(255,255,255,0.04)' : 'rgba(255,204,0,0.07)';
+      ctx.fillRect(x+2, top+2, sw-4, ph-4);
+      ctx.font = '4px "Press Start 2P"'; ctx.textAlign = 'left';
+      ctx.fillStyle = active ? '#7af2ff' : cooling ? 'rgba(255,255,255,0.6)' : (sp.color || '#ffcc00');
+      ctx.fillText(fitText(ctx, `${sp.icon} ${sp.name} [E]`, sw - 8 - Math.min(70, ctx.measureText(st).width), 4), x+6, top+8);
+      ctx.textAlign = 'right';
+      ctx.fillText(fitText(ctx, st, 70, 4), x+sw-5, top+8);
+      ctx.textAlign = 'left';
+      const spct = active ? sp.getDurationPercent()*100 : cooling ? sp.getCooldownPercent()*100 : 100;
+      roundRectPath(ctx, x+6, top+13, sw-12, 3, 1.5);
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fill();
+      if(spct > 0){ roundRectPath(ctx, x+6, top+13, (sw-12)*clamp(spct/100,0,1), 3, 1.5); ctx.fillStyle = sp.color || '#ffcc00'; ctx.fill(); }
+    } else {
+      ctx.font = '4px "Press Start 2P"';
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillText('SEM ESPECIAL [E]', x+6, top+12);
+    }
+    x += sw + 8;
+    // ===== PAUSA + dica ESC =====
+    const b = HUD_BTN, isPaused = this.state === 'PAUSED';
+    const hover = this.isHudPauseHover();
+    ctx.font = '4px "Press Start 2P"'; ctx.textAlign = 'right';
+    ctx.fillStyle = hover ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.45)';
+    ctx.fillText('ESC', b.x - 5, top + 13);
+    ctx.textAlign = 'left';
+    roundRectPath(ctx, b.x, b.y, b.w, b.h, 6);
+    ctx.fillStyle = isPaused ? 'rgba(0,217,255,0.18)' : hover ? 'rgba(255,255,255,0.16)' : 'rgba(8,8,16,0.74)';
+    ctx.fill();
+    ctx.strokeStyle = isPaused ? 'rgba(0,217,255,0.60)' : hover ? 'rgba(255,255,255,0.38)' : 'rgba(255,255,255,0.14)';
+    ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = hover || isPaused ? '#ffffff' : '#dfe7f5';
+    if(isPaused){
+      ctx.beginPath();
+      ctx.moveTo(b.x + b.w/2 - 3, b.y + 4); ctx.lineTo(b.x + b.w/2 + 5, b.y + b.h/2); ctx.lineTo(b.x + b.w/2 - 3, b.y + b.h - 4);
+      ctx.closePath(); ctx.fill();
+    } else {
+      ctx.fillRect(b.x + b.w/2 - 5, b.y + 4, 3.5, b.h - 8);
+      ctx.fillRect(b.x + b.w/2 + 1.5, b.y + 4, 3.5, b.h - 8);
+    }
   }
 
   // HUD informational desenhado no canvas (substitui o HUD DOM do topo)
@@ -22019,86 +22257,24 @@ class Game {
         tag='★ SALA RARA ★'; tagColor='#ffd700';
       }
     }
-    // ===== painel central: fase + sala/inimigos =====
-    const infoLine = `SALA ${room?`${room.gx},${room.gy}`:'-'} • ${this.roomsExplored}/${this.rooms.length} • INIMIGOS ${curEnemies}${locked?' 🔒':''}/${totalEnemies}`;
-    ctx.font='6px "Press Start 2P"'; const tagW=ctx.measureText(tag).width;
-    ctx.font='5px "Press Start 2P"'; const infoW=ctx.measureText(infoLine).width;
-    const pw = Math.min(Math.max(tagW, infoW) + 34, 400);
-    const px = clamp(CANVAS_W/2 - pw/2, 352, CANVAS_W - 190 - pw);
-    roundRectPath(ctx, px, 5, pw, 32, 8);
-    ctx.fillStyle='rgba(255,255,255,0.05)'; ctx.fill();
-    ctx.strokeStyle='rgba(255,255,255,0.09)'; ctx.lineWidth=1; ctx.stroke();
-    roundRectPath(ctx, px+5, 10, 3, 22, 1.5); ctx.fillStyle=tagColor; ctx.fill();
-    ctx.textAlign='center';
-    ctx.font='6px "Press Start 2P"'; ctx.fillStyle=tagColor;
-    ctx.fillText(tag, px+pw/2, 18);
-    ctx.font='5px "Press Start 2P"'; ctx.fillStyle='rgba(255,255,255,0.88)';
-    ctx.fillText(infoLine, px+pw/2, 31);
+    // ===== painel de informações no RODAPÉ (fora da faixa da parede e do vão da porta) =====
+    const infoLine = `SALA ${room?`${room.gx},${room.gy}`:'-'} • ${this.roomsExplored}/${this.rooms.length} salas • INIMIGOS ${curEnemies}${locked?' 🔒':''}/${totalEnemies}`;
+    ctx.font='5px "Press Start 2P"'; const tagW=ctx.measureText(tag).width;
+    ctx.font='4px "Press Start 2P"'; const infoW=ctx.measureText(infoLine).width;
+    const pw = Math.min(Math.max(tagW, infoW) + 26, 520);
+    const px = clamp(CANVAS_W/2 - pw/2, 8, CANVAS_W - pw - 8);
+    const py = CANVAS_H - 54, ph2 = 21;
+    roundRectPath(ctx, px, py, pw, ph2, 8);
+    ctx.fillStyle='rgba(8,8,16,0.74)'; ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.10)'; ctx.lineWidth=1; ctx.stroke();
+    roundRectPath(ctx, px+5, py+4, 3, ph2-8, 1.5); ctx.fillStyle=tagColor; ctx.fill();
     ctx.textAlign='left';
-    // ===== TEMP metralhadora =====
-    if(p.weapon && p.weapon.name==='METRALHADORA'){
-      const tpct = clamp(p.miniHeat / METRALHADORA_HEAT_MAX * 100, 0, 100);
-      if(tpct>0.5 || p.isOverheated){
-        const over = !!p.isOverheated;
-        roundRectPath(ctx, 106, 29, 68, 7, 3.5);
-        ctx.fillStyle = over ? 'rgba(255,59,48,0.16)' : 'rgba(255,255,255,0.07)'; ctx.fill();
-        if(over){ ctx.strokeStyle='rgba(255,59,48,0.55)'; ctx.lineWidth=1; ctx.stroke(); }
-        roundRectPath(ctx, 109, 31, 62*clamp(tpct/100,0,1), 3, 1.5);
-        ctx.fillStyle = over ? '#ff1a1a' : tpct>75 ? '#ff3b30' : tpct>45 ? '#ff6a00' : '#00ff88';
-        ctx.fill();
-        ctx.font='4px monospace';
-        ctx.fillStyle = over ? 'rgba(255,110,90,0.98)' : 'rgba(255,255,255,0.8)';
-        ctx.fillText(over ? `SUPERAQUECIDA! ${Math.round(tpct)}%` : `TEMP ${Math.round(tpct)}%`, 108, 40);
-      }
-    }
-    // ===== Especial [E] =====
-    const sp = p.equippedSpecial;
-    const rx0 = CANVAS_W - 178;
-    if(sp){
-      let st = sp.getStatusText();
-      if(sp.id==='flecha_stand'){
-        const an = sp.currentAbility ? sp.currentAbility.name : 'Aleatória';
-        st = sp.isOnCooldown() ? `${an} • CD ${sp.getRemainingSeconds()}s`
-          : sp.isActive ? `${an} • ${Math.ceil(sp.durationRemaining/1000)}s`
-          : `${an} • Pronto!`;
-      }
-      const active = !!sp.isActive, cooling = !!sp.isOnCooldown();
-      roundRectPath(ctx, rx0, 28, 138, 14, 6);
-      ctx.fillStyle = active ? 'rgba(0,217,255,0.10)' : cooling ? 'rgba(255,255,255,0.04)' : 'rgba(255,204,0,0.07)';
-      ctx.fill();
-      ctx.strokeStyle = active ? 'rgba(0,217,255,0.38)' : cooling ? 'rgba(255,255,255,0.08)' : 'rgba(255,204,0,0.30)';
-      ctx.lineWidth=1; ctx.stroke();
-      ctx.font='4px "Press Start 2P"';
-      ctx.fillStyle = active ? '#7af2ff' : cooling ? 'rgba(255,255,255,0.55)' : (sp.color||'#ffcc00');
-      ctx.fillText(`${sp.icon} ${sp.name} [E]`, rx0+6, 34);
-      ctx.textAlign='right'; ctx.fillText(st, rx0+132, 34); ctx.textAlign='left';
-      const spct = active ? sp.getDurationPercent()*100 : cooling ? sp.getCooldownPercent()*100 : 100;
-      roundRectPath(ctx, rx0+6, 36, 126, 2, 1);
-      ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fill();
-      if(spct>0){ roundRectPath(ctx, rx0+6, 36, 126*clamp(spct/100,0,1), 2, 1); ctx.fillStyle=sp.color||'#ffcc00'; ctx.fill(); }
-    }
-    // ===== botão de pausa (clique) + dica ESC =====
-    const b=HUD_BTN, isPaused=this.state==='PAUSED';
-    const hover=this.isHudPauseHover();
-    roundRectPath(ctx, b.x, b.y, b.w, b.h, 6);
-    ctx.fillStyle = isPaused ? 'rgba(0,217,255,0.18)' : hover ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.07)';
-    ctx.fill();
-    ctx.strokeStyle = isPaused ? 'rgba(0,217,255,0.60)' : hover ? 'rgba(255,255,255,0.38)' : 'rgba(255,255,255,0.14)';
-    ctx.lineWidth=1; ctx.stroke();
-    ctx.fillStyle = hover||isPaused ? '#ffffff' : '#dfe7f5';
-    if(isPaused){
-      ctx.beginPath();
-      ctx.moveTo(b.x+10, b.y+6); ctx.lineTo(b.x+17, b.y+10.5); ctx.lineTo(b.x+10, b.y+15);
-      ctx.closePath(); ctx.fill();
-    } else {
-      ctx.fillRect(b.x+9, b.y+6, 3.5, 9);
-      ctx.fillRect(b.x+14, b.y+6, 3.5, 9);
-    }
-    ctx.font='4px "Press Start 2P"'; ctx.textAlign='center';
-    ctx.fillStyle = hover ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.42)';
-    ctx.fillText(isPaused ? 'RETOMAR' : 'ESC ⏸', b.x+b.w/2, b.y+b.h+9);
+    ctx.font='5px "Press Start 2P"'; ctx.fillStyle=tagColor;
+    ctx.fillText(fitText(ctx, tag, pw-22, 5), px+13, py+9);
+    ctx.font='4px "Press Start 2P"'; ctx.fillStyle='rgba(255,255,255,0.88)';
+    ctx.fillText(fitText(ctx, infoLine, pw-22, 4), px+13, py+17);
     ctx.textAlign='left';
-    // ===== Melhorias por arma (chips) =====
+    // ===== Melhorias por arma (chips) - 2 linhas no canto inferior esquerdo =====
     let ids=[];
     const wName = p.weapon ? p.weapon.name : null;
     if(wName){
@@ -22112,49 +22288,73 @@ class Game {
     }
     for(const sid of (p.weaponUpgrades['SPECIAL']||[])) if(!ids.includes(sid)) ids.push(sid);
     ids=[...new Set(ids)];
+    const CHIP_X_MAX = Math.max(168, Math.min(336, px - 12));   // nunca invade o painel de informações
+    const CHIP_MAX_ROWS = 2;
     ctx.font='4px "Press Start 2P"';
     if(ids.length>0){
-      let cx2 = 58;
-      const chips=[];
+      const rows=[[]], rW=[0,0];
+      let overflow = 0;
       for(const uid of ids){
         const def = UPGRADE_MAP.get(uid); if(!def) continue;
         const r = RARITY[def.rarity];
         const lvl = p.upgradeLevels.get(uid) || 1, maxLv = def.maxLevel || 1;
         const label = `${def.name}${maxLv>1?` ${lvl}/${maxLv}`:''}`;
         const bw = ctx.measureText(label).width + 9;
-        if(cx2+bw > CANVAS_W-140) break;
-        chips.push({x:cx2, w:bw, label, r});
-        cx2 += bw+3;
+        let ri = rows.length-1;
+        if(rows[ri].length && 58 + rW[ri] + bw > CHIP_X_MAX){
+          if(rows.length >= CHIP_MAX_ROWS){ overflow++; continue; }
+          ri = rows.push([]) - 1;
+        }
+        rows[ri].push({x: 58 + rW[ri], w: bw, label, r});
+        rW[ri] += bw + 3;
       }
-      roundRectPath(ctx, 4, CANVAS_H-30, Math.max(cx2, 52)+2, 15, 7);
-      ctx.fillStyle='rgba(10,10,18,0.55)'; ctx.fill();
+      if(overflow>0){
+        const label = `+${overflow}`;
+        const bw = ctx.measureText(label).width + 9;
+        const ri = rows.length-1;
+        const more = {x: 58 + rW[ri], w: bw, label, r: RARITY.COMUM};
+        if(58 + rW[ri] + bw > CHIP_X_MAX && rows[ri].length){
+          const last = rows[ri][rows[ri].length-1];
+          rW[ri] -= last.w + 3; rows[ri].pop(); more.x = 58 + rW[ri];
+        }
+        rows[ri].push(more); rW[ri] += bw + 3;
+      }
+      const rowH = 11, boxH = rows.length * rowH + 5;
+      const boxY = CANVAS_H - 12 - boxH;
+      roundRectPath(ctx, 4, boxY, Math.min(CHIP_X_MAX, Math.max(Math.max(...rW) + 58, 52) + 2), boxH, 7);
+      ctx.fillStyle='rgba(10,10,18,0.62)'; ctx.fill();
       ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.lineWidth=1; ctx.stroke();
       ctx.fillStyle='rgba(255,255,255,0.55)';
-      ctx.fillText('MELHORIAS', 9, CANVAS_H-20);
-      for(const c of chips){
-        roundRectPath(ctx, c.x, CANVAS_H-27, c.w, 9, 4.5);
-        ctx.fillStyle=c.r.bg; ctx.fill();
-        ctx.strokeStyle=c.r.border; ctx.lineWidth=1; ctx.stroke();
-        ctx.fillStyle=c.r.color; ctx.fillText(c.label, c.x+4.5, CANVAS_H-20);
-      }
+      ctx.fillText('MELHORIAS', 9, boxY + 11);
+      rows.forEach((chips, ri)=>{
+        const cy = boxY + 4 + ri*rowH;
+        for(const c of chips){
+          roundRectPath(ctx, c.x, cy, c.w, 9, 4.5);
+          ctx.fillStyle=c.r.bg; ctx.fill();
+          ctx.strokeStyle=c.r.border; ctx.lineWidth=1; ctx.stroke();
+          ctx.fillStyle=c.r.color; ctx.fillText(c.label, c.x+4.5, cy + 7);
+        }
+      });
     } else {
       let totalLevels=0; for(const v of p.upgradeLevels.values()) totalLevels+=v;
       const totalIds = p.obtainedUpgrades ? p.obtainedUpgrades.size : 0;
       const displayTotal = totalLevels || totalIds;
       if(displayTotal>0){
-        roundRectPath(ctx, 4, CANVAS_H-30, 210, 14, 7);
-        ctx.fillStyle='rgba(10,10,18,0.55)'; ctx.fill();
+        roundRectPath(ctx, 4, CANVAS_H-26, 236, 14, 7);
+        ctx.fillStyle='rgba(10,10,18,0.62)'; ctx.fill();
         ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.lineWidth=1; ctx.stroke();
         ctx.fillStyle='rgba(160,152,180,0.9)';
-        ctx.fillText(`${displayTotal} níveis • troque arma [Q] p/ ver`, 9, CANVAS_H-20);
+        ctx.fillText(fitText(ctx, `${displayTotal} níveis • troque arma [Q] p/ ver`, 226, 4, 'monospace'), 9, CANVAS_H-16);
       }
     }
     ctx.fillStyle='rgba(255,255,255,0.28)';
-    ctx.fillText(`SEED ${this.seed}`, 8, CANVAS_H-7);
+    ctx.textAlign='right';
+    ctx.fillText(`SEED ${this.seed}`, CANVAS_W - 8, CANVAS_H - 7);
+    ctx.textAlign='left';
   }
 
   isHudPauseHit(x,y){
-    return x>=HUD_BTN.x-2 && x<=HUD_BTN.x+HUD_BTN.w+2 && y>=HUD_BTN.y-2 && y<=HUD_BTN.y+HUD_BTN.h+11;
+    return x>=HUD_BTN.x-2 && x<=HUD_BTN.x+HUD_BTN.w+2 && y>=HUD_BTN.y-2 && y<=HUD_BTN.y+HUD_BTN.h+2;
   }
   isHudPauseHover(){
     const m=this._hudMouse;
