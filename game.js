@@ -2320,12 +2320,20 @@ const SETCH_ROOM_CHANCE = 1.0; // 100% por andar quando elegível (Fase 5 ou 6) 
 const SETCH_ROOM_FLOORS = [5,6]; // só aparece em Fase 5 ou 6
 const SETCH_ROOM_MIN_DISTANCE = 2; // distância mínima do start
 const SETCH_CUP_COUNT = 3;
-const SETCH_SHUFFLE_MOVES = 7; // número de trocas de copos
-const SETCH_SHUFFLE_SPEED = 420; // ms por troca
-const SETCH_SHOW_BALL_TIME = 900; // ms mostra bolinha antes de esconder
+const SETCH_SHUFFLE_MOVES = 7; // número de trocas de copos (fallback; por rodada usa SETCH_ROUND_CONFIG)
+const SETCH_SHUFFLE_SPEED = 420; // ms por troca (fallback)
+const SETCH_SHOW_BALL_TIME = 900; // ms mostra bolinha antes de esconder (fallback)
 const SETCH_NPC_SIZE_W = 26;
 const SETCH_NPC_SIZE_H = 32;
 const SETCH_REWARD_UPGRADE_CHANCE = 0.50; // 50% upgrade, 50% vida cibernética
+// --- Interação com a mesa (novo) ---
+const SETCH_TABLE_CX_RATIO = 0.5;      // centro X da mesa (fracção do canvas)
+const SETCH_CUP_SPACING = 88;          // distância entre copos
+const SETCH_CUP_PICK_RANGE = 70;       // distância para o [E] "escolher pelo copo mais perto"
+const SETCH_TABLE_KEEP_RANGE = 230;    // além disso o jogador está "longe" (Setch cobra a presença)
+const SETCH_NAG_COOLDOWN = 2600;       // ms entre os avisos de "fica perto"
+const SETCH_ARC_FX = 620;              // duração do arco visual da troca (ms)
+const SETCH_GHOST_HAND_FX = 520;       // duração das mãos fantasma sobre os copos (ms)
 // ===== DISQUETE DA VIDA - também ganhävel no Jogo do Copinho da Sala Setch =====
 // Rolagem de 3 resultados (não 2): disquete é o prize mais raro dos três.
 //   [0, D)                            -> 'disquete'  (continue)
@@ -2333,6 +2341,27 @@ const SETCH_REWARD_UPGRADE_CHANCE = 0.50; // 50% upgrade, 50% vida cibernética
 //   [D+U, 1)                          -> 'cyber'     (Vida Cibernética)
 const SETCH_REWARD_DISQUETE_CHANCE = 0.20; // 20% de chance de sair o Disquete da Vida
 const SETCH_INTERACT_RANGE = 64;
+// ===== JOGO DO COPINHO - rodadas, escalada de dificuldade e prêmios =====
+// O minigame virou uma partida de 3 rodadas: cada rodada embaralha mais e mais rápido.
+// Só a vitória na RODADA FINAL libera as portas e entrega o prêmio grande.
+// config por rodada:
+//   moves      -> trocas de copos
+//   speed      -> ms entre trocas
+//   show       -> ms mostrando a bolinha antes de esconder (sobe nas rodadas = tempo de memória)
+//   choose     -> ms para escolher
+//   double     -> chance da troca vir em par (2 trocas coladas: a "trapaça" do Setch)
+//   ballMix    -> chance de a troca envolver a bolinha (evita sequências paradas/trapaceiras)
+//   label      -> nome da rodada no HUD
+const SETCH_ROUNDS = 3;
+const SETCH_ROUND_CONFIG = [
+  { moves: 5,  speed: 470, show: 1150, choose: 9000, double: 0.00, ballMix: 0.55, label: 'AQUECIMENTO' },
+  { moves: 8,  speed: 400, show: 950,  choose: 7400, double: 0.28, ballMix: 0.66, label: 'EMBARALHANDO' },
+  { moves: 12, speed: 315, show: 720,  choose: 6000, double: 0.52, ballMix: 0.80, label: 'FINAL' },
+];
+const SETCH_FAST_CHOOSE_TIME = 2600;   // escolher até aqui = bônus de resposta rápida
+const SETCH_STREAK_DISQUETE_BONUS = 0.18; // +18% de chance de Disquete se acertar 2+ rodadas seguidas
+const SETCH_ROUND_WIN_HEAL = 1;         // acerto no meio da partida cura 1 coração
+const SETCH_STREAK_HEAL_BONUS = 1;      // +1 coração extra por rodada vencida com sequência >= 2
 
 // --- Fase 4: Miniboss (configurável) ---
 const MINIBOSS_ROOM_CHANCE = 0.35; // 35% de chance de gerar sala miniboss na Fase 4 (fácil alterar)
@@ -2836,9 +2865,10 @@ class ChicoteWhip {
     this.x = x; this.y = y; // posição inicial (player)
     this.startX = x; this.startY = y;
     this.dirX = dirX; this.dirY = dirY;
+    this.damage = config.damage ?? WEAPON_CHICOTE.damage;
+    // px por SEGUNDO (o update escala por dt). 930 ≈ 15.5px/frame a 60fps.
     this.speed = config.bulletSpeed ?? WEAPON_CHICOTE.bulletSpeed;
     this.range = config.range ?? WEAPON_CHICOTE.range;
-    this.damage = config.damage ?? WEAPON_CHICOTE.damage;
     this.size = config.bulletSize ?? WEAPON_CHICOTE.bulletSize;
     this.color = config.color ?? WEAPON_CHICOTE.color;
     this.whipColor = config.whipColor ?? WEAPON_CHICOTE.whipColor;
@@ -2872,7 +2902,15 @@ class ChicoteWhip {
   update(dt, walls, enemies, player, game){
     if(this.dead) return false;
     this.life -= dt;
-    if(this.life<=0 && !this.latched){ this.dead=true; return false; }
+    if(this.life<=0 && !this.latched){
+      // Tempo de voo esgotado sem achar parede: encerra a proteção de voo para
+      // não deixar o jogador invencível de graça.
+      if(player){
+        player.chicoteWhipFlightInvuln = false;
+        if(CHICOTE_PULL_INVULN_FLIGHT && !player.isChicotePulling) player.endChicotePullProtection(90);
+      }
+      this.dead=true; return false;
+    }
     // Se já latchado, mantém tip no latch e atualiza vento
     if(this.latched){
       // vento sutil enquanto puxa
@@ -2884,16 +2922,28 @@ class ChicoteWhip {
       // se player chegou perto do latch, explode
       if(dist(player.x,player.y,this.latchX,this.latchY)<18){
         this.doExplosion(player, game, enemies);
+        // IMPACTO: explode o chicote e libera o grace pós-puxão. Até aqui o
+        // jogador segue protegido (trajeto + explosão).
+        if(CHICOTE_PULL_INVULN_IMPACT) player.endChicotePullProtection(CHICOTE_PULL_INVULN_GRACE);
+        player.chicoteWhipFlightInvuln = false;
         this.dead=true;
         return false;
       }
       // se player está puxando mas morreu latch tempo excessivo, cancela
-      if(this.life<=0){ this.dead=true; if(player.isChicotePulling) player.cancelChicotePull(); return false; }
+      if(this.life<=0){
+        this.dead=true;
+        if(player.isChicotePulling) player.cancelChicotePull();
+        else if(CHICOTE_PULL_INVULN_TRAVEL) player.endChicotePullProtection();
+        return false;
+      }
       return true;
     }
     // voo da ponta
-    const dx=this.dirX*this.speed;
-    const dy=this.dirY*this.speed;
+    // px por segundo escalado por dt: antes era px por tick, então a ponta voava
+    // mais rápido em monitors de alta taxa de quadros.
+    const step = (this.speed) * (dt/1000);
+    const dx=this.dirX*step;
+    const dy=this.dirY*step;
     this.tipX+=dx; this.tipY+=dy;
     this.traveled+=Math.hypot(dx,dy);
     // trilha de vento
@@ -2913,8 +2963,14 @@ class ChicoteWhip {
       // Atordoa/dano inimigos na frente (linha player->latch)
       this.hitEnemiesInLine(player, enemies, game);
       // Inicia puxão do player
-      if(player && typeof player.startChicotePull==='function'){
-        player.startChicotePull(this.latchX, this.latchY, this);
+      if(player){
+        player.chicoteWhipFlightInvuln = false;
+        if(typeof player.startChicotePull==='function'){
+          player.startChicotePull(this.latchX, this.latchY, this);
+        }
+        // Sem startChicotePull (jogador mockado/estado raro): garante a proteção
+        // do impacto mesmo assim, senão a explosão happensce com o jogador exposto.
+        else if(CHICOTE_PULL_INVULN_IMPACT) player.setChicotePullInvuln(true);
       }
       // partículas latch
       if(game && game.particles){
@@ -2931,6 +2987,12 @@ class ChicoteWhip {
       // efeito vento final
       if(game && game.particles){
         for(let k=0;k<8;k++) game.particles.push(new Particle(this.tipX,this.tipY, randRange(-1.2,1.2), randRange(-0.8,0.5), 200, 'rgba(180,220,255,0.65)', 1.6));
+      }
+      // Chicote no ar NÃO puxa, então a proteção de voo precisa terminar aqui
+      // (deixar ligado daria invencibilidade grátis ao errar o golpe).
+      if(player){
+        player.chicoteWhipFlightInvuln = false;
+        if(CHICOTE_PULL_INVULN_FLIGHT && !player.isChicotePulling) player.endChicotePullProtection(90);
       }
       this.dead=true;
       return false;
@@ -3005,8 +3067,10 @@ class ChicoteWhip {
         }
       }
     }
-    // Player invuln breve após impacto
-    player.invulnTimer=Math.max(player.invulnTimer, 180);
+    // Player invuln breve após impacto + protection estendida do puxão.
+    // Aqui usamos o invulnTimer normal porque a explosão já acabou de acontecer e
+    // o ChicoteWhip libera o grace logo depois (ver bloco do impacto no update).
+    player.invulnTimer = Math.max(player.invulnTimer, 180);
     if(game && game.showToast) game.showToast('💥 Impacto Chicote! Área atordoada 1.5s', 1400);
   }
   draw(ctx, player){
@@ -3083,9 +3147,9 @@ class ChicoteWhip {
   getRect(){ return {x:this.tipX-this.size, y:this.tipY-this.size, w:this.size*2, h:this.size*2}; }
 }
 
-// ===================== CHICOTE LEVE - GOLPE EM LEQUE (toque) =====================
-// Ataque normal do Chicote: abre o chicote em leque frontal de média distância,
-// como uma espada bem mais longa. Para ao encostar na parede (mas ainda causa dano),
+// ===================== CHICOTE - GOLPE MÉDIO EM LEQUE =====================
+// Ataque médio do Chicote (toque): abre o chicote em leque frontal de MÉDIA distância,
+// com o tamanho de uma espada longa. Para ao encostar na parede (mas ainda causa dano),
 // NÃO puxa o player e NÃO explode. O ataque carregado continua sendo o ChicoteWhip
 // de grapple/explosão (mesma mecânica antiga), disparado ao segurar o ataque.
 class ChicoteLash {
@@ -3095,6 +3159,9 @@ class ChicoteLash {
     this.dirX = dirX; this.dirY = dirY;
     this.range = config.range ?? WEAPON_CHICOTE.lashRange;
     this.angle = config.angle ?? WEAPON_CHICOTE.lashAngle;
+    // Raio "sem buraco": perto do jogador o leque cobre 360°, senão um inimigo colado
+    // nas costas escapava do golpe médio só por estar fora do arco.
+    this.nearRange = config.nearRange ?? (WEAPON_CHICOTE.lashNearRange ?? 26);
     this.damage = config.damage ?? WEAPON_CHICOTE.lashDamage;
     this.duration = config.duration ?? WEAPON_CHICOTE.lashDuration;
     this.stun = config.stun ?? (config.stun ?? WEAPON_CHICOTE.lashStun);
@@ -3114,14 +3181,21 @@ class ChicoteLash {
     this.effRange = this.range;     // alcance já cortado pela parede
     this.dead = false;
   }
-  // Alcance efetivo: varre o leque e corta na primeira parede à frente
+  // Alcance efetivo: varre o leque e corta na primeira parede à frente.
+  // this.angle é em GRAUS e baseAng/halfRad em RADIANTES: a interpolação precisa
+  // ficar em radianos, senão o leque vira um facho minúsculo apontando quase para
+  // uma direção aleatória (a parede deixava de cortar o golpe no lugar certo).
+  rayAngle(i){
+    const baseAng = Math.atan2(this.dirY, this.dirX);
+    const halfRad = (this.angle/2) * Math.PI/180;
+    const t = CHICOTE_LASH_SAMPLES<=1 ? 0.5 : i/(CHICOTE_LASH_SAMPLES-1);
+    return baseAng - halfRad + (2*halfRad) * t;
+  }
   computeBlockedRange(walls){
     let best = this.range;
     if(!walls || !walls.length) return best;
-    const baseAng = Math.atan2(this.dirY, this.dirX);
-    const halfRad = (this.angle/2) * Math.PI/180;
     for(let i=0;i<CHICOTE_LASH_SAMPLES;i++){
-      const a = baseAng - halfRad + (this.angle) * (i/(CHICOTE_LASH_SAMPLES-1));
+      const a = this.rayAngle(i);
       const ux = Math.cos(a), uy = Math.sin(a);
       for(let t=CHICOTE_LASH_STEP; t<=this.range; t+=CHICOTE_LASH_STEP){
         const px = this.x + ux*t, py = this.y + uy*t;
@@ -3138,8 +3212,10 @@ class ChicoteLash {
   hits(e){
     const dx = e.x - this.x, dy = e.y - this.y;
     const d = Math.hypot(dx, dy);
+    // perna do inimigo encostando no alcance conta como acerto
     if(d > this.effRange + e.w*0.38) return false;
-    if(d < 16) return true;
+    // dentro do raio próximo: acerta em qualquer ângulo (evita buraco na base do leque)
+    if(d < this.nearRange) return true;
     const angTo = Math.atan2(dy, dx);
     const angDir = Math.atan2(this.dirY, this.dirX);
     let diff = Math.abs(angTo - angDir);
@@ -3159,7 +3235,8 @@ class ChicoteLash {
     if(game && game.particles && Math.random() < 0.5){
       const baseAng = Math.atan2(this.dirY, this.dirX);
       const halfRad = (this.angle/2) * Math.PI/180;
-      const a = baseAng - halfRad + this.angle*Math.random();
+      // ângulo em radianos (this.angle é em graus) - mesma unidade do resto do leque
+      const a = baseAng - halfRad + (2*halfRad) * Math.random();
       const r = this.effRange*(0.55 + prog*0.45);
       game.particles.push(new Particle(this.x+Math.cos(a)*r, this.y+Math.sin(a)*r, randRange(-0.7,0.7), randRange(-0.6,0.3), 170, this.windColor, 1.5));
     }
@@ -3223,10 +3300,11 @@ class ChicoteLash {
     ctx.arc(x1, y1, this.effRange*0.96, baseAng-halfRad, baseAng+halfRad);
     ctx.stroke();
     // fios de couro abrindo em leque
+    // Mesma correção de unidade do computeBlockedRange: ângulo em radianos.
     const n = Math.max(1, this.strands);
     for(let s=0; s<n; s++){
       const t = n===1 ? 0.5 : s/(n-1);
-      const a = baseAng - halfRad + this.angle*t;
+      const a = baseAng - halfRad + (2*halfRad) * t;
       // o fio "atravessa" o leque conforme o golpe avanca
       const reach = this.effRange * clamp(sweep*1.18, 0, 1);
       const wobble = Math.sin(t*Math.PI*2 + wob)*2.0;
@@ -3462,7 +3540,7 @@ const WEAPON_CHICOTE = {
   damage: 2.6,        // dano moderado (1.3 corações) - pedido moderado
   count: 1,
   spread: 0,
-  bulletSpeed: 15.5,  // velocidade da ponta do chicote (rápido)
+  bulletSpeed: 930,     // velocidade da ponta do chicote em px/SEGUNDO (rápido, ~15.5px/frame a 60fps)
   bulletSize: 4,
   color: '#8b4513',   // couro marrom
   glow: 'rgba(139,69,19,0.22)',
@@ -3471,10 +3549,14 @@ const WEAPON_CHICOTE = {
   isWhip: true,
   isChicote: true,
   isIndianaWhip: true,
-  // ===== LEVE (toque) - arco/leque de média distância, como uma espada bem mais longa =====
+  // ===== MÉDIO (toque) - arco/leque de MÉDIA distância (pedido: tamanho médio) =====
   // Sem puxar, sem explodir, sem latch: só o golpe em leque frontal que para na parede.
-  lashRange: 178,       // alcance do golpe leve (espada normal = 72, aqui bem mais longo)
-  lashAngle: 112,       // abertura do leque em graus (mais fechado que a espada = "espada longa")
+  // Antes era 178px de alcance com 112° de abertura, que ocupava quase um terço da tela e
+  // batia num inimigo muito antes do jogador enxergar o golpe. Agora é uma espada de
+  // tamanho médio: alcance menor que a metade da tela, arco fechado, alcance VIVO na parede.
+  lashRange: 124,       // alcance médio (espada normal = 72, pesado = 360)
+  lashAngle: 88,        // abertura em graus (arco fechado e legível)
+  lashNearRange: 26,    // dentro disso o leque acerta em qualquer ângulo (evita buraco na base)
   lashDamage: 1.9,      // dano do toque (1 coração)
   lashCooldown: 300,    // intervalo entre golpes leves (permite spam leve sem travar)
   lashDuration: 190,    // duração da animação do leque (ms)
@@ -3485,11 +3567,27 @@ const WEAPON_CHICOTE = {
   chargeTime: 420,      // ms segurando para virar o pesado (grapple/explosão)
   heavyDamage: 2.6,     // mesmos valores do ataque original
   heavyRange: 360,
-  heavyCooldown: 540
+  heavyCooldown: 540,
+  // Invencibilidade durante o puxão (pedido: o jogador não pode tomar dano enquanto é puxado).
+  // Cobre o voo da ponta, o trajeto até a parede e a explosão de chegada.
+  pullInvuln: true,          // liga/desliga a proteção do puxão
+  pullInvulnGraceMs: 260,    // milliseconds de proteção ao SEGUIR voando depois da parede
+  pullInvulnLandMs: 220      // ms de proteção depois de chegar/explodir
 };
 const ITEM_SIZE_CHICOTE = 22;
 // Constantes balanceáveis do Chicote (todas editáveis, arquitetura modular)
-const CHICOTE_PULL_SPEED = 9.8;        // velocidade puxão até parede (px por frame, configurável)
+// ===== PROTEÇÃO DO PUXÃO (pedido: sem dano enquanto o jogador é puxado) =====
+// O puxão tira o controle do jogador (input de movimento é ignorado) e ele atravessa
+// inimigos e projéteis no caminho. Tomar dano ali é puro azar, sem chance de reação,
+// então o Chicote dá invencibilidade durante todo o grapple: do disparo até o impacto.
+// Antes só existia um invulnTimer de 220ms no início do puxão, que expirava bem antes
+// de o jogador chegar na parede (o trajeto leva até 1200ms) - ou seja, a maior parte do
+// puxão era vulnerável.
+const CHICOTE_PULL_INVULN_FLIGHT = true; // cobre o voo da ponta até a parede
+const CHICOTE_PULL_INVULN_TRAVEL = true; // cobre o trajeto do jogador até a parede
+const CHICOTE_PULL_INVULN_IMPACT = true; // cobre a explosão de chegada
+const CHICOTE_PULL_INVULN_GRACE = 260;   // ms extras depois de terminar o puxão
+const CHICOTE_PULL_SPEED = 588;       // velocidade do puxão até a parede (px por SEGUNDO ~ 9.8/frame a 60fps)
 const CHICOTE_PULL_STUN = 700;         // stun no inimigo diretamente à frente durante o chicoteio (ms)
 const CHICOTE_STUN_DURATION = 1500;    // 1.5s atordoamento pós explosão (requisito)
 const CHICOTE_EXPLOSION_RADIUS = 96;   // raio da explosão ao encostar na parede
@@ -4222,7 +4320,8 @@ function formatRunTime(ms){
 
 // ===================== RECORDES / PLACAR (localStorage) =====================
 // Tabelas do menu: quem finalizou (melhor tempo), quem desistiu do Boss da Escada e
-// quem venceu o Hacker. Tudo local: 1 linha por NOME, só o melhor resultado de cada.
+// quem PERDEU MAIS RÁPIDO. Tudo local: 1 linha por NOME, só o melhor resultado de cada.
+// A antiga tabela "venceu o Hacker" foi trocada por "perdeu mais rápido".
 const RECORDS_KEY = 'cyberrequiem.records.v1';
 const PLAYER_NAME_KEY = 'cyberrequiem.name';
 const RECORDS_MAX_ROWS = 10;
@@ -4236,7 +4335,7 @@ function sanitizePlayerName(raw){
 }
 
 const Records = {
-  _empty(){ return { completions:[], quits:[], hackerWins:[] }; },
+  _empty(){ return { completions:[], quits:[], deaths:[] }; },
   read(){
     try{
       const raw = localStorage.getItem(RECORDS_KEY);
@@ -4244,26 +4343,40 @@ const Records = {
       const d = JSON.parse(raw);
       // Normaliza na LEITURA também: um localStorage adulterado à mão (ou de uma
       // versão antiga do jogo) não pode injetar HTML no innerHTML das tabelas.
-      const arr = v => Array.isArray(v) ? v
-        .filter(e=> e && typeof e.timeMs==='number' && Number.isFinite(e.timeMs))
-        .map(e=>({ name:sanitizePlayerName(e.name), timeMs:Math.max(0,Math.round(e.timeMs)),
-                   floor:e.floor|0, kills:e.kills|0, seed:e.seed|0, date:e.date|0 }))
-        : [];
-      return { completions:arr(d.completions), quits:arr(d.quits), hackerWins:arr(d.hackerWins) };
+      const arr = v => {
+        if(!Array.isArray(v)) return [];
+        return v
+          .filter(e=> e && typeof e.timeMs==='number' && Number.isFinite(e.timeMs))
+          .map(e=>({ name:sanitizePlayerName(e.name), timeMs:Math.max(0,Math.round(e.timeMs)),
+                     floor:e.floor|0, kills:e.kills|0, seed:e.seed|0,
+                     rooms:Math.max(0,e.rooms|0), date:e.date|0 }))
+          .slice(0, RECORDS_MAX_ROWS);
+      };
+      return { completions:arr(d.completions), quits:arr(d.quits), deaths:arr(d.deaths) };
     }catch(e){ return this._empty(); }
   },
   write(data){
     try{ localStorage.setItem(RECORDS_KEY, JSON.stringify(data)); return true; }
     catch(e){ return false; }   // modo privado / storage cheio: o jogo continua, só não persiste
   },
-  // "melhor" = menor tempo; na desistência = andar mais avançado (desempate: menor tempo).
+  // Ordenação por tabela:
+  //  - completions: menor tempo vence (o mais rápido que terminou o jogo).
+  //  - quits: andar mais avançado vence; desempate pelo menor tempo.
+  //  - deaths: MENOR tempo vence (perdeu mais rápido) - é o inverso das outras.
   _isBetter(kind, a, b){
     if(kind==='quits'){
       if((a.floor|0)!==(b.floor|0)) return (a.floor|0) > (b.floor|0);
+      return a.timeMs < b.timeMs;
+    }
+    if(kind==='deaths'){
+      // Perdeu mais rápido: menor tempo primeiro. Empate vai pra quem foi mais longe
+      // (mais salas), senão a ordem vira ruído entre mortes no mesmo segundo.
+      if(a.timeMs !== b.timeMs) return a.timeMs < b.timeMs;
+      return (a.rooms|0) > (b.rooms|0);
     }
     return a.timeMs < b.timeMs;
   },
-  // kind: 'completions' | 'quits' | 'hackerWins'. Substitui o resultado do mesmo nome.
+  // kind: 'completions' | 'quits' | 'deaths'. Substitui o resultado do mesmo nome.
   add(kind, entry){
     const data = this.read();
     const list = data[kind];
@@ -4274,6 +4387,7 @@ const Records = {
       floor: entry.floor|0,
       kills: entry.kills|0,
       seed: entry.seed|0,
+      rooms: Math.max(0, entry.rooms|0),
       date: Date.now(),
     };
     const at = list.findIndex(r=> r.name===e.name);
@@ -4284,7 +4398,7 @@ const Records = {
     this.write(data);
     return data;
   },
-  total(){ const d=this.read(); return d.completions.length + d.quits.length + d.hackerWins.length; },
+  total(){ const d=this.read(); return d.completions.length + d.quits.length + d.deaths.length; },
   readName(){
     try{ return sanitizePlayerName(localStorage.getItem(PLAYER_NAME_KEY)); }
     catch(e){ return DEFAULT_PLAYER_NAME; }
@@ -10374,6 +10488,12 @@ class Player {
     this.chicoteWhipRef = null; // referência ChicoteWhip ativo
     this.chicotePullSpeed = CHICOTE_PULL_SPEED;
     this.chicotePullTimer = 0;
+    // Invencibilidade do grapple: true desde o disparo do chicote carregado até a
+    // explosão de chegada (+ grace). O jogador não controla o movimento nesse trajeto,
+    // então levar dano ali seria injusto. Ver CHICOTE_PULL_INVULN_* para os flags.
+    this.chicotePullInvuln = false;
+    this.chicotePullInvulnGrace = 0;
+    this.chicoteWhipFlightInvuln = false; // voo da ponta antes de latchar na parede
     // CHICOTE - carga: leve (toque) = golpe em leque; carregado (segurar) = grapple/explosão
     this.chicoteChargeTime = 0;
     this.isChicoteCharging = false;
@@ -11689,6 +11809,11 @@ class Player {
       this.chicoteWhipRef = whip;
       this.meleeAnim = 200;
       this.meleeDir = {x:n.x, y:n.y};
+      // FASE DE VOO: o chicote está indo até a parede. O jogador ainda anda
+      // normalmente, mas já fica protegido para não levar dano no tempo de voo
+      // e chegar sem vida no momento da explosão.
+      this.chicoteWhipFlightInvuln = true;
+      this.setChicotePullInvuln(true);
       try{ playWeaponSound('CHICOTE', true); }catch(e){}
       return whip;
     }
@@ -11701,6 +11826,7 @@ class Player {
     const lash = new ChicoteLash(nx, ny, dir.x, dir.y, {
       range: w.lashRange,
       angle: w.lashAngle,
+      nearRange: w.lashNearRange,
       damage: w.lashDamage,
       duration: w.lashDuration,
       strands: w.lashStrands,
@@ -11718,30 +11844,62 @@ class Player {
     this.chicoteTarget = { x: latchX, y: latchY };
     this.chicoteWhipRef = whipRef || null;
     this.chicotePullTimer = 0;
-    // breve invuln durante puxão (evita dano frustrante no trajeto)
-    this.invulnTimer = Math.max(this.invulnTimer, 220);
+    // protege o trajeto inteiro, não só o começo (ver comentário das constantes)
+    if(CHICOTE_PULL_INVULN_TRAVEL) this.setChicotePullInvuln(true);
     return true;
   }
+  // Liga/desliga a invencibilidade do grapple. Usa o invulnTimer (mesmo caminho de
+  // takeDamage) em vez de um flag próprio, assim dash, Power Star e o resto do
+  // jogo continuam funcionando igual sem precisar conhecer esse caso.
+  setChicotePullInvuln(on, extraMs=0){
+    if(!on){
+      this.chicotePullInvuln = false;
+      return;
+    }
+    this.chicotePullInvuln = true;
+    this.invulnTimer = Math.max(this.invulnTimer, 1); // garante o caminho de takeDamage
+  }
+  // Libera a proteção ao fim do puxão, deixando um grace curto para o jogador sair da parede.
+  endChicotePullProtection(graceMs=CHICOTE_PULL_INVULN_GRACE){
+    if(!this.chicotePullInvuln) return;
+    this.chicotePullInvuln = false;
+    this.chicotePullInvulnGrace = Math.max(this.chicotePullInvulnGrace, graceMs);
+  }
   cancelChicotePull(){
+    const wasPulling = this.isChicotePulling;
     this.isChicotePulling = false;
     this.chicoteTarget = null;
     this.chicoteWhipRef = null;
     this.chicotePullTimer = 0;
+    // Se o puxão foi cancelado no meio do trajeto (timeout, morte do whip, troca de sala)
+    // ainda assim mantém um grace curto para o jogador não cair em dano no mesmo frame.
+    if(wasPulling && CHICOTE_PULL_INVULN_TRAVEL) this.endChicotePullProtection();
   }
   // Chamado em update para mover o player até a parede
   updateChicotePull(dt, walls){
     if(!this.isChicotePulling || !this.chicoteTarget) return false;
     this.chicotePullTimer += dt;
+    // reforça a proteção a cada tick: se algo zerar o invulnTimer no meio do
+    // trajeto (ex.: dash), o puxão continua protegido até o fim.
+    if(CHICOTE_PULL_INVULN_TRAVEL) this.setChicotePullInvuln(true);
     const tx=this.chicoteTarget.x, ty=this.chicoteTarget.y;
     const dx=tx - this.x, dy=ty - this.y;
     const d=Math.hypot(dx,dy);
     if(d < 14){
-      // chegou: cancela pulling mas explosão já foi feita pelo Whip; apenas limpa
-      this.cancelChicotePull();
+      // chegou: a explosão já foi feita pelo ChicoteWhip; aqui só limpamos
+      // e deixamos o grace pós-impacto de CHICOTE_PULL_INVULN_GRACE.
+      this.isChicotePulling = false;
+      this.chicoteTarget = null;
+      this.chicotePullTimer = 0;
+      if(CHICOTE_PULL_INVULN_TRAVEL) this.endChicotePullProtection(CHICOTE_PULL_INVULN_GRACE);
       return true; // chegou
     }
     const n=normalize(dx,dy);
-    const spd=this.chicotePullSpeed ?? CHICOTE_PULL_SPEED;
+    // Velocidade por segundo, não por frame: CHICOTE_PULL_SPEED é aplicado escalado por
+    // dt. Antes o valor era "px por frame" e usado direto por tick, então o puxão ficava
+    // ~2.4x mais rápido a 144Hz do que a 60Hz. Agora o tempo em tela é igual em qualquer FPS.
+    const baseSpd = this.chicotePullSpeed ?? CHICOTE_PULL_SPEED;
+    const spd = baseSpd * (dt/1000);
     // move com checagem de parede (deslize simplificado)
     let nx=this.x + n.x*spd;
     let ny=this.y + n.y*spd;
@@ -11790,6 +11948,10 @@ class Player {
   takeDamage(amount, opts = {}) {
     // Power Star: invencibilidade total
     if(this.powerStarActive) return false;
+    // CHICOTE: invulnerável durante o grapple (voo + trajeto + impacto).
+    // O jogador não controla o movimento enquanto é puxado, então dano aqui é
+    // aleatório e imprevisível. Ver CHICOTE_PULL_INVULN_*.
+    if(this.isChicotePullProtected()) return false;
     if (this.invulnTimer > 0 || this.hurtCooldown > 0) return false;
     // Migração legado Soul -> Bone (uma vez)
     if(this.boneHearts === undefined) this.boneHearts = 0;
@@ -11935,7 +12097,15 @@ class Player {
   }
   isAlive() { return this.hp > 0; }
   isDashing() { return this.dashTimer > 0; }
-  isInvulnerable() { return this.powerStarActive || this.invulnTimer > 0 || this.isDashing(); }
+  // Grace pós-puxão: alguns ms depois de o grapple acabar o jogador ainda está protegido,
+  // senão ele encosta na parede, a proteção cai e o inimigo ao lado acerta no mesmo frame.
+  isChicotePullProtected(){
+    return this.chicotePullInvuln || this.chicotePullInvulnGrace > 0;
+  }
+  isInvulnerable() {
+    return this.powerStarActive || this.invulnTimer > 0 || this.isDashing()
+      || this.isChicotePullProtected();
+  }
   isPowerStarActive(){ return this.powerStarActive; }
 
   update(dt, input, walls) {
@@ -11961,6 +12131,8 @@ class Player {
     if (this.dashCooldown > 0) this.dashCooldown -= dt;
     if (this.invulnTimer > 0) this.invulnTimer -= dt;
     if (this.hurtCooldown > 0) this.hurtCooldown -= dt;
+    // Grace pós-puxão do Chicote (decai sozinho, como o invulnTimer)
+    if (this.chicotePullInvulnGrace > 0) this.chicotePullInvulnGrace -= dt;
     if (this.shootCooldown > 0) this.shootCooldown -= dt;
     if (this.spikeTimer > 0) this.spikeTimer -= dt;
     // LASER CODIFICADO - feedback timer (barra + zona verde)
@@ -12433,6 +12605,7 @@ class Player {
         this.x + n.x*(this.w/2+6), this.y + n.y*(this.h/2+5), n.x, n.y,
         {
           range: this.weapon.lashRange, angle: this.weapon.lashAngle,
+          nearRange: this.weapon.lashNearRange,
           damage: this.weapon.lashDamage, duration: this.weapon.lashDuration,
           strands: this.weapon.lashStrands, stun: this.weapon.lashStun,
           knock: this.weapon.lashKnock, whipColor: this.weapon.whipColor,
@@ -12597,6 +12770,36 @@ class Player {
       ctx.fillRect(x - this.vx*1.2, y - this.vy*1.2 + bob, this.w, this.h);
       ctx.fillStyle = 'rgba(0,217,255,0.12)';
       ctx.fillRect(x - this.vx*2.2, y - this.vy*2.2 + bob, this.w, this.h);
+    }
+    // CHICOTE - escudo de couro durante o puxão: mostra que o jogador está imune
+    // (o brilho ciano seria ambiguo com o dash, então usa o dourado do chapéu do Indiana).
+    if(this.isChicotePullProtected()){
+      const pulse = 0.5 + Math.sin(this.animTime*0.018)*0.5;
+      ctx.save();
+      ctx.strokeStyle = `rgba(255,215,0,${0.35 + pulse*0.45})`;
+      ctx.lineWidth = 1.6;
+      ctx.strokeRect(x-2.5, y-2.5+bob, this.w+5, this.h+5);
+      ctx.fillStyle = `rgba(255,215,0,${0.07 + pulse*0.07})`;
+      ctx.fillRect(x-2.5, y-2.5+bob, this.w+5, this.h+5);
+      if(this.isChicotePulling){
+        // linhas de couro puxando para a parede (direção do alvo)
+        const t = this.chicoteTarget;
+        if(t){
+          const ang = Math.atan2(t.y - (this.y), t.x - (this.x));
+          ctx.strokeStyle = `rgba(255,228,180,${0.30 + pulse*0.35})`;
+          ctx.lineWidth = 1;
+          ctx.setLineDash([3,3]);
+          ctx.lineDashOffset = -this.animTime*0.05;
+          ctx.beginPath();
+          ctx.moveTo(this.x, this.y+bob);
+          ctx.lineTo(t.x, t.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.lineDashOffset = 0;
+          void ang;
+        }
+      }
+      ctx.restore();
     }
     // ===== Escudo Mágico - aura visual quando ativo =====
     if(this.shieldActive){
@@ -14841,51 +15044,199 @@ const Macaco = BoredApe;
 const ApeNFT = BoredApe;
 const Ape_NFT = BoredApe;
 
+// ===================== SOM DO JOGO DO COPINHO (WebAudio) =====================
+// Contexto único e preguiçoso: o embaralhamento dispara vários sons curtos por segundo,
+// então reaproveitar o mesmo AudioContext evita estourar o limite de contextos do navegador.
+let _cupAudioCtx = null;
+function cupAudioCtx(){
+  try{
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return null;
+    if(!_cupAudioCtx || _cupAudioCtx.state === 'closed') _cupAudioCtx = new AC();
+    if(_cupAudioCtx.state === 'suspended' && _cupAudioCtx.resume) _cupAudioCtx.resume();
+    return _cupAudioCtx;
+  }catch(e){ return null; }
+}
+function playCupSfx(kind, param){
+  try{
+    const ctx = cupAudioCtx();
+    if(!ctx) return;
+    const now = ctx.currentTime;
+    // arpejo de vitória (várias notas com envelopes próprios)
+    if(kind === 'win' || kind === 'roundWin'){
+      const seq = kind === 'win' ? [660, 880, 1174, 1568] : [523, 659, 784];
+      seq.forEach((f, i)=>{
+        const t = now + i*0.075;
+        const o = ctx.createOscillator(); o.type = 'triangle';
+        const g = ctx.createGain();
+        o.frequency.setValueAtTime(f, t);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.055, t+0.015);
+        g.gain.exponentialRampToValueAtTime(0.0001, t+0.17);
+        o.connect(g); g.connect(ctx.destination);
+        o.start(t); o.stop(t+0.19);
+      });
+      return;
+    }
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    let dur = 0.10, vol = 0.055, slide = null;
+    if(kind === 'show'){            // bolinha aparece
+      o.type = 'triangle'; o.frequency.setValueAtTime(520, now); slide = [520, 780, 0.14];
+      dur = 0.16; vol = 0.05;
+    } else if(kind === 'hide'){     // bolinha some
+      o.type = 'triangle'; o.frequency.setValueAtTime(780, now); slide = [780, 420, 0.10];
+      dur = 0.12; vol = 0.04;
+    } else if(kind === 'swap'){     // "tec" de copo trocando (pitch varia com o número da troca)
+      const step = (param|0) % 5;
+      o.type = 'square'; o.frequency.setValueAtTime(300 + step*34, now); slide = [300 + step*34, 210 + step*26, 0.05];
+      dur = 0.07; vol = 0.045;
+    } else if(kind === 'pick'){     // jogador escolheu um copo
+      o.type = 'square'; o.frequency.setValueAtTime(680, now); slide = [680, 900, 0.08];
+      dur = 0.11; vol = 0.05;
+    } else if(kind === 'tick'){     // segundo urgentinho da contagem
+      o.type = 'square'; o.frequency.setValueAtTime(900, now);
+      dur = 0.045; vol = 0.05;
+    } else if(kind === 'lose'){     // perdeu a rodada
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(320, now); slide = [320, 80, 0.34];
+      dur = 0.36; vol = 0.05;
+    } else if(kind === 'round'){    // passou de rodada
+      o.type = 'triangle'; o.frequency.setValueAtTime(392, now); slide = [392, 587, 0.15];
+      dur = 0.18; vol = 0.05;
+    } else if(kind === 'nag'){      // Setch chamando o jogador de volta
+      o.type = 'square'; o.frequency.setValueAtTime(240, now); slide = [240, 200, 0.09];
+      dur = 0.10; vol = 0.035;
+    } else if(kind === 'near'){     // entrou no raio da mesa
+      o.type = 'triangle'; o.frequency.setValueAtTime(330, now); slide = [330, 495, 0.12];
+      dur = 0.14; vol = 0.04;
+    } else return;
+    if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, slide[1]), now + slide[2]);
+    g.gain.setValueAtTime(vol, now);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+    o.start(now); o.stop(now + dur + 0.02);
+  }catch(e){}
+}
+
 // ===================== SALA SETCH - NPC E MINIGAME COPINHOS =====================
 // Sala Setch: tamanho equivalente a 2 salas normais (arena grande sem pilares centrais), temática misteriosa.
 // NPC Setch: personagem com chapéu, sorriso enigmático, guarda o jogo dos copinhos.
 // Minigame: 3 copos, bolinha escondida sob um, shuffle visual, jogador escolhe via 1/2/3 ou E/colisão.
 // Recompensa: aleatório entre melhoria para arma equipada ou Vida Cibernética (Bone Heart). Código organizado e modular.
+// Minigame do Jogo do Copinho - versão melhorada:
+// partida de SETCH_ROUNDS rodadas com escalada (mais trocas, mais rápido, menos tempo de escolha),
+// animação de salto nos copos, rastro da bolinha, anel de contagem regressiva, prêmio por resposta
+// rápida e streak. Só vencer a rodada final libera as portas e entrega o prêmio grande.
 class SetchCupGame {
   constructor(room){
     this.room = room;
-    this.state = 'idle'; // idle, showing, shuffling, waiting, revealing
-    this.cups = []; // [{x,y, targetX}, ...] interpolação
-    this.ballIndex = 0; // 0..2 onde está a bolinha
+    this._playerRef = null; // preenchido no update para saber de onde vem o "copo mais perto"
+    this.state = 'idle'; // idle, showing, shuffling, waiting, revealing, nextRound, finishedWin, finishedLose
+    this.cups = []; // [{x,y, targetX, displayX, ...}] interpolação
+    this.ballIndex = 0; // 0..SETCH_CUP_COUNT-1 onde está a bolinha
     this.shuffleMoves = 0;
     this.shuffleMoveIndex = 0;
     this.shuffleTimer = 0;
+    this.shuffleSpeed = SETCH_SHUFFLE_SPEED;
     this.showTimer = 0;
+    this.showTime = SETCH_SHOW_BALL_TIME;
+    this.chooseTime = 8000;
+    this.chooseTimer = 0;
     this.revealTimer = 0;
     this.result = null; // 'win' | 'lose' | null
     this.rewardType = null; // 'upgrade' | 'cyber' | 'disquete'
+    this.lastRewardLabel = '';
     this.interactive = false;
     this.anim = 0;
-    // Posições base: 3 copos igualmente espaçados na sala (arena grande 2x -> mais espaço)
-    const baseX = CANVAS_W/2;
-    const baseY = CANVAS_H/2 + 22;
-    const spacing = 88; // maior espaçamento para sala grande
+    // --- partida ---
+    this.round = 1;          // rodada atual (1..SETCH_ROUNDS)
+    this.streak = 0;         // rodadas seguidas ganhas
+    this.bestStreak = 0;
+    this.fastBonus = false;  // respondeu dentro de SETCH_FAST_CHOOSE_TIME
+    this.timedOut = false;   // o tempo acabou e o copo foi escolhido sozinho
+    this.chosenIndex = -1;
+    this.hoverIndex = -1;
+    this.ballTrail = [];
+    this.shakeFx = 0;        // tremor da mesa a cada troca
+    // --- shuffle justo / feedback ---
+    this.swapQueue = [];     // trocas extras (par) enfileiradas
+    this.lastPair = null;    // último par trocado: evita repetir ou reverter na hora
+    this.swapStep = 0;       // contador global de trocas (define o pitch do "tec")
+    this.ballMoves = 0;      // quantas vezes a bolinha já mudou de copo
+    this.arcA = -1; this.arcB = -1; this.arcT = 0;   // arco visual da troca atual
+    this.handA = -1; this.handB = -1; this.handT = 0; // mãos fantasma sobre os copos
+    this.ballPop = 0;        // quique da bolinha na revelação
+    this.ballPopX = 0; this.ballPopY = 0;
+    this.farCd = 0;          // cooldown do aviso "fica perto"
+    this.nearTable = true;   // jogador dentro do raio da mesa?
+    this.wasNearTable = true;
+    this.attract = 0;        // brilho do modo "chame" quando ocioso
+    this.banner = null;      // {label, color, life}
+    // Posições base: 3 copos igualmente espaçados na mesa
+    this.tableX = CANVAS_W * SETCH_TABLE_CX_RATIO;
+    this.tableY = CANVAS_H/2 + 22;
+    const spacing = SETCH_CUP_SPACING; // maior espaçamento para sala grande
     for(let i=0;i<SETCH_CUP_COUNT;i++){
-      const x = baseX + (i-1)*spacing;
-      this.cups.push({ x: x, y: baseY, targetX: x, displayX: x, displayY: baseY, animOff: 0, revealed: false });
+      const x = this.tableX + (i-1)*spacing;
+      this.cups.push({ x: x, y: this.tableY, targetX: x, displayX: x, displayY: this.tableY, animOff: 0,
+                       revealed: false, hop: 0, hopDir: 1, lift: 0, glow: 0, hover: 0, pop: 0 });
     }
     this.ballPos = { x: this.cups[0].x, y: this.cups[0].y };
   }
+  roundCfg(){
+    const i = clamp(this.round, 1, SETCH_ROUND_CONFIG.length) - 1;
+    return SETCH_ROUND_CONFIG[i];
+  }
+  isFinalRound(){ return this.round >= SETCH_ROUNDS; }
+  // Telas de bloqueio: enquanto uma destas estiver ativa o jogador tem que acompanhar
+  blocked(){ return this.state==='showing' || this.state==='shuffling'; }
+  // Telas que ainda contam tempo para o jogador decidir
+  liveRound(){ return this.blocked() || this.state==='waiting'; }
+  setBanner(label, color, life=2200){
+    this.banner = { label, color: color||'#ffd700', life, max: life };
+  }
   start(){
+    const cfg = this.roundCfg();
+    this.shuffleMoves = cfg.moves;
+    this.shuffleSpeed = cfg.speed;
+    this.showTime = cfg.show;
+    this.chooseTime = cfg.choose;
     // Sorteia onde está a bolinha
     this.ballIndex = randInt(0, SETCH_CUP_COUNT-1);
     this.state = 'showing';
-    this.showTimer = SETCH_SHOW_BALL_TIME;
+    this.showTimer = this.showTime;
     this.shuffleMoveIndex = 0;
-    this.shuffleMoves = SETCH_SHUFFLE_MOVES;
     this.shuffleTimer = 0;
     this.revealTimer = 0;
+    this.chooseTimer = 0;
     this.result = null;
     this.rewardType = null;
+    this.lastRewardLabel = '';
+    this.fastBonus = false;
+    this.timedOut = false;
+    this.chosenIndex = -1;
     this.interactive = false;
+    this.ballTrail.length = 0;
+    this.swapQueue.length = 0;
+    this.lastPair = null;
+    this.swapStep = 0;
+    this.ballMoves = 0;
+    this.arcA = -1; this.arcB = -1; this.arcT = 0;
+    this.handA = -1; this.handB = -1; this.handT = 0;
+    this.ballPop = 0;
+    this.banner = null;
+    for(const c of this.cups){ c.hop = 0; c.lift = 0; c.glow = 0; c.pop = 0; }
     // Revela todos para mostrar onde está (somente ballIndex mostra bolinha)
     for(let i=0;i<this.cups.length;i++) this.cups[i].revealed = (i===this.ballIndex);
     this.updateBallPosInstant();
+    playCupSfx('show');
+    const npc = this.room && this.room.npc;
+    if(npc){
+      if(npc.onRoundStart) npc.onRoundStart(this.round, this.isFinalRound());
+      if(npc.say) npc.say(this.isFinalRound()
+        ? 'Última rodada. Agora é sério.'
+        : `Rodada ${this.round}: ${cfg.label}. Memorize!`, 1700);
+    }
   }
   updateBallPosInstant(){
     if(this.ballIndex>=0 && this.ballIndex < this.cups.length){
@@ -14896,10 +15247,59 @@ class SetchCupGame {
   updateBallPosSmooth(dt){
     const target = this.cups[this.ballIndex];
     if(!target) return;
-    this.ballPos.x = lerp(this.ballPos.x, target.x, 0.22);
-    this.ballPos.y = lerp(this.ballPos.y, target.y+14, 0.22);
+    const k = 1 - Math.pow(0.78, dt/16.6667); // interpolação independente do FPS
+    this.ballPos.x = lerp(this.ballPos.x, target.x, k);
+    this.ballPos.y = lerp(this.ballPos.y, target.y+14, k);
+    // Faíscas da bolinha SÓ enquanto ela está visível. Durante o embaralhamento ela fica
+    // escondida: nenhum rastro pode vazar para fora, senão o jogo entrega a resposta.
+    if(this.state==='showing' || this.state==='revealing' || this.state==='finishedWin' || this.state==='finishedLose'){
+      if(this.ballTrail.length===0 || Math.random()<0.55){
+        this.ballTrail.push({x:this.ballPos.x + randRange(-2.2,2.2), y:this.ballPos.y + randRange(-2.2,2.2), life:1});
+        if(this.ballTrail.length>12) this.ballTrail.shift();
+      }
+    }
   }
-  // Troca as posições lógicas de dois copos (shuffle)
+  // Sorteia um par de copos para trocar. O shuffle antigo usava randInt puro, o que
+  // gerava trocas inúteis (mesmo par duas vezes) e reversões imediatas (a "trapaça"
+  // clássica que faz o jogo parecer injusto). Aqui a troca sempre é útil e nunca
+  // desfaz a troca anterior na cara do jogador.
+  pickSwapPair(){
+    const N = this.cups.length;
+    const last = this.lastPair;
+    const wantBall = Math.random() < (this.roundCfg().ballMix != null ? this.roundCfg().ballMix : 0.6);
+    let options = [];
+    for(let a=0;a<N;a++){
+      for(let b=a+1;b<N;b++){
+        // ignora repetir o mesmo par e ignora reverter o par anterior
+        if(last && ((last[0]===a && last[1]===b) || (last[0]===b && last[1]===a))) continue;
+        options.push([a,b]);
+      }
+    }
+    if(options.length===0){
+      for(let a=0;a<N;a++) for(let b=a+1;b<N;b++) options.push([a,b]);
+    }
+    // Nunca deixa a sequência "congelar" (3 trocas sem mexer na bolinha), senão vira sorte
+    const stale = (this.shuffleMoveIndex - this.ballMoves) >= 3;
+    let pool = options.filter(p => p.includes(this.ballIndex));
+    if(pool.length===0) pool = options;
+    if(wantBall || stale) return pool[randInt(0, pool.length-1)];
+    const rest = options.filter(p => !p.includes(this.ballIndex));
+    if(rest.length===0) return options[randInt(0, options.length-1)];
+    return rest[randInt(0, rest.length-1)];
+  }
+  // Executa UMA troca (com efeitos) e devolve quanto tempo esperar pela próxima
+  doShuffleStep(){
+    const pair = this.pickSwapPair();
+    this.shuffleSwap(pair[0], pair[1]);
+    this.shuffleMoveIndex++;
+    // Na rodada final (e na do meio), o Setch às vezes troca em par: 2 trocas coladas
+    if(this.shuffleMoveIndex < this.shuffleMoves && Math.random() < (this.roundCfg().double||0)){
+      this.swapQueue.push(true);
+      return Math.max(110, this.shuffleSpeed*0.38);
+    }
+    return this.shuffleSpeed;
+  }
+  // Troca as posições lógicas de dois copos (shuffle) - com animação de salto
   shuffleSwap(a,b){
     const cupA = this.cups[a];
     const cupB = this.cups[b];
@@ -14909,160 +15309,339 @@ class SetchCupGame {
     cupA.targetX = cupB.targetX;
     cupB.targetX = tmpX;
     // Se a bolinha está em um dos dois, ela muda de copo
-    if(this.ballIndex===a) this.ballIndex = b;
-    else if(this.ballIndex===b) this.ballIndex = a;
+    let ballMoved = false;
+    if(this.ballIndex===a){ this.ballIndex = b; ballMoved = true; }
+    else if(this.ballIndex===b){ this.ballIndex = a; ballMoved = true; }
+    if(ballMoved) this.ballMoves++;
+    this.lastPair = [a,b];
+    this.swapStep++;
+    // animação: os dois copos saltam na troca
+    cupA.hop = 1; cupA.hopDir = 1;
+    cupB.hop = 1; cupB.hopDir = -1;
+    this.shakeFx = 1;
+    // arco mostrando o par trocado + "mãos fantasma" do Setch sobre os copos
+    this.arcA = a; this.arcB = b; this.arcT = 1;
+    this.handA = a; this.handB = b; this.handT = 1;
+    playCupSfx('swap', this.swapStep);
+    // o Setch faz o gesto com as mãos junto com a troca
+    if(this.room && this.room.npc && this.room.npc.onShuffleSwap) this.room.npc.onShuffleSwap(a, b, this.ballIndex);
   }
-  update(dt){
+  // O jogador está longe da mesa? (aí o Setch reclama e a contagem fica em pausa)
+  checkNearTable(dt, player){
+    const prev = this.nearTable;
+    this.nearTable = !!(player && dist(player.x, player.y, this.tableX, this.tableY) <= SETCH_TABLE_KEEP_RANGE);
+    if(this.nearTable !== prev){
+      if(this.nearTable) playCupSfx('near');
+      else if(this.liveRound()) this.npcSay('Eita! Volta pra mesa, o jogo é aqui.');
+    }
+    if(this.farCd>0) this.farCd-=dt;
+    if(!this.nearTable && this.liveRound() && this.farCd<=0){
+      this.farCd = SETCH_NAG_COOLDOWN;
+      playCupSfx('nag');
+      this.npcSay('Fica perto dos copos, young blood!');
+    }
+    return this.nearTable;
+  }
+  npcSay(text, dur=1500){
+    const npc = this.room && this.room.npc;
+    if(npc && npc.say) npc.say(text, dur);
+  }
+  update(dt, player){
     this.anim+=dt;
-    // interpola displayX para targetX (movimento suave)
-    for(const c of this.cups){
-      c.displayX = lerp(c.displayX, c.targetX, 0.18);
+    if(player) this._playerRef = player;
+    if(this.shakeFx>0) this.shakeFx=Math.max(0, this.shakeFx-dt*0.004);
+    if(this.arcT>0) this.arcT=Math.max(0, this.arcT-dt/SETCH_ARC_FX);
+    if(this.handT>0) this.handT=Math.max(0, this.handT-dt/SETCH_GHOST_HAND_FX);
+    if(this.ballPop>0) this.ballPop=Math.max(0, this.ballPop-dt*0.0016);
+    if(this.banner && this.banner.life>0) this.banner.life-=dt;
+    // Modo "chame" quando ocioso: Setch fica chamando atenção com brilho
+    this.attract = this.state==='idle' ? Math.min(1, this.attract + dt*0.002) : Math.max(0, this.attract-dt*0.004);
+    // Distância do jogador em relação à mesa (pausa a contagem e gera avisos)
+    this.checkNearTable(dt, player);
+    // interpola displayX para targetX (movimento suave) + salto/levantamento
+    const revealingNow = (this.state==='revealing' || this.state==='finishedWin' || this.state==='finishedLose' || this.state==='nextRound');
+    const kMove = 1 - Math.pow(0.82, dt/16.6667);   // FPS-independent
+    const kLift = 1 - Math.pow(0.84, dt/16.6667);
+    for(let i=0;i<this.cups.length;i++){
+      const c = this.cups[i];
+      c.displayX = lerp(c.displayX, c.targetX, kMove);
       c.animOff = Math.sin(this.anim*0.004 + c.displayX*0.01)*1.2;
+      if(c.hop>0) c.hop = Math.max(0, c.hop - dt*0.006);
+      // copo com a bolinha levita um pouco enquanto o jogador memoriza
+      c.lift = lerp(c.lift, (this.state==='showing' && c.revealed) ? 1 : 0, kLift);
+      // brilho do copo escolhido na revelação
+      c.glow = lerp(c.glow, (revealingNow && i===this.chosenIndex) ? 1 : 0, 0.14);
+      // levantar sob o mouse: dá noção de "copo clicável"
+      c.hover = lerp(c.hover, (this.state==='waiting' && this.interactive && this.hoverIndex===i) ? 1 : 0, 0.2);
+      // quique do copo na revelação (vencedor sobe, errado treme)
+      c.pop = lerp(c.pop, (revealingNow && i===this.chosenIndex) ? 1 : 0, 0.16);
       c.displayY = c.y + c.animOff;
     }
     this.updateBallPosSmooth(dt);
+    // desvanece as faíscas
+    for(let i=this.ballTrail.length-1;i>=0;i--){
+      this.ballTrail[i].life -= dt*0.0022;
+      if(this.ballTrail[i].life<=0) this.ballTrail.splice(i,1);
+    }
     if(this.state==='showing'){
       this.showTimer-=dt;
       if(this.showTimer<=0){
         // Esconde bolinha, começa shuffle
         for(const c of this.cups) c.revealed=false;
+        this.ballTrail.length = 0;
         this.state='shuffling';
-        this.shuffleTimer = 120; // breve pausa antes do primeiro shuffle
+        this.shuffleTimer = 160; // breve pausa antes do primeiro shuffle
         this.shuffleMoveIndex=0;
+        this.swapQueue.length = 0;
+        this.lastPair = null;
+        playCupSfx('hide');
+        this.npcSay(this.isFinalRound() ? 'Agora olha bem!' : 'Olha os copos!', 1100);
       }
     } else if(this.state==='shuffling'){
       this.shuffleTimer-=dt;
       if(this.shuffleTimer<=0){
-        if(this.shuffleMoveIndex < this.shuffleMoves){
-          // escolhe 2 copos aleatórios para trocar
-          let a = randInt(0, SETCH_CUP_COUNT-1);
-          let b = randInt(0, SETCH_CUP_COUNT-1);
-          while(b===a) b = randInt(0, SETCH_CUP_COUNT-1);
-          this.shuffleSwap(a,b);
-          this.shuffleMoveIndex++;
-          this.shuffleTimer = SETCH_SHUFFLE_SPEED;
+        // Trocas extras do "swap duplo" têm prioridade e são mais rápidas
+        if(this.swapQueue.length>0){
+          this.swapQueue.pop();
+          this.shuffleTimer = this.doShuffleStep();
+        } else if(this.shuffleMoveIndex < this.shuffleMoves){
+          this.shuffleTimer = this.doShuffleStep();
         } else {
           // shuffle terminou
+          this.arcA = -1; this.arcB = -1; this.arcT = 0;
+          this.handA = -1; this.handB = -1; this.handT = 0;
           this.state='waiting';
           this.interactive=true;
+          this.chooseTimer = this.chooseTime;
+          playCupSfx('round');
+          this.npcSay(this.isFinalRound() ? 'A última. Escolha com calma!' : 'Sua vez. Escolha um!', 1400);
+        }
+      }
+    } else if(this.state==='waiting'){
+      // Contagem regressiva: se o tempo acabar, o copo mais perto do jogador é escolhido.
+      // Se o jogador fugiu da mesa a contagem PAUSA (senão o timeout seria injusto) e o
+      // Setch aparece com o "volta pra cá".
+      if(this.nearTable){
+        this.chooseTimer -= dt;
+        if(this.chooseTimer<=1500 && this.chooseTimer>0 &&
+           Math.ceil(this.chooseTimer/500) !== Math.ceil((this.chooseTimer+dt)/500)){
+          playCupSfx('tick');
+          if(this.chooseTimer<=1000) this.npcSay('Decide logo!', 800);
+        }
+        if(this.chooseTimer<=0){
+          this.timedOut = true;
+          this.choose(this.nearestCupToPlayer(this._playerRef), null, null, this.room);
         }
       }
     } else if(this.state==='revealing'){
       this.revealTimer-=dt;
       if(this.revealTimer<=0){
-        // retorna a idle ou mantém resultado para nova interação
-        // Se ganhou, marca sala como vencida e aguarda coleta? Mantém resultado visível por um tempo
         if(this.result==='win'){
-          this.state='finishedWin';
+          if(this.isFinalRound()){
+            this.state='finishedWin';
+            this.revealTimer=3200;
+          } else {
+            this.state='nextRound';   // vai para a próxima rodada
+            this.revealTimer=1800;
+          }
         } else {
           this.state='finishedLose';
+          this.revealTimer=2600;
         }
-        // Após 2.5s volta a idle permitindo rejogar se perdeu
-        this.revealTimer=2500;
+      }
+    } else if(this.state==='nextRound'){
+      this.revealTimer-=dt;
+      if(this.revealTimer<=0){
+        this.round = Math.min(SETCH_ROUNDS, this.round+1);
+        playCupSfx('round');
+        this.start();
       }
     } else if(this.state==='finishedWin' || this.state==='finishedLose'){
       this.revealTimer-=dt;
       if(this.revealTimer<=0){
         if(this.result==='lose'){
-          // permite jogar novamente após perder
-          this.state='idle';
-          this.result=null;
-          this.interactive=false;
-          for(const c of this.cups) c.revealed=false;
+          // perdeu a partida: volta ao começo (rodada 1) para tentar de novo
+          this.resetToIdle();
         } else {
-          // venceu: mantém estado win mas não permite rejogar (isSetchCleared)
-          // Fica em finishedWin até sair da sala
+          // venceu: mantém estado win, não permite rejogar (setchCleared)
+          this.interactive=false;
         }
       }
     }
   }
-  // Chamada quando jogador escolhe um copo (0..2)
+  // Deixa a mesa pronta para uma nova tentativa
+  resetToIdle(){
+    this.state='idle';
+    this.result=null;
+    this.interactive=false;
+    this.round = 1;
+    this.streak = 0;
+    this.timedOut=false;
+    this.chosenIndex=-1;
+    this.hoverIndex=-1;
+    this.chooseTimer = 0;
+    this.swapQueue.length = 0;
+    this.arcA = -1; this.arcB = -1; this.arcT = 0;
+    this.handA = -1; this.handB = -1; this.handT = 0;
+    this.banner = null;
+    this.ballTrail.length = 0;
+    for(const c of this.cups){ c.revealed=false; c.pop = 0; c.glow = 0; }
+  }
+  // Qual copo está mais perto do jogador (usado no timeout e no [E] de perto)
+  nearestCupToPlayer(player){
+    let bestIdx=0, bestDist=Infinity;
+    for(let i=0;i<this.cups.length;i++){
+      const c=this.cups[i];
+      const d = player ? dist(player.x, player.y, c.displayX, c.displayY) : Math.abs(i-1);
+      if(d < bestDist){ bestDist=d; bestIdx=i; }
+    }
+    return bestIdx;
+  }
+  // Chamada quando jogador escolhe um copo (0..SETCH_CUP_COUNT-1)
   choose(index, player, game, room){
     if(this.state!=='waiting' || !this.interactive) return {ok:false, reason:'not_waiting'};
+    if(index<0 || index>=this.cups.length) return {ok:false, reason:'bad_index'};
+    room = room || this.room;
     this.interactive=false;
-    const isWin = (index===this.ballIndex);
+    this.hoverIndex = -1;
+    this.chosenIndex = index;
+    playCupSfx('pick');
+    //Tempo esgotado conta como errar mesmo se o copo "certo" for escolhido
+    const isWin = (index===this.ballIndex) && !this.timedOut;
+    this.fastBonus = (this.chooseTimer >= (this.chooseTime - SETCH_FAST_CHOOSE_TIME)) && !this.timedOut;
     this.result = isWin ? 'win' : 'lose';
     this.state='revealing';
-    this.revealTimer = 1400; // mostra resultado
+    this.revealTimer = isWin ? 1700 : 1900; //winning fica um pouco mais rápido
+    // quique da bolinha saindo do copo na revelação
+    this.ballPop = 1;
+    this.ballPopX = this.cups[index].displayX;
+    this.ballPopY = this.cups[index].displayY;
     // Revela todos copos brevemente para mostrar onde estava
     for(let i=0;i<this.cups.length;i++){
       this.cups[i].revealed = true;
     }
+    const cup = this.cups[index];
     if(isWin){
-      // Sorteia entre 3 prêmios: Disquete da Vida / upgrade / Vida Cibernética
-      const roll = Math.random();
-      let reward;
-      if(roll < SETCH_REWARD_DISQUETE_CHANCE) reward = 'disquete';
-      else if(roll < SETCH_REWARD_DISQUETE_CHANCE + SETCH_REWARD_UPGRADE_CHANCE) reward = 'upgrade';
-      else reward = 'cyber';
-      // Se não pode dar vida cibernética (já no máximo), força upgrade
-      const canCyber = player.boneHearts < player.maxBoneHearts;
-      const hasUpgradeOption = this.getRandomUpgradeForPlayer(player);
-      if(!canCyber && reward==='cyber') reward = hasUpgradeOption ? 'upgrade' : 'disquete';
-      if(!hasUpgradeOption && reward==='upgrade') reward = canCyber ? 'cyber' : 'disquete';
-      this.rewardType = reward;
-      if(reward==='upgrade'){
-        const upId = this.getRandomUpgradeForPlayer(player);
-        if(upId){
-          const ok = player.addUpgrade(upId);
-          if(ok){
-            const def = UPGRADE_MAP.get(upId);
-            if(game.showToast) game.showToast(`★ Setch: + ${def ? def.name : upId}! Upgrade para ${player.weapon.name}`, 2600);
-            if(game.particles){
-              for(let k=0;k<18;k++) game.particles.push(new Particle(room.npc.x, room.npc.y-12, randRange(-1.6,1.6), randRange(-1.6,0.4), 420, def && RARITY[def.rarity] ? RARITY[def.rarity].color : '#ffd700', 2.2));
-            }
-            room.setchRewardGiven = true;
-            room.setchCleared = true;
-          } else {
-            // fallback vida
-            this.giveCyberHeart(player, game, room);
-          }
-        } else {
-          this.giveCyberHeart(player, game, room);
-        }
-      } else if(reward==='cyber'){
-        this.giveCyberHeart(player, game, room);
-        room.setchRewardGiven = true;
-        room.setchCleared = true;
-      } else if(reward==='disquete'){
-        // DISQUETE DA VIDA como prêmio do Jogo do Copinho
-        this.giveDisqueteVida(player, game, room);
-        room.setchRewardGiven = true;
-        room.setchCleared = true;
-      }
+      this.streak++;
+      this.bestStreak = Math.max(this.bestStreak, this.streak);
+      // Faíscas verdes + "streak xN" no banner
+      this.setBanner(this.streak>1 ? `SEQUÊNCIA x${this.streak}!` : 'ACERTOU!', '#4ade80', 1600);
+      playCupSfx('roundWin');
+      this.grantRoundReward(player, game, room);
       // Feedback partículas vitória
-      if(game.particles){
-        for(let k=0;k<22;k++) game.particles.push(new Particle(this.cups[index].displayX, this.cups[index].displayY-10, randRange(-1.8,1.8), randRange(-1.6,0.6), 420, '#ffd700', 2.4));
+      if(game && game.particles){
+        for(let k=0;k<24;k++) game.particles.push(new Particle(cup.displayX, cup.displayY-10, randRange(-2,2), randRange(-1.8,0.6), 420, '#ffd700', 2.4));
+        for(let k=0;k<10;k++) game.particles.push(new Particle(cup.displayX, cup.displayY-6, randRange(-1.4,1.4), randRange(-1.2,0.4), 300, '#4ade80', 2));
       }
       if(room) room.shake = 60;
+      // Os outros NPCs da sala commenting a jogada (reação)
+      if(room) for(const o of [room.jlNPC, room.oliNPC, room.indianaNPC]) if(o && o.onCupRound) o.onCupRound(true, this.round);
     } else {
+      this.streak = 0;
+      this.setBanner(this.timedOut ? 'TEMPO ESGOTADO!' : 'ERROU!', '#ff6b6b', 1700);
+      playCupSfx('lose');
       // Perdeu: feedback, permite tentar novamente
-      if(game.showToast) game.showToast('Setch: Errou! Tente novamente... (E para rejogar)', 1500);
-      if(game.particles){
-        for(let k=0;k<10;k++) game.particles.push(new Particle(this.cups[index].displayX, this.cups[index].displayY-8, randRange(-1.2,1.2), randRange(-1,0.4), 240, '#ff3b30', 1.8));
+      const msg = this.timedOut ? 'Setch: O tempo acabou! Bora de novo...' : 'Setch: Errou! A partida volta ao começo...';
+      if(game && game.showToast) game.showToast(msg, 1500);
+      if(game && game.particles){
+        for(let k=0;k<10;k++) game.particles.push(new Particle(cup.displayX, cup.displayY-8, randRange(-1.2,1.2), randRange(-1,0.4), 240, '#ff3b30', 1.8));
       }
-      // Mostra onde estava a bolinha já (revealing)
+      if(room && room.npc && room.npc.onLose) room.npc.onLose();
+      if(room) for(const o of [room.jlNPC, room.oliNPC, room.indianaNPC]) if(o && o.onCupRound) o.onCupRound(false, this.round);
     }
-    return {ok:true, win:isWin, reward:this.rewardType};
+    return {ok:true, win:isWin, reward:this.rewardType, round:this.round, final:this.isFinalRound()};
   }
-  getRandomUpgradeForPlayer(player){
+  // Prêmio por rodada: rodadas do meio dão recompensa menor, a final libera a sala
+  grantRoundReward(player, game, room){
+    const finalRound = this.isFinalRound();
+    // bônus de resposta rápida: cura 1 coração
+    if(this.fastBonus && player){
+      player.hp = Math.min(player.maxHp, player.hp + SETCH_ROUND_WIN_HEAL);
+    }
+    if(!finalRound){
+      // Rodada intermediária: cura + chance de upgrade comum/incomum (sem liberar a sala)
+      let healed = 0;
+      if(player){
+        healed = SETCH_ROUND_WIN_HEAL + (this.fastBonus ? SETCH_ROUND_WIN_HEAL : 0) + (this.streak>=2 ? SETCH_STREAK_HEAL_BONUS : 0);
+        player.hp = Math.min(player.maxHp, player.hp + healed);
+      }
+      const upId = this.getRandomUpgradeForPlayer(player, ['COMUM','INCOMUM','RARA']);
+      if(upId && player && player.addUpgrade(upId)){
+        const def = UPGRADE_MAP.get(upId);
+        this.rewardType = 'upgrade';
+        this.lastRewardLabel = def ? def.name : upId;
+        if(game && game.showToast) game.showToast(`★ Rodada ${this.round}/${SETCH_ROUNDS}: + ${def ? def.name : upId}`, 2000);
+        if(game && game.particles && room && room.npc){
+          for(let k=0;k<12;k++) game.particles.push(new Particle(room.npc.x, room.npc.y-12, randRange(-1.4,1.4), randRange(-1.4,0.4), 340, '#a78bfa', 2));
+        }
+      } else {
+        this.rewardType = 'heal';
+        this.lastRewardLabel = 'CURA';
+        if(game && game.showToast) game.showToast(`♥ Rodada ${this.round}/${SETCH_ROUNDS}: +${healed||1} coração(ões)`, 1600);
+      }
+      if(this.fastBonus && game && game.showToast) game.showToast('⚡ Resposta rápida! +1 coração', 1400);
+      if(this.streak>=2 && game && game.showToast) game.showToast(`🔥 Sequência x${this.streak}: +1 coração extra!`, 1500);
+      if(room && room.npc && room.npc.onRoundWin) room.npc.onRoundWin();
+      return;
+    }
+    // ===== RODADA FINAL: prêmio grande (disquete / upgrade / vida cibernética) =====
+    const roll = Math.random();
+    let reward;
+    const disqueteChance = SETCH_REWARD_DISQUETE_CHANCE + (this.streak>=2 ? SETCH_STREAK_DISQUETE_BONUS : 0);
+    if(roll < disqueteChance) reward = 'disquete';
+    else if(roll < disqueteChance + SETCH_REWARD_UPGRADE_CHANCE) reward = 'upgrade';
+    else reward = 'cyber';
+    const canCyber = player && player.boneHearts < player.maxBoneHearts;
+    const hasUpgradeOption = this.getRandomUpgradeForPlayer(player);
+    if(!canCyber && reward==='cyber') reward = hasUpgradeOption ? 'upgrade' : 'disquete';
+    if(!hasUpgradeOption && reward==='upgrade') reward = canCyber ? 'cyber' : 'disquete';
+    this.rewardType = reward;
+    if(reward==='upgrade'){
+      const upId = this.getRandomUpgradeForPlayer(player, null, true);
+      if(upId && player && player.addUpgrade(upId)){
+        const def = UPGRADE_MAP.get(upId);
+        this.lastRewardLabel = def ? def.name : upId;
+        if(game && game.showToast) game.showToast(`★ Setch: + ${def ? def.name : upId}! Upgrade para ${player.weapon.name}`, 2600);
+        if(game && game.particles && room && room.npc){
+          for(let k=0;k<18;k++) game.particles.push(new Particle(room.npc.x, room.npc.y-12, randRange(-1.6,1.6), randRange(-1.6,0.4), 420, def && RARITY[def.rarity] ? RARITY[def.rarity].color : '#ffd700', 2.2));
+        }
+      } else {
+        this.giveCyberHeart(player, game, room);
+      }
+    } else if(reward==='cyber'){
+      this.giveCyberHeart(player, game, room);
+    } else if(reward==='disquete'){
+      this.giveDisqueteVida(player, game, room);
+    }
+    if(room){
+      room.setchRewardGiven = true;
+      room.setchCleared = true;
+      room.setchDefeated = true;
+    }
+    playCupSfx('win');
+    this.setBanner('★ SALA LIBERADA ★', '#ffd700', 3200);
+    if(room && room.npc && room.npc.onFinalWin) room.npc.onFinalWin();
+    if(this.fastBonus && game && game.showToast) game.showToast('⚡ Resposta rápida na final! Bônus do Setch!', 1800);
+  }
+  getRandomUpgradeForPlayer(player, rarityFilter, preferRare){
     if(!player || !player.weapon) return null;
     const curName = player.weapon.name;
-    // Tenta pegar upgrade compatível que ainda pode subir de nível
-    let pool = UPGRADE_DEFS.filter(u=>{
+    const okPool = UPGRADE_DEFS.filter(u=>{
       const compat = u.compatible || [u.weapon];
       const isCompat = compat.includes(curName) || u.weapon==='ALL' || compat.includes('ALL') || u.weapon===curName;
       if(!isCompat) return false;
+      if(rarityFilter && !rarityFilter.includes(u.rarity)) return false;
       if(player.canAddUpgrade) return player.canAddUpgrade(u.id);
       return true;
     });
+    let pool = okPool;
     if(pool.length===0){
       // fallback: qualquer upgrade que pode adicionar
       pool = UPGRADE_DEFS.filter(u=> player.canAddUpgrade ? player.canAddUpgrade(u.id) : false);
     }
     if(pool.length===0) return null;
     // Prioriza raras um pouco para ser recompensador? 35% rara+
-    if(Math.random()<0.35){
+    if(preferRare || Math.random()<0.35){
       const rarePool = pool.filter(u=> u.rarity==='RARA' || u.rarity==='MUITO_RARA');
       if(rarePool.length) pool = rarePool;
     }
@@ -15070,8 +15649,9 @@ class SetchCupGame {
   }
   giveCyberHeart(player, game, room){
     // Lógica igual ao CyberHeartItem mas direta
+    if(!player) return;
     if(player.boneHearts >= player.maxBoneHearts){
-      if(game.showToast) game.showToast('Setch: Vida máxima! Mas ganhou ★ upgrade alternativo!', 1500);
+      if(game && game.showToast) game.showToast('Setch: Vida máxima! Mas ganhou ★ upgrade alternativo!', 1500);
       const alt = this.getRandomUpgradeForPlayer(player);
       if(alt) player.addUpgrade(alt);
       return;
@@ -15079,20 +15659,23 @@ class SetchCupGame {
     player.boneHearts += 1;
     player.maxHp += 2;
     player.hp = Math.min(player.maxHp, player.hp+2);
-    if(game.showToast) game.showToast('◆ Setch: +1 Vida Cibernética! [+2 HP recipiente cinza]', 2200);
-    if(game.particles){
+    this.lastRewardLabel = 'VIDA CIBERNÉTICA';
+    if(game && game.showToast) game.showToast('◆ Setch: +1 Vida Cibernética! [+2 HP recipiente cinza]', 2200);
+    if(game && game.particles && room && room.npc){
       for(let k=0;k<16;k++) game.particles.push(new Particle(room.npc.x, room.npc.y-10, randRange(-1.4,1.4), randRange(-1.4,0.6), 340, '#00e5ff', 2.2));
     }
-    if(game.shake) game.shake = Math.max(game.shake, 65);
+    if(game && game.shake) game.shake = Math.max(game.shake, 65);
   }
   giveDisqueteVida(player, game, room){
     // DISQUETE DA VIDA como prêmio do Copinho: concede 1 continue, empilhável
+    if(!player) return;
     const before = (player.continues|0);
     if(typeof player.grantContinue === 'function') player.grantContinue(1);
     const total = player.continues|0;
-    if(game.showToast) game.showToast(`💾 Setch: DISQUETE DA VIDA! [${total} continue(s) salvo(s)]`, 3000);
+    this.lastRewardLabel = 'DISQUETE DA VIDA';
+    if(game && game.showToast) game.showToast(`💾 Setch: DISQUETE DA VIDA! [${total} continue(s) salvo(s)]`, 3000);
     // partículas: chuva de 0 e 1 verdes no NPC (mesma identidade visual do item)
-    if(game.particles && room && room.npc){
+    if(game && game.particles && room && room.npc){
       const ox = room.npc.x, oy = room.npc.y-12;
       for(let k=0;k<22;k++){
         const a = Math.random()*Math.PI*2, sp = randRange(1.2, 3.4);
@@ -15105,98 +15688,284 @@ class SetchCupGame {
       }
       if(room.explosions) room.explosions.push({x:ox, y:oy, radius:16, life:620, max:620, isDisqueteSave:true});
     }
-    game.shake = Math.max(game.shake||0, 65);
+    if(game) game.shake = Math.max(game.shake||0, 65);
   }
   draw(ctx){
-    // Desenha mesa / base para sala grande
+    const tremor = this.shakeFx * 2.4;
+    const TX = this.tableX;
+    ctx.save();
+    if(tremor>0.05) ctx.translate(randRange(-tremor,tremor), randRange(-tremor,tremor));
+    // ==== Mesa (base) ==== com spotlight
     const tableY = CANVAS_H/2 + 58;
-    ctx.fillStyle='rgba(0,0,0,0.22)';
-    ctx.fillRect(CANVAS_W/2 - 160, tableY - 8, 320, 14);
-    ctx.fillStyle='#2a1e0a';
-    ctx.fillRect(CANVAS_W/2 - 158, tableY - 14, 316, 10);
-    ctx.fillStyle='#3a2a12';
-    ctx.fillRect(CANVAS_W/2 - 158, tableY - 14, 316, 3);
-    // Copos
+    ctx.fillStyle='rgba(0,0,0,0.24)'; ctx.fillRect(TX - 168, tableY - 8, 336, 16);
+    ctx.fillStyle='#2a1e0a'; ctx.fillRect(TX - 166, tableY - 16, 332, 12);
+    ctx.fillStyle='#3a2a12'; ctx.fillRect(TX - 166, tableY - 16, 332, 3);
+    // brilho da mesa embaixo dos copos
+    const spot=0.5+Math.sin(this.anim*0.003)*0.5;
+    ctx.fillStyle=`rgba(255,215,0,${0.05+spot*0.04})`;
+    ctx.beginPath(); ctx.ellipse(TX, tableY-4, 170, 22, 0,0,Math.PI*2); ctx.fill();
+    // ==== Modo "chame": quando ocioso, um holofote pulsa apontando a mesa ====
+    if(this.attract>0.02){
+      const ap = 0.5+Math.sin(this.anim*0.006)*0.5;
+      ctx.save();
+      ctx.globalAlpha = this.attract * (0.20 + ap*0.22);
+      ctx.strokeStyle='#ffd700'; ctx.lineWidth=2; ctx.setLineDash([7,7]);
+      ctx.lineDashOffset = -this.anim*0.03;
+      ctx.strokeRect(TX-176, tableY-52, 352, 74);
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+    // ==== Marcador das rodadas (pips) ====
+    this.drawRoundPips(ctx);
+    // ==== Arco da troca + mãos fantasma do Setch ====
+    this.drawSwapFx(ctx);
+    // ==== Copos ====
     for(let i=0;i<this.cups.length;i++){
       const c = this.cups[i];
-      const x = c.displayX, y = c.displayY;
-      // sombra
-      ctx.fillStyle='rgba(0,0,0,0.22)'; ctx.beginPath(); ctx.ellipse(x, y+14, 16, 5,0,0,Math.PI*2); ctx.fill();
-      // Bolinha (se revelada ou estado showing/revealing)
-      const shouldShowBall = (this.state==='showing' || this.state==='revealing' || this.state==='finishedWin' || this.state==='finishedLose') && (i===this.ballIndex);
-      const showBallWhileShuffling = false; // esconde durante shuffle
-      if(shouldShowBall){
-        const ballX = (this.state==='showing' || this.state==='revealing' || this.state==='finishedWin' || this.state==='finishedLose') ? c.displayX : this.ballPos.x;
-        const ballY = (this.state==='showing' || this.state==='revealing' || this.state==='finishedWin' || this.state==='finishedLose') ? y+12 : this.ballPos.y;
-        // bolinha vermelha pulsante
+      const hopY = Math.sin(c.hop*Math.PI) * 9 * c.hopDir;
+      // copo errado na revelação treme de leve; o escolhido sobe (pop)
+      const shakeWin = (this.result==='lose' && i===this.chosenIndex && this.state!=='waiting')
+        ? Math.sin(this.anim*0.05)*1.6 : 0;
+      const popLift = c.pop * (this.result==='win' ? 7 : -2);
+      const hoverLift = c.hover * 5;
+      const x = c.displayX + shakeWin, y = c.displayY + hopY - c.lift*4 - popLift - hoverLift;
+      // sombra encolhe quando o copo salta
+      ctx.fillStyle=`rgba(0,0,0,${Math.max(0.05,0.24 - c.hop*0.10)})`;
+      ctx.beginPath(); ctx.ellipse(c.displayX, c.displayY+15, 16-c.hop*4-hoverLift*0.5, Math.max(1.6,5-c.hop*1.2),0,0,Math.PI*2); ctx.fill();
+      // Bolinha (se revelada ou estado mostrando/revelando)
+      const showBall = (this.state==='showing' || this.state==='revealing' || this.state==='finishedWin' || this.state==='finishedLose' || this.state==='nextRound') && (i===this.ballIndex);
+      // Faíscas da bolinha: só quando ela está visível (nunca durante o embaralhamento)
+      if(showBall || (this.state==='showing' && i===this.ballIndex)){
+        for(let k=0;k<this.ballTrail.length;k++){
+          const t=this.ballTrail[k];
+          ctx.fillStyle=`rgba(255,120,90,${0.16*t.life})`;
+          ctx.beginPath(); ctx.arc(t.x, t.y, 2.2*t.life+0.5, 0, Math.PI*2); ctx.fill();
+        }
+      }
+      if(showBall){
+        const ballX = c.displayX, ballY = y+12;
         const pulse=0.5+Math.sin(this.anim*0.014)*0.22;
         ctx.fillStyle=`rgba(255,60,60,${0.18+pulse*0.12})`;
         ctx.beginPath(); ctx.arc(ballX, ballY, 9+pulse*1.2,0,Math.PI*2); ctx.fill();
         ctx.fillStyle='#ff3b30'; ctx.beginPath(); ctx.arc(ballX, ballY, 7,0,Math.PI*2); ctx.fill();
         ctx.fillStyle='#ff8c42'; ctx.beginPath(); ctx.arc(ballX-1.5, ballY-1.5, 2.2,0,Math.PI*2); ctx.fill();
         ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(ballX-1, ballY-1.8, 1.2,0,Math.PI*2); ctx.fill();
+        //olho/"alma" da bolinha: brilha mais na final, avisa o risco
+        if(this.isFinalRound()){
+          ctx.fillStyle=`rgba(255,215,0,${0.35+Math.sin(this.anim*0.02)*0.25})`;
+          ctx.beginPath(); ctx.arc(ballX, ballY-0.5, 3.4, 0, Math.PI*2); ctx.fill();
+        }
       }
-      // Corpo do copo (inverte para parecer copo de lado / de cima)
-      // Copo estilo cilindro: base escura, corpo claro, borda
-      ctx.fillStyle='#1a1205'; ctx.fillRect(x-16, y-2, 32, 4);
-      ctx.fillStyle='#6b4a1a'; ctx.fillRect(x-14, y-2, 28, 20);
-      ctx.fillStyle='#8a6d2b'; ctx.fillRect(x-12, y, 24, 2);
-      ctx.fillStyle='#3a2505'; ctx.fillRect(x-11, y+16, 22, 2);
-      // brilho
-      ctx.fillStyle='rgba(255,255,255,0.22)'; ctx.fillRect(x-10, y+2, 3, 10);
+      // Corpo do copo: cilindro com topo em elipse (mais "3D" que antes)
+      const lift = c.lift*2;
+      ctx.fillStyle='#1a1205'; ctx.fillRect(x-16, y-2+lift, 32, 4);
+      ctx.fillStyle='#6b4a1a'; ctx.fillRect(x-14, y-2+lift, 28, 20);
+      ctx.fillStyle='#8a6d2b'; ctx.fillRect(x-12, y+lift, 24, 2);
+      ctx.fillStyle='#3a2505'; ctx.fillRect(x-11, y+16+lift, 22, 2);
+      // borda superior (elipse) - dá volume
+      ctx.fillStyle='#8a6d2b'; ctx.beginPath(); ctx.ellipse(x, y-2+lift, 14, 4.2, 0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#5c3f16'; ctx.beginPath(); ctx.ellipse(x, y-1+lift, 11, 3, 0,0,Math.PI*2); ctx.fill();
+      // brilho lateral
+      ctx.fillStyle='rgba(255,255,255,0.22)'; ctx.fillRect(x-10, y+2+lift, 3, 10);
       // Número do copo (1/2/3) na frente
       ctx.fillStyle='rgba(255,215,0,0.92)'; ctx.font='7px "Press Start 2P"'; ctx.textAlign='center';
-      ctx.fillText(String(i+1), x, y+12); ctx.textAlign='left';
-      // Destaque quando interativo (hover/pode escolher)
+      ctx.fillText(String(i+1), x, y+12+lift); ctx.textAlign='left';
+      // Destaque quando dá para escolher
       if(this.state==='waiting' && this.interactive){
         const pulseWait=0.5+Math.sin(this.anim*0.012+i*0.7)*0.32;
-        ctx.strokeStyle=`rgba(255,215,0,${0.32+pulseWait*0.18})`; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
-        ctx.strokeRect(x-16, y-4, 32, 24); ctx.setLineDash([]);
+        const hovered = (this.hoverIndex===i);
+        ctx.strokeStyle= hovered ? 'rgba(255,255,255,0.95)' : `rgba(255,215,0,${0.32+pulseWait*0.18})`;
+        ctx.lineWidth= hovered ? 2.2 : 1.5; ctx.setLineDash([4,3]);
+        ctx.strokeRect(x-16, y-4+lift, 32, 24); ctx.setLineDash([]);
+        if(hovered){
+          ctx.fillStyle=`rgba(255,255,255,${0.08+Math.sin(this.anim*0.02)*0.04})`;
+          ctx.fillRect(x-16, y-4+lift, 32, 24);
+        }
         // setinha acima
-        if(Math.floor(this.anim/400)%2===0){
-          ctx.fillStyle='rgba(255,255,255,0.92)'; ctx.font='8px monospace'; ctx.textAlign='center';
-          ctx.fillText('▼', x, y-10); ctx.textAlign='left';
+        if(Math.floor(this.anim/400)%2===0 || hovered){
+          ctx.fillStyle= hovered ? '#ffffff' : 'rgba(255,255,255,0.92)'; ctx.font='8px monospace'; ctx.textAlign='center';
+          ctx.fillText('▼', x, y-10+lift); ctx.textAlign='left';
         }
       }
-      // Quando revealing / win / lose, borda verde/vermelha
-      if(this.state==='revealing' || this.state==='finishedWin'){
+      // Brilho do copo escolhido / Recently highlighted
+      if(c.glow>0.02){
+        ctx.strokeStyle=`rgba(74,222,128,${0.35+c.glow*0.5})`; ctx.lineWidth=2;
+        ctx.strokeRect(x-17, y-5+lift, 34, 26);
+      }
+      // Revelação: verde no copo certo, X vermelho no escolhido errado
+      const revealing = (this.state==='revealing' || this.state==='finishedWin' || this.state==='finishedLose' || this.state==='nextRound');
+      if(revealing){
         if(this.result==='win' && i===this.ballIndex){
-          ctx.strokeStyle='rgba(74,222,128,0.92)'; ctx.lineWidth=2.2; ctx.strokeRect(x-16, y-4, 32, 24);
+          ctx.strokeStyle='rgba(74,222,128,0.92)'; ctx.lineWidth=2.2; ctx.strokeRect(x-16, y-4+lift, 32, 24);
+          ctx.fillStyle='rgba(74,222,128,0.95)'; ctx.font='9px monospace'; ctx.textAlign='center';
+          ctx.fillText('✓', x, y-8+lift); ctx.textAlign='left';
         }
-      } else if(this.state==='revealing' || this.state==='finishedLose'){
-        if(this.result==='lose' && i===this.ballIndex){
-          // mostra onde estava
-          ctx.strokeStyle='rgba(74,222,128,0.62)'; ctx.lineWidth=1.8; ctx.setLineDash([5,3]);
-          ctx.strokeRect(x-16, y-4, 32, 24); ctx.setLineDash([]);
+        if(this.result==='lose'){
+          if(i===this.ballIndex){
+            ctx.strokeStyle='rgba(74,222,128,0.62)'; ctx.lineWidth=1.8; ctx.setLineDash([5,3]);
+            ctx.strokeRect(x-16, y-4+lift, 32, 24); ctx.setLineDash([]);
+          }
+          if(i===this.chosenIndex){
+            // X vermelho em cima do copo escolhido errado
+            ctx.strokeStyle='rgba(255,59,48,0.95)'; ctx.lineWidth=2;
+            ctx.beginPath(); ctx.moveTo(x-6, y+2+lift); ctx.lineTo(x+6, y+14+lift);
+            ctx.moveTo(x+6, y+2+lift); ctx.lineTo(x-6, y+14+lift); ctx.stroke();
+          }
         }
       }
     }
-    // Texto instrutivo
-    ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(CANVAS_W/2 - 140, CANVAS_H/2 + 82, 280, 18);
+    // ==== Barra de contagem regressiva (rodada de escolha) ====
+    if(this.state==='waiting' && this.chooseTimer>0){
+      const pct = clamp(this.chooseTimer/this.chooseTime, 0, 1);
+      const urgent = this.chooseTimer <= 2000;
+      const bw = 260, bx = TX - bw/2, by = CANVAS_H/2 + 62;
+      ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(bx-2, by-2, bw+4, 10);
+      ctx.fillStyle='rgba(255,255,255,0.12)'; ctx.fillRect(bx, by, bw, 6);
+      // marcas de 1/4, 1/2 e 3/4 dão noção de tempo
+      ctx.fillStyle='rgba(0,0,0,0.35)';
+      for(let m=1;m<4;m++) ctx.fillRect(bx + bw*m/4, by, 1, 6);
+      const barCol = urgent ? (Math.floor(this.anim/120)%2===0 ? '#ff3b30' : '#ff6b6b') : '#4ade80';
+      ctx.fillStyle=barCol; ctx.fillRect(bx, by, bw*pct, 6);
+      ctx.fillStyle= urgent ? '#ff6b6b' : '#4ade80';
+      ctx.font='6px "Press Start 2P"'; ctx.textAlign='center';
+      ctx.fillText(Math.ceil(this.chooseTimer/1000)+'s', TX, by-6);
+      ctx.textAlign='left';
+      // jogador fugiu da mesa: a contagem congela e aparece o aviso
+      if(!this.nearTable){
+        ctx.fillStyle='rgba(0,0,0,0.62)'; ctx.fillRect(bx-4, by+8, bw+8, 13);
+        ctx.fillStyle='#ffb300'; ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
+        ctx.fillText('VOLTA PRA MESA!', TX, by+17);
+        ctx.textAlign='left';
+      }
+    }
+    // ==== Texto instrutivo ====
+    ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(TX - 165, CANVAS_H/2 + 82, 330, 18);
     ctx.fillStyle='#fff'; ctx.font='6px "Press Start 2P"'; ctx.textAlign='center';
     if(this.state==='idle'){
-      ctx.fillStyle='#ffd700'; ctx.fillText('PRESSIONE [E] PARA JOGAR', CANVAS_W/2, CANVAS_H/2 + 94);
+      ctx.fillStyle='#ffd700';
+      ctx.fillText(this.tableX && this.nearTable ? 'PRESSIONE [E] PERTO DO SETCH' : 'ACHE O SETCH NESSA SALA', TX, CANVAS_H/2 + 94);
     } else if(this.state==='showing'){
-      ctx.fillText('MEMORIZE ONDE ESTÁ A BOLINHA...', CANVAS_W/2, CANVAS_H/2 + 94);
+      ctx.fillText('MEMORIZE ONDE ESTÁ A BOLINHA...', TX, CANVAS_H/2 + 94);
     } else if(this.state==='shuffling'){
-      ctx.fillText('EMBARALHANDO...', CANVAS_W/2, CANVAS_H/2 + 94);
+      const extra = this.swapQueue.length>0 ? ' ★EM PAR!' : '';
+      ctx.fillText(`EMBARALHANDO ${this.shuffleMoveIndex}/${this.shuffleMoves}${extra}`, TX, CANVAS_H/2 + 94);
     } else if(this.state==='waiting'){
-      ctx.fillStyle='#ffd700'; ctx.fillText('ESCOLHA O COPO: 1 / 2 / 3  OU [E] PERTO', CANVAS_W/2, CANVAS_H/2 + 94);
+      ctx.fillStyle= this.nearTable ? '#ffd700' : '#ffb300';
+      ctx.fillText(this.nearTable ? 'ESCOLHA: 1 / 2 / 3  OU [E] PERTO' : 'VOLTE PARA A MESA PARA ESCOLHER', TX, CANVAS_H/2 + 94);
     } else if(this.state==='revealing'){
-      if(this.result==='win') { ctx.fillStyle='#4ade80'; ctx.fillText('✓ ACERTOU! RECOMPENSA!', CANVAS_W/2, CANVAS_H/2 + 94); }
-      else { ctx.fillStyle='#ff6b6b'; ctx.fillText('✗ ERROU!','', CANVAS_W/2, CANVAS_H/2 + 94); ctx.fillText('✗ ERROU!', CANVAS_W/2, CANVAS_H/2 + 94); }
+      if(this.result==='win') { ctx.fillStyle='#4ade80'; ctx.fillText('✓ ACERTOU! RECOMPENSA!', TX, CANVAS_H/2 + 94); }
+      else { ctx.fillStyle='#ff6b6b'; ctx.fillText('✗ ERROU!', TX, CANVAS_H/2 + 94); }
+    } else if(this.state==='nextRound'){
+      ctx.fillStyle='#4ade80'; ctx.fillText(`✓ RODADA ${this.round}/${SETCH_ROUNDS}!`, TX, CANVAS_H/2 + 94);
     } else if(this.state==='finishedWin'){
-      ctx.fillStyle='#4ade80'; ctx.fillText('★ RECOMPENSA ENTREGUE ★', CANVAS_W/2, CANVAS_H/2 + 94);
+      ctx.fillStyle='#4ade80'; ctx.fillText('★ RECOMPENSA ENTREGUE ★', TX, CANVAS_H/2 + 94);
     } else if(this.state==='finishedLose'){
-      ctx.fillText('TENTE NOVAMENTE! [E] PARA REJOGAR', CANVAS_W/2, CANVAS_H/2 + 94);
+      ctx.fillText('TENTE NOVAMENTE! [E] PARA REJOGAR', TX, CANVAS_H/2 + 94);
     }
     ctx.textAlign='left';
+    // ==== Banner de resultado (ACERTOU / ERROU / SALA LIBERADA) ====
+    if(this.banner && this.banner.life>0){
+      const t = this.banner.life/this.banner.max;
+      const grow = clamp((1-t)*4, 0, 1);
+      ctx.save();
+      ctx.globalAlpha = clamp(t*2.2, 0, 1);
+      ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(TX-118, CANVAS_H/2 - 104, 236, 20);
+      ctx.strokeStyle=this.banner.color; ctx.lineWidth=1.4;
+      ctx.strokeRect(TX-118.5, CANVAS_H/2 - 104.5, 237, 21);
+      ctx.fillStyle=this.banner.color; ctx.font='9px "Press Start 2P"'; ctx.textAlign='center';
+      const sc = 0.6 + grow*0.4;
+      ctx.translate(TX, CANVAS_H/2 - 90); ctx.scale(sc, sc);
+      ctx.fillText(this.banner.label, 0, 0);
+      ctx.textAlign='left'; ctx.restore();
+    }
+    // ==== Streak / prêmio recente ====
+    if(this.streak>0 && (this.state==='showing'||this.state==='shuffling'||this.state==='waiting')){
+      ctx.fillStyle='#ffd700'; ctx.font='5px monospace'; ctx.textAlign='center';
+      ctx.fillText(`★ SEQUÊNCIA x${this.streak}`, TX, WALL_THICK + 66);
+      ctx.textAlign='left';
+    }
+    if(this.lastRewardLabel && (this.state==='finishedWin' || this.state==='nextRound')){
+      ctx.fillStyle='#4ade80'; ctx.font='5px monospace'; ctx.textAlign='center';
+      ctx.fillText('PRÊMIO: '+this.lastRewardLabel, TX, CANVAS_H/2 + 104);
+      ctx.textAlign='left';
+    }
+    ctx.restore();
+  }
+  // Arco ligando o par que acabou de trocar + "mãos fantasma" do Setch sobre os copos
+  drawSwapFx(ctx){
+    if(this.arcT>0.02 && this.arcA>=0 && this.arcB>=0){
+      const ca = this.cups[this.arcA], cb = this.cups[this.arcB];
+      if(ca && cb){
+        const t = this.arcT;
+        const ax = ca.displayX, bx = cb.displayX, ay = ca.displayY - 26, by = cb.displayY - 26;
+        ctx.save();
+        ctx.globalAlpha = clamp(t*1.4, 0, 1);
+        ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 1.6; ctx.setLineDash([3,3]);
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo((ax+bx)/2, ay-13, bx, by); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(bx, by); ctx.quadraticCurveTo((ax+bx)/2, by-13, ax, ay); ctx.stroke();
+        ctx.setLineDash([]);
+        // pontas de flecha
+        ctx.fillStyle='#ffd700';
+        const dir = bx>ax?1:-1;
+        ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx-dir*5, by-3.4); ctx.lineTo(bx-dir*5, by+3.4); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax+dir*5, ay-3.4); ctx.lineTo(ax+dir*5, ay+3.4); ctx.fill();
+        ctx.restore();
+      }
+    }
+    if(this.handT>0.02 && this.handA>=0 && this.handB>=0){
+      const t = clamp(this.handT, 0, 1);
+      ctx.save();
+      ctx.globalAlpha = t*0.55;
+      ctx.fillStyle = 'rgba(217,185,155,0.85)';
+      for(const idx of [this.handA, this.handB]){
+        const c = this.cups[idx];
+        if(!c) continue;
+        const hx = c.displayX, hy = c.displayY - 26*t;
+        ctx.fillRect(hx-4, hy-7, 8, 6);
+        ctx.fillRect(hx-3.2, hy-1, 6.4, 5);
+      }
+      ctx.restore();
+    }
+  }
+  // Marcador de rodadas (●●○) no topo da sala (fora da area do NPC e dos copos)
+  drawRoundPips(ctx){
+    const y = WALL_THICK + 46;
+    const x0 = CANVAS_W/2 - (SETCH_ROUNDS-1)*10;
+    ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
+    for(let i=0;i<SETCH_ROUNDS;i++){
+      const x = x0 + i*20;
+      const done = i < (this.round-1);
+      const cur = (i === this.round-1);
+      ctx.fillStyle = done ? '#4ade80' : (cur ? '#ffd700' : 'rgba(255,255,255,0.25)');
+      ctx.beginPath(); ctx.arc(x, y, cur?4.5:3.2, 0, Math.PI*2); ctx.fill();
+      if(cur){
+        ctx.strokeStyle=`rgba(255,215,0,${0.4+Math.sin(this.anim*0.008)*0.3})`; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.arc(x, y, 7+Math.sin(this.anim*0.008)*1.2, 0, Math.PI*2); ctx.stroke();
+      }
+    }
+    ctx.fillStyle='rgba(255,255,255,0.8)'; ctx.font='5px monospace';
+    ctx.fillText(`RODADA ${this.round}/${SETCH_ROUNDS} • ${this.roundCfg().label}`, this.tableX, y+14);
+    ctx.textAlign='left';
+    // Barra de progresso do embaralhamento da rodada (dá noção de "falta pouco")
+    if(this.state==='shuffling' && this.shuffleMoves>0){
+      const bw = 150, bx = this.tableX - bw/2, by = y + 22;
+      const pct = clamp(this.shuffleMoveIndex/this.shuffleMoves, 0, 1);
+      ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(bx-1, by-1, bw+2, 5);
+      ctx.fillStyle='rgba(255,255,255,0.14)'; ctx.fillRect(bx, by, bw, 3);
+      ctx.fillStyle= pct>=1 ? '#ffd700' : '#a78bfa'; ctx.fillRect(bx, by, bw*pct, 3);
+      ctx.font='4px monospace'; ctx.textAlign='center';
+      ctx.fillStyle='rgba(255,255,255,0.6)';
+      ctx.fillText(`${this.shuffleMoveIndex}/${this.shuffleMoves} TROCAS`, this.tableX, by+10);
+      ctx.textAlign='left';
+    }
   }
   // Verifica clique na posição do copo (para mouse)
   hitTest(px,py){
     for(let i=0;i<this.cups.length;i++){
       const c=this.cups[i];
-      if(Math.abs(px - c.displayX) < 18 && Math.abs(py - c.displayY) < 18) return i;
+      // considera o deslocamento vertical do copo (levanta, pulo, hover) pra área de clique
+      const dy = c.displayY - c.lift*4 - c.pop*4 - c.hover*5;
+      if(Math.abs(px - c.displayX) < 22 && Math.abs(py - dy) < 22) return i;
     }
     return -1;
   }
@@ -15206,6 +15975,35 @@ class SetchCupGame {
 // "Press Start 2P" avanca 1em por caractere, entao "DS" a 5px ocupa 10px: o escudo
 // precisa ter >=11px de largura para o texto nao encostar na borda. DS_BADGE_TEXT_DY
 // desloca a linha de base para centrar as letras no escudo (fonte de 5px => ~2.5px p/ centro).
+// Boca que reage ao humor do NPC (mood: -1 triste .. 0 neutro .. 1 feliz).
+// Neutro = retângulo (mesmo visual antigo), sorriso/descontento = curvas.
+function drawMoodMouth(ctx, cx, cy, w, color, mood){
+  const m = clamp(mood||0, -1, 1);
+  const x0 = cx - w/2, x1 = cx + w/2;
+  if(m > 0.25){
+    // sorriso: curva para baixo (y cresce) + cantos levantados
+    const depth = 1.4 + m*2.2;
+    ctx.strokeStyle = color; ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(x0, cy - 0.6);
+    ctx.quadraticCurveTo(cx, cy + depth, x1, cy - 0.6);
+    ctx.stroke();
+    if(m > 0.7){ // sorriso grande: bochechas
+      ctx.fillStyle = 'rgba(255,120,120,0.35)';
+      ctx.fillRect(x0-2.4, cy-0.4, 1.8, 1.2); ctx.fillRect(x1+0.6, cy-0.4, 1.8, 1.2);
+    }
+  } else if(m < -0.25){
+    // tristeza: curva para cima
+    ctx.strokeStyle = color; ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(x0, cy + 1.2);
+    ctx.quadraticCurveTo(cx, cy - 1.6, x1, cy + 1.2);
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = color; ctx.fillRect(x0, cy, w, 0.9);
+  }
+}
+
 const DS_BADGE_TEXT_DY = 2.0;
 function drawDSBadge(ctx, cx, cy, bw, bh){
   bw=bw||11; bh=bh||11;
@@ -15224,45 +16022,315 @@ function drawDSBadge(ctx, cx, cy, bw, bh){
   ctx.textAlign='left';
 }
 
-class SetchNPC {
-  constructor(x,y){
+// ===================== BASE DOS NPCs DA SALA SETCH =====================
+// Todo NPC da Sala Setch (Setch, Indiana, JL, Oli) herda daqui o comportamento comum:
+// respiration, piscada de olhos, olhar seguindo o jogador, falinhas Speech nas horas
+// mortas, destaque quando o jogador chega perto e pedestal do presente após entregar.
+// Assim cada NPC só precisa desenhar o próprio corpo e falar suas linhas.
+class SetchVendor {
+  constructor(x, y, w, h, interactRange, cfg){
     this.x=x; this.y=y;
-    this.w=SETCH_NPC_SIZE_W; this.h=SETCH_NPC_SIZE_H;
+    this.w=w; this.h=h;
     this.anim=Math.random()*1000;
-    this.interactRange=SETCH_INTERACT_RANGE;
+    this.interactRange=interactRange;
     this.wasNear=false;
+    this.giftGiven=false;
+    // piscada
+    this.blinkTimer=randRange(900, 3200);
+    this.blink=0;
+    // olhar (olhos/boca seguem o jogador)
+    this.lookX=0; this.lookY=0;
+    // destaque de proximidade (0..1, suavizado)
+    this.glow=0;
+    // falinhas
+    this.bubble=null; this.bubbleTimer=0;
+    this.chatTimer=randRange(2600, 7000);
+    this.talkCd=0;
+    this.cfg=Object.assign({name:'NPC', color:'#a78bfa', lines:[], doneLines:[]}, cfg||{});
+    this.giftIcon=null;      // rótulo do pedestal após entregar (ex.: 'CHICOTE')
+    this.giftColor='#ffd700';
+    this.dealerAnim=0;       // Setch usa para o gesto de embaralhar
+    this.cheerAnim=0;        // usado nas falas de parabéns
+    this.alertFx=0;          // "!" de atenção ao ver o jogador chegar
+    this.face=-1;            // direção do olhar (o Setch é desenhado olhando para a esquerda)
+    this.giftBadge=null;     // ícone do presente no pedestal e no hint
+    this.hypeLines=[];       // falas curtas quando o jogador acerta uma rodada do Copinho
+    this.pokeLines=[];       // falas curtas quando o jogador erra uma rodada
+    this.mood=0;             // -1 decepcionado .. 0 neutro .. 1 animado (muda a boca/olhos)
+    this.moodT=0;            // duração restante do humor atual
+    this.waveFx=0;           // aceno de despedida (usado pelo Setch após a final)
+  }
+  // Reação genérica à rodada do Jogo do Copinho: os NPCs da sala acompanham o jogo
+  // de lado e comentam. Não segura o jogo (só fala), então nunca atrapalha o timing.
+  onCupRound(win, round){
+    if(win){
+      this.setMood(1, 1800);
+      if(this.hypeLines && this.hypeLines.length) this.say(this.hypeLines[randInt(0, this.hypeLines.length-1)], 1600);
+    } else {
+      this.setMood(-1, 1800);
+      if(this.pokeLines && this.pokeLines.length) this.say(this.pokeLines[randInt(0, this.pokeLines.length-1)], 1600);
+    }
+  }
+  setMood(v, dur=2000){ this.mood = clamp(v, -1, 1); this.moodT = dur; }
+  // Fala temporária (bolha de speech). Silencia falinhas automáticas por um tempo.
+  say(text, dur=2400){
+    if(!text) return;
+    this.bubble=text;
+    this.bubbleTimer=dur;
+    this.talkCd=dur+1400;
+  }
+  // Linha automática (idle) — só enquanto o presente não foi entregue
+  idleLine(){
+    const lines = this.giftGiven ? (this.cfg.doneLines||[]) : (this.cfg.lines||[]);
+    if(!lines.length) return;
+    this.say(lines[randInt(0, lines.length-1)]);
+  }
+  update(dt, player){
+    this.anim+=dt;
+    if(this.dealerAnim>0) this.dealerAnim-=dt;
+    if(this.cheerAnim>0) this.cheerAnim-=dt;
+    if(this.alertFx>0) this.alertFx-=dt;
+    if(this.waveFx>0) this.waveFx-=dt;
+    if(this.moodT>0){
+      this.moodT-=dt;
+      if(this.moodT<=0) this.mood=0; // volta ao neutro
+    }
+    // piscada de olhos
+    this.blinkTimer-=dt;
+    if(this.blinkTimer<=0){ this.blink=130; this.blinkTimer=randRange(1700, 4600); }
+    if(this.blink>0) this.blink-=dt;
+    // olhar para o jogador + destaque de proximidade
+    if(player){
+      const dx=player.x-this.x, dy=player.y-this.y;
+      const d=Math.hypot(dx,dy)||1;
+      const near = d < this.interactRange+34;
+      // "!" de atenção aparece uma vez quando o jogador entra no raio de conversa
+      if(near && !this.wasNear) this.alertFx = 1000;
+      this.wasNear = near;
+      this.glow = lerp(this.glow, near?1:0, 0.10);
+      const k = near ? 1.5 : 0.9;
+      this.lookX = clamp(dx/d*k, -1.5, 1.5);
+      this.lookY = clamp(dy/d*k*0.55, -1.0, 1.0);
+    } else {
+      this.glow = lerp(this.glow, 0, 0.1);
+    }
+    // bolha de fala
+    if(this.bubbleTimer>0) this.bubbleTimer-=dt;
+    if(this.talkCd>0) this.talkCd-=dt;
+    if(this.bubbleTimer<=0 && this.talkCd<=0){
+      this.chatTimer-=dt;
+      if(this.chatTimer<=0){ this.idleLine(); this.chatTimer=randRange(7500, 14000); }
+    }
+  }
+  isNear(player){ return dist(this.x,this.y,player.x,player.y) < this.interactRange; }
+  celebrate(){ this.cheerAnim=900; }
+  // --- helpers de desenho compartilhados ---
+  // Anel de destaque quando o jogador está perto (cor do NPC)
+  drawHighlight(ctx, x, y, W, H, bob){
+    if(this.glow<=0.02) return;
+    const g=this.glow;
+    const pulse=0.5+Math.sin(this.anim*0.012)*0.3;
+    ctx.save();
+    ctx.strokeStyle=this.cfg.ringColor || this.cfg.color;
+    ctx.globalAlpha=0.30+g*0.45;
+    ctx.lineWidth=1.4;
+    ctx.setLineDash([3,3]);
+    ctx.strokeRect(x-3.5, y-6+bob, W+7, H+9);
+    ctx.setLineDash([]);
+    ctx.globalAlpha=(0.10+g*0.16)*(0.7+pulse*0.4);
+    ctx.fillStyle=this.cfg.color;
+    ctx.fillRect(x-3.5, y-6+bob, W+7, H+9);
+    ctx.globalAlpha=1;
+    ctx.restore();
+  }
+  // Seta + [E] pulsante acima do NPC enquanto o presente está disponível
+  drawPrompt(ctx, cx, topY, text, color){
+    const pulse=0.5+Math.sin(this.anim*0.014)*0.5;
+    const c = color || this.cfg.color;
+    ctx.fillStyle='rgba(0,0,0,0.68)';
+    ctx.fillRect(cx-27, topY-19, 54, 10);
+    ctx.strokeStyle=`rgba(255,255,255,${0.16+pulse*0.22})`; ctx.lineWidth=0.7;
+    ctx.strokeRect(cx-27.5, topY-19.5, 55, 11);
+    ctx.fillStyle = c;
+    ctx.font='5px monospace'; ctx.textAlign='center';
+    ctx.fillText(text, cx, topY-12);
+    ctx.fillStyle=`rgba(255,255,255,${0.45+pulse*0.5})`;
+    ctx.fillText('▼', cx, topY-21);
+    ctx.textAlign='left';
+  }
+  // "!" de atenção (padrão RPG) quando o jogador entra no raio de conversa
+  drawAlert(ctx, cx, topY){
+    if(this.alertFx<=0) return;
+    const t=clamp(this.alertFx/1000, 0, 1);
+    const pop = 1 + Math.sin((1-t)*Math.PI)*0.5;
+    ctx.save();
+    ctx.globalAlpha = clamp(t*1.6, 0, 1);
+    ctx.font=`${Math.round(9*pop)}px "Press Start 2P"`;
+    ctx.textAlign='center';
+    ctx.fillStyle='#ffd700';
+    ctx.fillText('!', cx+1, topY-24+(1-t)*4);
+    ctx.fillStyle='#1a0a00';
+    ctx.fillText('!', cx, topY-25+(1-t)*4);
+    ctx.textAlign='left';
+    ctx.restore();
+  }
+  // Ícone flutuante do presente que o NPC ainda oferece (chama atenção sem precisar chegar perto)
+  drawGiftBadge(ctx, cx, topY, color){
+    if(!this.giftBadge || this.giftGiven) return;
+    const bob = Math.sin(this.anim*0.006)*1.4;
+    const pulse=0.5+Math.sin(this.anim*0.012)*0.5;
+    ctx.save();
+    ctx.fillStyle='rgba(0,0,0,0.55)';
+    ctx.fillRect(cx-8, topY-11+bob, 16, 13);
+    ctx.strokeStyle=color || this.cfg.color;
+    ctx.globalAlpha=0.35+pulse*0.45; ctx.lineWidth=0.8;
+    ctx.strokeRect(cx-8.5, topY-11.5+bob, 17, 14);
+    ctx.globalAlpha=1;
+    ctx.font='8px "Press Start 2P"'; ctx.textAlign='center';
+    ctx.fillStyle=color || this.cfg.color;
+    ctx.fillText(this.giftBadge, cx, topY-1+bob);
+    ctx.textAlign='left';
+    ctx.restore();
+  }
+  // Pedestal com o item entregue + "OBRIGADO!" depois que entregou o presente
+  drawGiftPedestal(ctx, x, y){
+    if(!this.giftGiven) return;
+    const py=y+18;
+    ctx.fillStyle='rgba(0,0,0,0.30)'; ctx.beginPath(); ctx.ellipse(this.x, py+2, 11, 3.6, 0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#241a33'; ctx.fillRect(this.x-9, py-6, 18, 7);
+    ctx.fillStyle='#3d2b56'; ctx.fillRect(this.x-9, py-6, 18, 1.4);
+    const bobI=Math.sin(this.anim*0.006)*1.2;
+    ctx.fillStyle=this.giftColor;
+    ctx.font='8px "Press Start 2P"'; ctx.textAlign='center';
+    ctx.fillText(this.giftIcon||'★', this.x, py-7+bobI);
+    ctx.font='4px monospace';
+    ctx.fillStyle='rgba(74,222,128,0.95)';
+    ctx.fillText('ENTREGUE', this.x, py+7);
+    ctx.textAlign='left';
+  }
+  // Bolha de fala (fala do NPC) - desenhada acima da nametag (dy sobe mais quando ha prompt [E])
+  drawBubble(ctx, cx, topY, dy){
+    if(this.bubbleTimer<=0 || !this.bubble) return;
+    const alpha=clamp(this.bubbleTimer/300, 0, 1);
+    const txt=this.bubble;
+    ctx.font='5px monospace';
+    const w=Math.min(210, ctx.measureText(txt).width+12);
+    const h=13;
+    const bx=cx-w/2, by=topY-34+(dy||0);
+    ctx.save();
+    ctx.globalAlpha=alpha;
+    ctx.fillStyle='rgba(8,6,14,0.92)';
+    ctx.beginPath();
+    ctx.moveTo(bx+3, by); ctx.lineTo(bx+w-3, by); ctx.lineTo(bx+w, by+3); ctx.lineTo(bx+w, by+h-3);
+    ctx.lineTo(bx+w-3, by+h); ctx.lineTo(cx+4, by+h); ctx.lineTo(cx, by+h+4); ctx.lineTo(cx-4, by+h);
+    ctx.lineTo(bx+3, by+h); ctx.lineTo(bx, by+h-3); ctx.lineTo(bx, by+3);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle=this.cfg.color; ctx.lineWidth=0.8; ctx.stroke();
+    ctx.fillStyle='#ffffff'; ctx.textAlign='center';
+    ctx.fillText(txt, cx, by+8.5);
+    ctx.textAlign='left';
+    ctx.restore();
+  }
+  // Parabéns: aura expansiva quando o NPC comemora
+  drawCheer(ctx, cx, cy){
+    if(this.cheerAnim<=0) return;
+    const t=1-this.cheerAnim/900;
+    ctx.save();
+    ctx.globalAlpha=clamp(1-t, 0, 1)*0.9;
+    ctx.strokeStyle=this.cfg.color; ctx.lineWidth=1.6;
+    ctx.beginPath(); ctx.arc(cx, cy, 16+t*22, 0, Math.PI*2); ctx.stroke();
+    for(let i=0;i<6;i++){
+      const a=(i/6)*Math.PI*2 + t*3;
+      ctx.fillStyle=i%2? '#ffd700' : this.cfg.color;
+      ctx.fillRect(cx+Math.cos(a)*(16+t*22)-1, cy+Math.sin(a)*(16+t*22)-1, 2,2);
+    }
+    ctx.restore();
+  }
+  getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
+}
+
+class SetchNPC extends SetchVendor {
+  constructor(x,y){
+    super(x, y, SETCH_NPC_SIZE_W, SETCH_NPC_SIZE_H, SETCH_INTERACT_RANGE, {
+      name:'SETCH',
+      color:'rgba(168,85,247,0.92)',
+      ringColor:'rgba(255,215,0,0.75)',
+      lines:[
+        'Aposta em mim... e ganhe.',
+        'Tres copos, uma bolinha. Confia.',
+        'Se errar, é azar. Não é trapaça.',
+        'Fique de olho nos copos...',
+        'Memorize. Depois é só escolher.',
+        'Confia no seu olhar, hein?',
+        'Já perdeu? Bora de novo, sem custo.',
+        'Primeira rodada é aquecimento. Depois aperta.',
+        'Na final eu embalo em dupla. Fica esperto.',
+        'Tempo parado quando você sai da mesa. Sabe né?',
+        'A bolinha não anda sozinha durante o embaralho.',
+        'Mão pesada? Respira e foca no copo do meio.',
+      ],
+      doneLines:['Bom jogo! As portas estão liberadas.','Você leu os copos como ninguém.','Volte quando quiser treinar.'],
+    });
+    this.giftBadge='🎩';  // ícone do presente flotando acima do NPC
+    this.hypeLines=['Boa! De olho bom, hein.','Essa foi na bola.','Você tem mão boa pra isso.','Pronto, falta a final.'];
+    this.pokeLines=['Quase! A bolinha te enganou.','Dessa vez não foi, parceiro.','Respira e tenta de novo.'];
+    this.swapFx=0;      // gesto do braços ao trocar copos
+    this.handCup=0;     // copo na mão (0 = nenhum, 1 = esquerdo, 2 = direito)
+    this.handCupT=0;
   }
   update(dt,player){
-    this.anim+=dt;
+    super.update(dt,player);
+    if(this.swapFx>0) this.swapFx-=dt;
+    if(this.handCupT>0){
+      this.handCupT-=dt;
+      if(this.handCupT<=0) this.handCup=0;
+    }
   }
-  isNear(player){
-    return dist(this.x,this.y,player.x,player.y) < this.interactRange;
+  // Chamado pelo Jogo do Copinho a cada troca: o Setch "faz o gesto" com as mãos
+  // (a,b) são os índices dos copos trocados, então ele mostra o copo certo na mão.
+  onShuffleSwap(a,b,ballIndex){
+    this.swapFx=260;
+    this.handCup = (ballIndex===0) ? 1 : (ballIndex===2) ? 2 : (randInt(0,2)===0?1:2);
+    this.handCupT=260;
   }
-  draw(ctx){
+  onRoundStart(round, isFinal){
+    this.setMood(0.4, 1500);
+    if(isFinal) this.say('Última! Errou aqui, volta pro começo.', 1800);
+  }
+  onRoundWin(){ this.say('Boa! Falta só a final.', 1800); this.celebrate(); this.setMood(1, 2200); }
+  onFinalWin(){ this.say('Vencedor! As portas se abriram.', 2600); this.celebrate(); this.setMood(1, 4000); this.waveFx=1400; }
+  onLose(){ this.say('Errou! Bora de novo, do começo.', 1800); this.setMood(-1, 2000); }
+  draw(ctx, player){
     const W=this.w, H=this.h;
+    const breathe=Math.sin(this.anim*0.008)*0.35;   // respiração
     const x=this.x-W/2, y=this.y-H/2, bob=Math.sin(this.anim*0.008)*1.6;
+    // braço do embaralhador: quanto mais rápido o gesto, maior o balanço
+    const swing = this.swapFx>0 ? Math.sin((260-this.swapFx)/260*Math.PI*2)*4.2 : 0;
+    // aceno de despedida depois da final
+    const wave = this.waveFx>0 ? Math.sin((1400-this.waveFx)/1400*Math.PI*3)*3.2 : 0;
     // sombra
     ctx.fillStyle='rgba(0,0,0,0.32)'; ctx.fillRect(x+2, y+H-3, W, 4);
     // aura misteriosa setch (roxo/dourado)
     const pulse=0.5+Math.sin(this.anim*0.011)*0.30;
-    ctx.fillStyle=`rgba(168,85,247,${0.14+pulse*0.08})`;
+    ctx.fillStyle=`rgba(168,85,247,${0.14+pulse*0.08 + this.glow*0.06})`;
     ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.92+pulse*3,0,Math.PI*2); ctx.fill();
     ctx.strokeStyle=`rgba(255,215,0,${0.22+pulse*0.10})`; ctx.lineWidth=1.1; ctx.setLineDash([4,3]);
     ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.88,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+    this.drawHighlight(ctx, x, y, W, H, bob);
     // pernas - calça azul
     ctx.fillStyle='#1d4ed8'; ctx.fillRect(x+4, y+22+bob, W-8, H-25);
     ctx.fillStyle='#1e3a8a'; ctx.fillRect(x+4, y+22+bob, 1, H-25);
     ctx.fillStyle='#172554'; ctx.fillRect(x+4, y+24+bob, W-8, 0.8);
     // sapatos
     ctx.fillStyle='#111827'; ctx.fillRect(x+3, y+H-4, W-6, 2);
-    // corpo - camisa branca
-    ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+3, y+10+bob, W-6, 12);
-    ctx.fillStyle='#ffffff'; ctx.fillRect(x+3, y+10+bob, W-6, 1.5);
-    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+20.5+bob, W-6, 1.5);
+    // corpo - camisa branca (sobe/desce com a respiração)
+    ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+3, y+10+bob+breathe, W-6, 12);
+    ctx.fillStyle='#ffffff'; ctx.fillRect(x+3, y+10+bob+breathe, W-6, 1.5);
+    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+20.5+bob+breathe, W-6, 1.5);
     // gola da camisa
-    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+10+bob, W-6, 1);
+    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+10+bob+breathe, W-6, 1);
     // emblema DS no peito
-    drawDSBadge(ctx, this.x, y+15.5+bob, 11, 9.8);
+    drawDSBadge(ctx, this.x, y+15.5+bob+breathe, 11, 9.8);
     // cinto
     ctx.fillStyle='#a16207'; ctx.fillRect(x+4, y+21.6+bob, W-8, 1.4);
     ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.fillRect(x+4, y+21.6+bob, W-8, 0.6);
@@ -15272,44 +16340,115 @@ class SetchNPC {
     ctx.fillStyle='#0a0a0a'; ctx.fillRect(x+2, y-1+bob, W-4, 3.5);
     ctx.fillRect(x+6, y-5+bob, W-12, 4.5);
     ctx.fillStyle='#a16207'; ctx.fillRect(x+6, y+1+bob, W-12, 1.2);
-    // olhos (misteriosos, brilho)
-    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+7, y+5.5+bob, 2.6,2.6); ctx.fillRect(x+W-9.6, y+5.5+bob, 2.6,2.6);
-    ctx.fillStyle='#ffd700'; ctx.fillRect(x+7.5, y+6.5+bob, 1.3,1.3); ctx.fillRect(x+W-9.1, y+6.5+bob, 1.3,1.3);
-    ctx.fillStyle='#fff'; ctx.fillRect(x+8, y+7+bob,0.6,0.6); ctx.fillRect(x+W-8.6, y+7+bob,0.6,0.6);
+    // olhos (misteriosos, brilho) - piscam e seguem o jogador
+    const eyeY=y+5.5+bob, eyeH = this.blink>0 ? 0.7 : 2.6;
+    const ex=this.lookX*0.9, ey=this.lookY*0.7;
+    // O humor altera os olhos: decepcionado deixa o olhar caído, animado abre o olho
+    const moodEye = clamp(this.mood, -1, 1);
+    const eyeH2 = eyeH * (1 + moodEye*0.22);
+    ctx.fillStyle='#1a0a00';
+    ctx.fillRect(x+7, eyeY, 2.6, eyeH2); ctx.fillRect(x+W-9.6, eyeY, 2.6, eyeH2);
+    if(this.blink<=0){
+      ctx.fillStyle='#ffd700';
+      ctx.fillRect(x+7.5+ex, eyeY+1+ey+moodEye*0.5, 1.3, 1.3); ctx.fillRect(x+W-9.1+ex, eyeY+1+ey+moodEye*0.5, 1.3, 1.3);
+      ctx.fillStyle='#fff';
+      ctx.fillRect(x+8+ex, eyeY+1.5+ey+moodEye*0.5, 0.6,0.6); ctx.fillRect(x+W-8.6+ex, eyeY+1.5+ey+moodEye*0.5, 0.6,0.6);
+    }
+    // sobrancelhas: sobe quando animado, desce quando decepcionado
+    ctx.fillStyle='#1a0a00';
+    const browY = y+3.4+bob - moodEye*1.1;
+    ctx.fillRect(x+6.8, browY, 3.2, 0.8); ctx.fillRect(x+W-10, browY, 3.2, 0.8);
     // bigode estiloso
     ctx.fillStyle='#1a0a00'; ctx.fillRect(x+9, y+9.2+bob, W-18,0.9);
     ctx.fillStyle='#3a1a0a'; ctx.fillRect(x+8, y+10.1+bob, W-16,0.6);
-    // mãos (segurando copo imaginário)
-    ctx.fillStyle='#d9b99b'; ctx.fillRect(x+0.5, y+11+bob, 3.5,4.5); ctx.fillRect(x+W-4, y+11+bob, 3.5,4.5);
-    // nome tag
+    // boca: sorriso现在由心情控制 (curva usa path em vez de retângulo)
+    drawMoodMouth(ctx, this.x, y+11.2+bob, 8, '#7a2f1a', this.mood);
+    // arms: one holds the cup, the other does the shuffling gesture (with the wave)
+    ctx.fillStyle='#f4f7fb';
+    ctx.fillRect(x+0.5, y+10.5+bob+breathe, 3.5, 6);
+    ctx.fillRect(x+W-4, y+10.5+bob+breathe+swing*0.5, 3.5, 6);
+    ctx.fillStyle='#d9b99b';
+    ctx.fillRect(x+0.5, y+15.2+bob+breathe, 3.5,4.5);
+    ctx.fillRect(x+W-4, y+15.2+bob+breathe+swing, 3.5,4.5);
+    // raised hand (farewell) overrides the normal arm position
+    if(this.waveFx>0){
+      ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+W-5, y+5+bob, 3.5, 6);
+      ctx.fillStyle='#d9b99b'; ctx.fillRect(x+W-5, y+3.4+bob+wave, 3.5, 2.2);
+    }
+    // copo na mão durante o embaralhamento (o "truque" do Setch)
+    if(this.handCup>0){
+      const hx = this.handCup===1 ? x+0.5 : x+W-1.5;
+      const hy = y+15+bob+breathe+(this.swapFx>0?swing:0)-2.5;
+      ctx.fillStyle='#6b4a1a'; ctx.fillRect(hx-2.5, hy, 5, 7);
+      ctx.fillStyle='#8a6d2b'; ctx.fillRect(hx-2.5, hy, 5, 1.4);
+      ctx.fillStyle='rgba(255,255,255,0.22)'; ctx.fillRect(hx-1.8, hy+1.6, 1, 4);
+      ctx.fillStyle='#1a1205'; ctx.fillRect(hx-2.5, hy+6, 5, 1);
+    }
+    this.drawCheer(ctx, this.x, this.y+bob);
+    this.drawGiftPedestal(ctx, x, y);
+    // nome tag (pulsa enquanto o jogo está valendo)
+    const cg = (this.room && this.room.cupGame) ? this.room.cupGame : (typeof window!=='undefined' && window.game && window.game.currentRoom ? window.game.currentRoom.cupGame : null);
+    const st = cg ? cg.state : 'idle';
+    const active = cg && cg.liveRound && cg.liveRound();
     ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(this.x-22, y-13+bob, 44, 8);
+    if(active && Math.floor(this.anim/300)%2===0){
+      ctx.strokeStyle='rgba(255,215,0,0.9)'; ctx.lineWidth=0.7;
+      ctx.strokeRect(this.x-22.5, y-13.5+bob, 45, 9);
+    }
     ctx.fillStyle='#ffd700'; ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
     ctx.fillText('SETCH', this.x, y-7+bob); ctx.textAlign='left';
     // hint
     ctx.fillStyle='rgba(168,85,247,0.92)'; ctx.font='5px monospace'; ctx.textAlign='center';
     ctx.fillText('COPINHOS', this.x, y-17+bob); ctx.textAlign='left';
+    this.drawGiftBadge(ctx, this.x, y-24+bob, '#ffd700');
+    // bolha de fala + prompt quando o jogador chega perto
+    const nearSetch = !!(player && this.isNear(player));
+    const showPromptSetch = nearSetch && (st==='idle' || st==='finishedLose');
+    this.drawBubble(ctx, this.x, y-13+bob, showPromptSetch ? -16 : 0);
+    if(showPromptSetch){
+      this.drawAlert(ctx, this.x, y-13+bob);
+      const label = (st==='idle') ? '[E] JOGAR' : '[E] REJOGAR';
+      this.drawPrompt(ctx, this.x, y-22+bob, label, '#ffd700');
+    }
+    // Dica: enquanto a partida está rolando, o Setch mostra o número do copo mais próximo
+    // do jogador para quem joga com o [E] em vez das teclas 1/2/3.
+    if(nearSetch && active && cg.state==='waiting' && cg.interactive){
+      const near = cg.nearestCupToPlayer(player);
+      ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(this.x-26, y-33+bob, 52, 11);
+      ctx.strokeStyle='rgba(255,215,0,0.8)'; ctx.lineWidth=0.8;
+      ctx.strokeRect(this.x-26.5, y-33.5+bob, 53, 12);
+      ctx.fillStyle='#ffd700'; ctx.font='6px "Press Start 2P"'; ctx.textAlign='center';
+      ctx.fillText(`[E] COPO ${near+1}`, this.x, y-25+bob); ctx.textAlign='left';
+    }
   }
-  getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
 }
 
 // ===================== INDIANA JONES NPC - CHICOTE 100% (SALA SETCH) =====================
 // Novo NPC na Sala Setch com visual Indiana Jones: fedora marrom, jaqueta couro, chicote no ombro.
 // Garante Chicote do Indiana 100% ao interagir com [E] quando próximo (requisito).
 // Itens raros mas pode aparecer em todas fases; aqui é garantido.
-class IndianaJonesNPC {
+class IndianaJonesNPC extends SetchVendor {
   constructor(x,y){
-    this.x=x; this.y=y;
-    this.w=INDIANA_NPC_SIZE_W; this.h=INDIANA_NPC_SIZE_H;
-    this.anim=Math.random()*1000;
-    this.interactRange=CHICOTE_INTERACT_RANGE;
-    this.giftGiven=false; // para não dar infinito (mas 100% primeira vez)
-    this.wasNear=false;
-  }
-  update(dt,player){
-    this.anim+=dt;
-  }
-  isNear(player){
-    return dist(this.x,this.y,player.x,player.y) < this.interactRange;
+    super(x, y, INDIANA_NPC_SIZE_W, INDIANA_NPC_SIZE_H, CHICOTE_INTERACT_RANGE, {
+      name:'INDIANA',
+      color:'rgba(210,166,121,0.96)',
+      ringColor:'rgba(210,166,121,0.8)',
+      lines:[
+        'O chicote nunca me deixou na mão...',
+        'Tenho uma corda que gruda até em parede.',
+        'Segura o chicote. Cuide dele.',
+        'A sorte é para quem não tem plano.',
+        'Se achar que vai cair, usa a corda.',
+        'Regra de arena: nunca sai sem plano B.',
+        'Esse chicote já salvou meu Chapéu duas vezes.',
+        'Cuidado com a sala de cima, ela é grande.',
+      ],
+      doneLines:['Boa sorte lá na frente.','Não perca o chicote.'],
+    });
+    this.giftIcon='🤠'; this.giftColor='#d2a679';
+    this.giftBadge='🧢';  // chapéu flutuando: mostra o que ele dá sem precisar chegar perto
+    this.hypeLines=['Boa! Você tem olho de águia.','Isso é técnica, não sorte.','Boa. O chicote fica mais fácil de usar.'];
+    this.pokeLines=['Ops. Os copos te venceram dessa vez.','Relaxa, da próxima sai.','O Setch é esperto, mas é justo.'];
   }
   // Tenta dar o Chicote: 100% sucesso se ainda não deu
   tryGiveGift(player, game, room){
@@ -15339,9 +16478,11 @@ class IndianaJonesNPC {
       if(game.currentRoom) game.currentRoom.explosions.push({x:this.x,y:this.y,radius:12,life:360,max:360,isChicoteGift:true});
       if(game.showToast) game.showToast('🤠 Indiana: Tome meu Chicote! Puxe paredes e cause explosão!', 2600);
     }
+    this.say('Ele é seu agora. Cuide bem.', 2600);
+    this.celebrate();
     return {ok:true, weapon:'chicote'};
   }
-  draw(ctx){
+  draw(ctx, player){
     const W=this.w, H=this.h;
     const x=this.x-W/2, y=this.y-H/2, bob=Math.sin(this.anim*0.008)*1.4;
     // sombra
@@ -15352,6 +16493,7 @@ class IndianaJonesNPC {
     ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.92+pulse*3,0,Math.PI*2); ctx.fill();
     ctx.strokeStyle=`rgba(139,69,19,${0.22+pulse*0.10})`; ctx.lineWidth=1.1; ctx.setLineDash([4,3]);
     ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.88,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+    this.drawHighlight(ctx, x, y, W, H, bob);
     // pernas - calça azul
     ctx.fillStyle='#1d4ed8'; ctx.fillRect(x+3, y+20+bob, W-6, H-24);
     ctx.fillStyle='#1e3a8a'; ctx.fillRect(x+3, y+20+bob, 1, H-24);
@@ -15395,16 +16537,21 @@ class IndianaJonesNPC {
     ctx.fillStyle='#d2a679'; ctx.fillRect(x+6, y-2.2+bob, W-12, 0.8); // brilho
     // sombra aba sobre rosto
     ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.fillRect(x+4, y+2+bob, W-8, 1.8);
-    // olhos aventureiro (determinado)
-    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+7, y+5.5+bob, 2.6,2.3);
-    ctx.fillRect(x+W-9.6, y+5.5+bob, 2.6,2.3);
-    ctx.fillStyle='#3a1a0a'; ctx.fillRect(x+7, y+6.9+bob, 2.6,0.5);
-    ctx.fillRect(x+W-9.6, y+6.9+bob, 2.6,0.5);
-    ctx.fillStyle='#fff'; ctx.fillRect(x+7.8, y+6+bob, 0.9,0.9);
-    ctx.fillRect(x+W-8.8, y+6+bob, 0.9,0.9);
-    // sorriso confiante + bigode leve?
-    ctx.fillStyle='#7a4a3a'; ctx.fillRect(x+9.5, y+9+bob, 5,0.9);
-    ctx.fillStyle='#5a2a1a'; ctx.fillRect(x+10.5, y+9.9+bob, 3,0.6);
+    // eyes (adventurous, determined) - blink and follow the player
+    const eyeY=y+5.5+bob, ex=this.lookX*0.9, ey=this.lookY*0.7;
+    const moodEye=clamp(this.mood, -1, 1);
+    const eyeH=(this.blink>0?0.7:2.3) * (1 + moodEye*0.2);
+    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+7, eyeY, 2.6, eyeH);
+    ctx.fillRect(x+W-9.6, eyeY, 2.6, eyeH);
+    if(this.blink<=0){
+      ctx.fillStyle='#3a1a0a'; ctx.fillRect(x+7+ex, eyeY+1.4+ey+moodEye*0.4, 2.6,0.5);
+      ctx.fillRect(x+W-9.6+ex, eyeY+1.4+ey+moodEye*0.4, 2.6,0.5);
+      ctx.fillStyle='#fff'; ctx.fillRect(x+7.8+ex, eyeY+0.5+ey, 0.9,0.9);
+      ctx.fillRect(x+W-8.8+ex, eyeY+0.5+ey, 0.9,0.9);
+    }
+    // confident smile (changes with mood) + light mustache
+    drawMoodMouth(ctx, this.x+2, y+9.6+bob, 5, '#7a4a3a', this.mood);
+    ctx.fillStyle='#5a2a1a'; ctx.fillRect(x+10.5, y+10.4+bob, 3,0.6);
     // cicatriz leve queixo (aventureiro)
     ctx.fillStyle='#b09070'; ctx.fillRect(x+8, y+9.9+bob, 1.8,0.7);
     // nome tag
@@ -15415,35 +16562,56 @@ class IndianaJonesNPC {
     }
     ctx.fillStyle='#d2a679'; ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
     ctx.fillText('INDIANA', this.x, y-7+bob); ctx.textAlign='left';
+    this.drawCheer(ctx, this.x, this.y+bob);
+    this.drawGiftPedestal(ctx, x, y);
+    this.drawGiftBadge(ctx, this.x, y-20+bob, '#d2a679');
+    const nearInd = !!(player && this.isNear(player));
+    this.drawBubble(ctx, this.x, y-13+bob, (nearInd && !this.giftGiven) ? -14 : 0);
     // hint chicote 100%
     if(!this.giftGiven){
-      ctx.fillStyle='rgba(210,166,121,0.96)'; ctx.font='5px monospace'; ctx.textAlign='center';
-      ctx.fillText('[E] CHICOTE 100%', this.x, y-17+bob); ctx.textAlign='left';
-      // brilho gift aguardando
-      ctx.strokeStyle=`rgba(210,166,121,${0.38+pulse*0.18})`; ctx.lineWidth=1.4; ctx.setLineDash([3,3]);
-      ctx.strokeRect(x-2, y-4+bob, W+4, H+6); ctx.setLineDash([]);
+      if(nearInd){
+        this.drawAlert(ctx, this.x, y-13+bob);
+        this.drawPrompt(ctx, this.x, y-21+bob, '[E] CHICOTE 100%', '#d2a679');
+      } else {
+        ctx.fillStyle='rgba(210,166,121,0.96)'; ctx.font='5px monospace'; ctx.textAlign='center';
+        ctx.fillText('[E] CHICOTE 100%', this.x, y-17+bob); ctx.textAlign='left';
+        // brilho gift aguardando
+        ctx.strokeStyle=`rgba(210,166,121,${0.38+pulse*0.18})`; ctx.lineWidth=1.4; ctx.setLineDash([3,3]);
+        ctx.strokeRect(x-2, y-4+bob, W+4, H+6); ctx.setLineDash([]);
+      }
     } else {
       ctx.fillStyle='rgba(74,222,128,0.9)'; ctx.font='5px monospace'; ctx.textAlign='center';
       ctx.fillText('OBRIGADO!', this.x, y-17+bob); ctx.textAlign='left';
     }
   }
-  getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
 }
 
 // ===================== JL NPC - PASSIVO IO-IO (SALA SETCH) =====================
 // NPC na Sala Setch que entrega o passivo IO-IO: ao levar dano o jogador invoca
 // io-ios que giram em volta dele causando dano nos inimigos.
-class JLNPC {
+class JLNPC extends SetchVendor {
   constructor(x,y){
-    this.x=x; this.y=y;
-    this.w=JL_NPC_SIZE_W; this.h=JL_NPC_SIZE_H;
-    this.anim=Math.random()*1000;
-    this.interactRange=JL_INTERACT_RANGE;
-    this.giftGiven=false; // 1 vez só por partida
-    this.wasNear=false;
+    super(x, y, JL_NPC_SIZE_W, JL_NPC_SIZE_H, JL_INTERACT_RANGE, {
+      name:'JL',
+      color:'rgba(255,138,128,0.96)',
+      ringColor:'rgba(255,213,74,0.8)',
+      lines:[
+        'Leva um io-io comigo, ó!',
+        'Ele gira em você e fere quem chega perto.',
+        'Cada golpe que você leva, ele ataca.',
+        'IO-IO! IO-IO! Tá sentindo?',
+        'Deixa comigo que eu distraio.',
+        'Se errar copinho, o io-io ainda tá aqui.',
+        'O Setch é truque, io-io é jogo limpo.',
+        'Io-io não perdoa, ele só não cansa.',
+      ],
+      doneLines:['Cuida dele, tá voando!','IO-IO!','Bom partner.'],
+    });
+    this.giftIcon='🪀'; this.giftColor='#e53935';
+    this.giftBadge='🪀';  // io-io flutuando
+    this.hypeLines=['ISSO! Io-io girou junto!','Boa, tá afiado hoje!','Acerto limpo, parceiro.'];
+    this.pokeLines=['Ah, o copinho te venceu.','Dessa vez o Setch ganhou essa.','Tá de olho ruim hoje, hein?'];
   }
-  update(dt,player){ this.anim+=dt; }
-  isNear(player){ return dist(this.x,this.y,player.x,player.y) < this.interactRange; }
   // Dá o passivo IO-IO (flag permanente, não ocupa o slot de especial)
   tryGiveGift(player, game, room){
     if(this.giftGiven || player.hasIoiPassive) return {ok:false, reason:'already_given'};
@@ -15457,20 +16625,24 @@ class JLNPC {
       if(game.currentRoom) game.currentRoom.explosions.push({x:this.x,y:this.y,radius:12,life:340,max:340,isIoiGift:true});
       if(game.showToast) game.showToast('🪀 JL: Toma meu IO-IO! Ao levar dano, ele gira em você e machuca os inimigos!', 3000);
     }
+    this.say('Ele orbita em você agora. IO-IO!', 2600);
+    this.celebrate();
     return {ok:true, passive:'ioio'};
   }
-  draw(ctx){
+  draw(ctx, player){
     const W=this.w, H=this.h;
     const x=this.x-W/2, y=this.y-H/2, bob=Math.sin(this.anim*0.009)*1.6;
     const spin=this.anim*0.02;
+    const breathe=Math.sin(this.anim*0.008)*0.35;
     // sombra
     ctx.fillStyle='rgba(0,0,0,0.32)'; ctx.fillRect(x+2, y+H-3, W, 4);
     // aura do io-io (vermelha, pulsante)
     const pulse=0.5+Math.sin(this.anim*0.012)*0.30;
-    ctx.fillStyle=`rgba(229,57,53,${0.13+pulse*0.08})`;
+    ctx.fillStyle=`rgba(229,57,53,${0.13+pulse*0.08 + this.glow*0.05})`;
     ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.92+pulse*3,0,Math.PI*2); ctx.fill();
     ctx.strokeStyle=`rgba(255,213,74,${0.24+pulse*0.10})`; ctx.lineWidth=1.1; ctx.setLineDash([4,3]);
     ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.88,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+    this.drawHighlight(ctx, x, y, W, H, bob);
     // pernas - calça azul
     ctx.fillStyle='#1d4ed8'; ctx.fillRect(x+4, y+22+bob, W-8, H-25);
     ctx.fillStyle='#1e3a8a'; ctx.fillRect(x+4, y+22+bob, 1, H-25);
@@ -15478,13 +16650,13 @@ class JLNPC {
     // sapatos
     ctx.fillStyle='#111827'; ctx.fillRect(x+3, y+H-4, W-6, 2);
     // corpo - camisa branca
-    ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+3, y+10+bob, W-6, 12);
-    ctx.fillStyle='#ffffff'; ctx.fillRect(x+3, y+10+bob, W-6, 1.5);
-    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+20.5+bob, W-6, 1.5);
+    ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+3, y+10+bob+breathe, W-6, 12);
+    ctx.fillStyle='#ffffff'; ctx.fillRect(x+3, y+10+bob+breathe, W-6, 1.5);
+    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+20.5+bob+breathe, W-6, 1.5);
     // gola
-    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+10+bob, W-6, 1);
+    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+10+bob+breathe, W-6, 1);
     // emblema DS no peito
-    drawDSBadge(ctx, this.x, y+15.5+bob, 11, 9.8);
+    drawDSBadge(ctx, this.x, y+15.5+bob+breathe, 11, 9.8);
     // cinto
     ctx.fillStyle='#a16207'; ctx.fillRect(x+4, y+21.6+bob, W-8, 1.4);
     ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.fillRect(x+4, y+21.6+bob, W-8, 0.6);
@@ -15493,13 +16665,18 @@ class JLNPC {
     // cabelo (escurinho, espetado)
     ctx.fillStyle='#2a1a0a'; ctx.fillRect(x+3, y+0.5+bob, W-6, 3.2);
     ctx.fillRect(x+5, y-1.2+bob, 4, 2); ctx.fillRect(x+W-9, y-1.2+bob, 4, 2);
-    // olhos (animados)
-    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+7, y+5.5+bob, 2.6,2.6); ctx.fillRect(x+W-9.6, y+5.5+bob, 2.6,2.6);
-    ctx.fillStyle='#fff'; ctx.fillRect(x+8, y+7+bob,0.6,0.6); ctx.fillRect(x+W-8.6, y+7+bob,0.6,0.6);
-    // sorriso
-    ctx.fillStyle='#8a4a3a'; ctx.fillRect(x+9, y+9.2+bob, W-18,0.9);
+    // olhos (animados) - piscam e seguem o jogador
+    const eyeY=y+5.5+bob, ex=this.lookX*0.9, ey=this.lookY*0.7;
+    const moodEye=clamp(this.mood, -1, 1);
+    const eyeH=(this.blink>0?0.7:2.6) * (1 + moodEye*0.24);
+    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+7, eyeY, 2.6, eyeH); ctx.fillRect(x+W-9.6, eyeY, 2.6, eyeH);
+    if(this.blink<=0){
+      ctx.fillStyle='#fff'; ctx.fillRect(x+8+ex, eyeY+1.5+ey+moodEye*0.5,0.6,0.6); ctx.fillRect(x+W-8.6+ex, eyeY+1.5+ey+moodEye*0.5,0.6,0.6);
+    }
+    // smile reage ao humor
+    drawMoodMouth(ctx, this.x, y+9.6+bob, W-18, '#8a4a3a', this.mood);
     // mão direita segurando o io-io (com corda)
-    const hx=x+W-2, hy=y+12+bob;
+    const hx=x+W-2, hy=y+12+bob+breathe;
     ctx.strokeStyle='rgba(255,255,255,0.75)'; ctx.lineWidth=0.7;
     ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(hx+4.5, hy+7); ctx.stroke();
     ctx.save(); ctx.translate(hx+4.5, hy+7); ctx.rotate(spin);
@@ -15511,9 +16688,11 @@ class JLNPC {
     ctx.restore();
     ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.arc(hx+4.5, hy+7, 0.7, 0, Math.PI*2); ctx.fill();
     // braço
-    ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+W-4, y+10.5+bob, 3.5, 6);
+    ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+W-4, y+10.5+bob+breathe, 3.5, 6);
     // mão esquerda
-    ctx.fillStyle='#e0bfa0'; ctx.fillRect(x+0.5, y+11+bob, 3.5,4.5);
+    ctx.fillStyle='#e0bfa0'; ctx.fillRect(x+0.5, y+11+bob+breathe, 3.5,4.5);
+    this.drawCheer(ctx, this.x, this.y+bob);
+    this.drawGiftPedestal(ctx, x, y);
     // nome tag
     ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(this.x-20, y-13+bob, 40, 8);
     if(!this.giftGiven && Math.floor(this.anim/500)%2===0){
@@ -15522,34 +16701,59 @@ class JLNPC {
     }
     ctx.fillStyle='#ff8a80'; ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
     ctx.fillText('JL', this.x, y-7+bob); ctx.textAlign='left';
+    this.drawGiftBadge(ctx, this.x, y-20+bob, '#e53935');
+    const nearJL = !!(player && this.isNear(player));
+    this.drawBubble(ctx, this.x, y-13+bob, (nearJL && !this.giftGiven) ? -14 : 0);
     // hint
     if(!this.giftGiven){
-      ctx.fillStyle='rgba(255,138,128,0.96)'; ctx.font='5px monospace'; ctx.textAlign='center';
-      ctx.fillText('[E] PASSIVO IO-IO', this.x, y-17+bob); ctx.textAlign='left';
-      ctx.strokeStyle=`rgba(255,138,128,${0.38+pulse*0.18})`; ctx.lineWidth=1.4; ctx.setLineDash([3,3]);
-      ctx.strokeRect(x-2, y-4+bob, W+4, H+6); ctx.setLineDash([]);
+      if(nearJL){
+        this.drawAlert(ctx, this.x, y-13+bob);
+        this.drawPrompt(ctx, this.x, y-21+bob, '[E] PASSIVO IO-IO', '#ff8a80');
+      } else {
+        ctx.fillStyle='rgba(255,138,128,0.96)'; ctx.font='5px monospace'; ctx.textAlign='center';
+        ctx.fillText('[E] PASSIVO IO-IO', this.x, y-17+bob); ctx.textAlign='left';
+        ctx.strokeStyle=`rgba(255,138,128,${0.38+pulse*0.18})`; ctx.lineWidth=1.4; ctx.setLineDash([3,3]);
+        ctx.strokeRect(x-2, y-4+bob, W+4, H+6); ctx.setLineDash([]);
+      }
     } else {
       ctx.fillStyle='rgba(74,222,128,0.9)'; ctx.font='5px monospace'; ctx.textAlign='center';
       ctx.fillText('OBRIGADO!', this.x, y-17+bob); ctx.textAlign='left';
     }
   }
-  getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
 }
 
 // ===================== OLI NPC - ITEM ESPECIAL DE XADREZ (SALA SETCH) =====================
 // NPC na Sala Setch que entrega o item especial de Xadrez do Oli (OliXadrez):
 // invoca Torre, Bispo, Rainha e Rei em ciclo - cada peça com mecânica única.
-class OliNPC {
+class OliNPC extends SetchVendor {
   constructor(x,y){
-    this.x=x; this.y=y;
-    this.w=OLI_NPC_SIZE_W; this.h=OLI_NPC_SIZE_H;
-    this.anim=Math.random()*1000;
-    this.interactRange=OLI_NPC_INTERACT_RANGE;
-    this.giftGiven=false; // 1 vez só por partida
-    this.wasNear=false;
+    super(x, y, OLI_NPC_SIZE_W, OLI_NPC_SIZE_H, OLI_NPC_INTERACT_RANGE, {
+      name:'OLI',
+      color:'rgba(192,132,252,0.96)',
+      ringColor:'rgba(216,180,254,0.8)',
+      lines:[
+        'Jogue xadrez com as armas, meu.',
+        'Torre, bispo, rainha, rei... ciclo.',
+        'Peça boa vale mais que peça ruim.',
+        'Xeque-mate na sala de cima.',
+        'Cuidado com o meu cavalo.',
+        'Cada peça minha tem uma regra. Vale tentar.',
+        'Torre segura, bispo atravessa, rainha manda.',
+        'Contra o Setch não dá pra jogar de rei.',
+      ],
+      doneLines:['Boas jogadas, meu.','O tabuleiro é seu agora.','Xeque!'],
+    });
+    this.giftIcon='♞'; this.giftColor='#c084fc';
+    this.giftBadge='♞';  // peça de xadrez flutuando
+    this.hypeLines=['Boa jogada! Quase um xeque.','Boa, meu. Isso é leitura de tabuleiro.','Acerto limpo, parvo.'];
+    this.pokeLines=['Ah, o copinho te comeu.','Peça boa, jogador ruim. Deixa.','Tá jogando com pressa, meu.'];
   }
-  update(dt,player){ this.anim+=dt; }
-  isNear(player){ return dist(this.x,this.y,player.x,player.y) < this.interactRange; }
+  update(dt,player){
+    super.update(dt,player);
+    // a peça ♞ flutua sempre que o jogador chega perto (convite)
+    if(this.glow>0.4 && Math.random()<0.02) this.pieceFx=220;
+    if(this.pieceFx>0) this.pieceFx-=dt;
+  }
   // Dá o item especial de xadrez (equipado no slot de especial do jogador)
   tryGiveGift(player, game, room){
     if(this.giftGiven) return {ok:false, reason:'already_given'};
@@ -15574,19 +16778,23 @@ class OliNPC {
       if(hadSpecial && hadSpecial.id!=='oli_xadrez') msg += ` (substituiu ${hadSpecial.name})`;
       if(game.showToast) game.showToast(msg, 3000);
     }
+    this.say('As peças são suas. Bom xeque!', 2600);
+    this.celebrate();
     return {ok:true, special:'oli_xadrez'};
   }
-  draw(ctx){
+  draw(ctx, player){
     const W=this.w, H=this.h;
     const x=this.x-W/2, y=this.y-H/2, bob=Math.sin(this.anim*0.008)*1.6;
+    const breathe=Math.sin(this.anim*0.008)*0.35;
     // sombra
     ctx.fillStyle='rgba(0,0,0,0.32)'; ctx.fillRect(x+2, y+H-3, W, 4);
     // aura de xadrez (roxa/violeta, pulsante)
     const pulse=0.5+Math.sin(this.anim*0.011)*0.30;
-    ctx.fillStyle=`rgba(167,139,250,${0.15+pulse*0.09})`;
+    ctx.fillStyle=`rgba(167,139,250,${0.15+pulse*0.09 + this.glow*0.06})`;
     ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.94+pulse*3,0,Math.PI*2); ctx.fill();
     ctx.strokeStyle=`rgba(216,180,254,${0.24+pulse*0.10})`; ctx.lineWidth=1.1; ctx.setLineDash([4,3]);
     ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.89,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+    this.drawHighlight(ctx, x, y, W, H, bob);
     // pernas - calça azul
     ctx.fillStyle='#1d4ed8'; ctx.fillRect(x+4, y+22+bob, W-8, H-25);
     ctx.fillStyle='#1e3a8a'; ctx.fillRect(x+4, y+22+bob, 1, H-25);
@@ -15594,13 +16802,13 @@ class OliNPC {
     // sapatos
     ctx.fillStyle='#111827'; ctx.fillRect(x+3, y+H-4, W-6, 2);
     // corpo - camisa branca
-    ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+3, y+10+bob, W-6, 12);
-    ctx.fillStyle='#ffffff'; ctx.fillRect(x+3, y+10+bob, W-6, 1.5);
-    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+20.5+bob, W-6, 1.5);
+    ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+3, y+10+bob+breathe, W-6, 12);
+    ctx.fillStyle='#ffffff'; ctx.fillRect(x+3, y+10+bob+breathe, W-6, 1.5);
+    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+20.5+bob+breathe, W-6, 1.5);
     // gola
-    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+10+bob, W-6, 1);
+    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+10+bob+breathe, W-6, 1);
     // emblema DS no peito
-    drawDSBadge(ctx, this.x, y+15.5+bob, 11, 9.8);
+    drawDSBadge(ctx, this.x, y+15.5+bob+breathe, 11, 9.8);
     // cinto
     ctx.fillStyle='#6d28d9'; ctx.fillRect(x+4, y+21.6+bob, W-8, 1.4);
     ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.fillRect(x+4, y+21.6+bob, W-8, 0.6);
@@ -15609,15 +16817,21 @@ class OliNPC {
     // cabelo castanho
     ctx.fillStyle='#4a2c17'; ctx.fillRect(x+3, y+0.5+bob, W-6, 3.2);
     ctx.fillRect(x+5, y-1.2+bob, 4, 2); ctx.fillRect(x+W-9, y-1.2+bob, 4, 2);
-    // olhos (violeta, brilho de xadrez)
-    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+7, y+5.5+bob, 2.6,2.6); ctx.fillRect(x+W-9.6, y+5.5+bob, 2.6,2.6);
-    ctx.fillStyle='#c084fc'; ctx.fillRect(x+7.5, y+6.5+bob, 1.3,1.3); ctx.fillRect(x+W-9.1, y+6.5+bob, 1.3,1.3);
-    ctx.fillStyle='#fff'; ctx.fillRect(x+8, y+7+bob,0.6,0.6); ctx.fillRect(x+W-8.6, y+7+bob,0.6,0.6);
-    // sorriso
-    ctx.fillStyle='#8a4a3a'; ctx.fillRect(x+9, y+9.2+bob, W-18,0.9);
+    // olhos (violeta, brilho de xadrez) - piscam e seguem o jogador
+    const eyeY=y+5.5+bob, ex=this.lookX*0.9, ey=this.lookY*0.7;
+    const moodEye=clamp(this.mood, -1, 1);
+    const eyeH=(this.blink>0?0.7:2.6) * (1 + moodEye*0.24);
+    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+7, eyeY, 2.6, eyeH); ctx.fillRect(x+W-9.6, eyeY, 2.6, eyeH);
+    if(this.blink<=0){
+      ctx.fillStyle='#c084fc'; ctx.fillRect(x+7.5+ex, eyeY+1+ey+moodEye*0.5, 1.3, 1.3); ctx.fillRect(x+W-9.1+ex, eyeY+1+ey+moodEye*0.5, 1.3, 1.3);
+      ctx.fillStyle='#fff'; ctx.fillRect(x+8+ex, eyeY+1.5+ey+moodEye*0.5,0.6,0.6); ctx.fillRect(x+W-8.6+ex, eyeY+1.5+ey+moodEye*0.5,0.6,0.6);
+    }
+    // sorriso reage ao humor
+    drawMoodMouth(ctx, this.x, y+9.6+bob, W-18, '#8a4a3a', this.mood);
     // mão esquerda - peça de xadrez ♞ flutuando/girando ao lado
-    const px=x+2.5, py=y+13+bob, wspin=this.anim*0.012;
-    ctx.save(); ctx.translate(px, py); ctx.rotate(wspin*0.35);
+    const px=x+2.5, py=y+13+bob+breathe, wspin=this.anim*0.012;
+    const fx = this.pieceFx>0 ? 1+this.pieceFx/220 : 1;
+    ctx.save(); ctx.translate(px, py - (fx>1?3:0)); ctx.rotate(wspin*0.35); ctx.scale(fx, fx);
     ctx.fillStyle='rgba(167,139,250,0.22)'; ctx.beginPath(); ctx.arc(0,0,6.5,0,Math.PI*2); ctx.fill();
     ctx.fillStyle='#f5f3ff'; ctx.font='9px serif'; ctx.textAlign='center';
     ctx.fillText('♞', 0, 3.2);
@@ -15628,9 +16842,11 @@ class OliNPC {
     ctx.beginPath(); ctx.arc(px, py, 7.5, this.anim*0.01+Math.PI, this.anim*0.01+Math.PI+2.2); ctx.stroke();
     ctx.setLineDash([]);
     // braço esquerdo
-    ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+0.5, y+10.5+bob, 3.5, 6);
+    ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+0.5, y+10.5+bob+breathe, 3.5, 6);
     // mão direita
-    ctx.fillStyle='#d9b99b'; ctx.fillRect(x+W-4, y+11+bob, 3.5,4.5);
+    ctx.fillStyle='#d9b99b'; ctx.fillRect(x+W-4, y+11+bob+breathe, 3.5,4.5);
+    this.drawCheer(ctx, this.x, this.y+bob);
+    this.drawGiftPedestal(ctx, x, y);
     // nome tag
     ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(this.x-20, y-13+bob, 40, 8);
     if(!this.giftGiven && Math.floor(this.anim/500)%2===0){
@@ -15639,18 +16855,25 @@ class OliNPC {
     }
     ctx.fillStyle='#c084fc'; ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
     ctx.fillText('OLI', this.x, y-7+bob); ctx.textAlign='left';
+    this.drawGiftBadge(ctx, this.x, y-20+bob, '#c084fc');
+    const nearOli = !!(player && this.isNear(player));
+    this.drawBubble(ctx, this.x, y-13+bob, (nearOli && !this.giftGiven) ? -14 : 0);
     // hint
     if(!this.giftGiven){
-      ctx.fillStyle='rgba(192,132,252,0.96)'; ctx.font='5px monospace'; ctx.textAlign='center';
-      ctx.fillText('[E] XADREZ ♞', this.x, y-17+bob); ctx.textAlign='left';
-      ctx.strokeStyle=`rgba(192,132,252,${0.38+pulse*0.18})`; ctx.lineWidth=1.4; ctx.setLineDash([3,3]);
-      ctx.strokeRect(x-2, y-4+bob, W+4, H+6); ctx.setLineDash([]);
+      if(nearOli){
+        this.drawAlert(ctx, this.x, y-13+bob);
+        this.drawPrompt(ctx, this.x, y-21+bob, '[E] XADREZ ♞', '#c084fc');
+      } else {
+        ctx.fillStyle='rgba(192,132,252,0.96)'; ctx.font='5px monospace'; ctx.textAlign='center';
+        ctx.fillText('[E] XADREZ ♞', this.x, y-17+bob); ctx.textAlign='left';
+        ctx.strokeStyle=`rgba(192,132,252,${0.38+pulse*0.18})`; ctx.lineWidth=1.4; ctx.setLineDash([3,3]);
+        ctx.strokeRect(x-2, y-4+bob, W+4, H+6); ctx.setLineDash([]);
+      }
     } else {
       ctx.fillStyle='rgba(74,222,128,0.9)'; ctx.font='5px monospace'; ctx.textAlign='center';
       ctx.fillText('OBRIGADO!', this.x, y-17+bob); ctx.textAlign='left';
     }
   }
-  getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
 }
 
 // ===================== ROOM =====================
@@ -15694,6 +16917,9 @@ class Room {
     this.partyWavesRemaining = 0;
     this.partyWaveTimer = 0;
     this.partyConfetti = []; // decoração flutuante
+    this.anim = 0;       // relógio da sala (pulsos de decoração/placar). Antes o
+                       // desenho usava this.anim sem existir, então os pisca-pisca
+                       // da Sala Setch ficavam sempre apagados (NaN % 2 === 0).
     this.isSetch = false; // Sala Setch (2x tamanho, NPC copinhos)
     this.setchDefeated = false; // true quando venceu minigame (sala limpa)
     this.setchStarted = false;
@@ -16388,6 +17614,62 @@ class Room {
     this.spawnPartyWave(rng);
     return true;
   }
+  // Placar de presentes da Sala Setch (canto superior direito).
+  // Mostra o que a sala oferece e o que o jogador já pegou, com ✓ no que saiu.
+  drawGiftChecklist(ctx, player){
+    if(!this.isSetch) return;
+    const cg = this.cupGame;
+    const hasIoi = !!(player && player.hasIoiPassive);
+    const items = [
+      { label:'COPINHOS', icon:'🎩', color:'#ffd700', done:!!this.setchCleared },
+      { label:'CHICOTE',  icon:'🧢', color:'#d2a679', done:!!this.indianaGiftGiven },
+      { label:'IO-IO',    icon:'🪀', color:'#ff8a80', done:!!this.jlGiftGiven || hasIoi },
+      { label:'XADREZ',   icon:'♞',  color:'#c084fc', done:!!this.oliGiftGiven },
+    ];
+    const w = 92, h = 8 + items.length*11;
+    const bx = CANVAS_W - WALL_THICK - w - 8;
+    const by = WALL_THICK + 40;
+    ctx.save();
+    ctx.fillStyle='rgba(0,0,0,0.52)';
+    ctx.fillRect(bx, by, w, h);
+    ctx.strokeStyle='rgba(168,85,247,0.45)'; ctx.lineWidth=1;
+    ctx.strokeRect(bx+0.5, by+0.5, w-1, h-1);
+    ctx.font='5px "Press Start 2P"';
+    ctx.fillStyle='rgba(168,85,247,0.95)'; ctx.textAlign='left';
+    ctx.fillText('PRESENTES', bx+5, by+8);
+    for(let i=0;i<items.length;i++){
+const it = items[i];
+        const y = by + 19 + i*11;
+      if(it.done){
+        ctx.fillStyle='rgba(74,222,128,0.9)';
+        ctx.fillText('✓', bx+5, y);
+      } else {
+        // item pendente pulsa levemente pra chamar o olho
+        const p=0.55+Math.sin(this.anim*0.006 + i*0.9)*0.45;
+        ctx.globalAlpha=0.5+p*0.5;
+        ctx.fillStyle=it.color;
+        ctx.fillText(it.icon, bx+5, y);
+        ctx.globalAlpha=1;
+      }
+      ctx.fillStyle= it.done ? 'rgba(74,222,128,0.85)' : 'rgba(255,255,255,0.82)';
+      ctx.font='5px monospace';
+      ctx.fillText(it.label, bx+18, y);
+      ctx.font='5px "Press Start 2P"';
+    }
+    // rodapé: status da partida do Copinho
+    if(cg && !this.setchCleared){
+      ctx.font='5px monospace';
+      const st = cg.state==='waiting' && cg.state
+        ? `RODADA ${cg.round}/${SETCH_ROUNDS} • ${Math.max(0,Math.ceil(cg.chooseTimer/1000))}s`
+        : (cg.state==='shuffling' ? `RODADA ${cg.round}/${SETCH_ROUNDS} • EMBARALHANDO`
+        : (cg.state==='showing'   ? `RODADA ${cg.round}/${SETCH_ROUNDS} • MEMORIZE`
+        : `RODADA ${cg.round}/${SETCH_ROUNDS} • PRONTO [E]`));
+      ctx.fillStyle= (cg.state==='waiting') ? '#4ade80' : 'rgba(255,215,0,0.9)';
+      ctx.fillText(st, bx+5, by + h + 8);
+    }
+    ctx.textAlign='left';
+    ctx.restore();
+  }
   // ===================== SALA SETCH (2x TAMANHO) =====================
   makeSetchRoom(rng){
     if(this.isStart || this.isExit || this.isRare || this.isMiniboss || this.isBossStair || this.isHacker || this.isPartyHorde || this.isSetch) return false;
@@ -16425,6 +17707,8 @@ class Room {
     // NPC Oli - dá o item especial de Xadrez (Torre/Bispo/Rainha/Rei)
     this.oliNPC = new OliNPC(CANVAS_W/2 - 196, CANVAS_H/2 + 60);
     this.oliGiftGiven = false;
+    // referência da sala nos NPCs (falas, gestos e desenho do prompt do copinho)
+    for(const n of [this.npc, this.indianaNPC, this.jlNPC, this.oliNPC]) if(n) n.room = this;
     // Marca sala como ainda não limpa (precisa vencer minigame para considerar limpa)
     return true;
   }
@@ -16613,6 +17897,7 @@ class Room {
 
   update(dt, player, bullets, globalParticles, enemyBulletsOut) {
     try{
+    this.anim += dt; // relógio da sala (usado nos pulsos de decoração/placar)
     // Festa horda: anima confetti e controla ondas (pode aparecer em qualquer fase)
     if(this.isPartyHorde && !this.partyHordeDefeated){
       for(const cf of this.partyConfetti){
@@ -16641,8 +17926,9 @@ class Room {
     }
     // ===================== SETCH - NPC e copos + INDIANA =====================
     if(this.isSetch){
+      this._playerRef = player || this._playerRef || null;
       if(this.npc) this.npc.update(dt, player);
-      if(this.cupGame) this.cupGame.update(dt);
+      if(this.cupGame) this.cupGame.update(dt, player);
       if(this.indianaNPC) this.indianaNPC.update(dt, player);
       if(this.jlNPC) this.jlNPC.update(dt, player);
       if(this.oliNPC) this.oliNPC.update(dt, player);
@@ -17358,10 +18644,6 @@ class Room {
       if(!hacker){
         if(this.enemies.length===0){
           this.hackerDefeated=true;
-          // PLACAR: quem venceu o Hacker entra na tabela do menu
-          if(typeof window!=='undefined' && window.game && typeof window.game.saveRecord==='function'){
-            window.game.saveRecord('hackerWins');
-          }
           // Mensagem final requisitada
           for(let k=0;k<52;k++){ const ang=Math.random()*Math.PI*2, sp=randRange(2.4,7.8); const col=['#00ff88','#00e5ff','#ffffff','#c084fc'][randInt(0,3)]; globalParticles.push(new Particle(CANVAS_W/2, CANVAS_H/2, Math.cos(ang)*sp, Math.sin(ang)*sp, randRange(420,820), col, randInt(3,6))); }
           for(let k=0;k<26;k++) globalParticles.push(new Particle(CANVAS_W/2, CANVAS_H/2, randRange(-1.8,1.8), randRange(-1.8,0.6), 620, '#ffffff', 2.6));
@@ -18084,46 +19366,37 @@ class Room {
       ctx.font='8px "Press Start 2P"'; ctx.textAlign='center';
       ctx.fillText(isCleared?'✓ SETCH ✓':'◉ SALA SETCH ◉', CANVAS_W/2, WALL_THICK+18); ctx.textAlign='left';
       ctx.fillStyle='rgba(255,255,255,0.72)'; ctx.font='5px monospace'; ctx.textAlign='center';
-      ctx.fillText('2× TAMANHO • NPC COPINHOS', CANVAS_W/2, WALL_THICK+26); ctx.textAlign='left';
+      ctx.fillText(`2× TAMANHO • ${SETCH_ROUNDS} RODADAS DE COPINHOS`, CANVAS_W/2, WALL_THICK+26); ctx.textAlign='left';
       // Área 2x indicação no chão: ladrilhos maiores
       ctx.fillStyle='rgba(168,85,247,0.06)';
       ctx.fillRect(CANVAS_W/2 - 150, CANVAS_H/2 - 30, 300, 80);
       ctx.strokeStyle='rgba(168,85,247,0.12)'; ctx.lineWidth=1; ctx.setLineDash([6,4]);
       ctx.strokeRect(CANVAS_W/2 - 150, CANVAS_H/2 - 30, 300, 80); ctx.setLineDash([]);
       // Desenha NPC e copos + Indiana (se existem)
-      if(this.npc) this.npc.draw(ctx);
+      const _setchPlayer = this._playerRef || (typeof window!=='undefined' && window.game ? window.game.player : null);
+      if(this.npc) this.npc.draw(ctx, _setchPlayer);
       if(this.cupGame) this.cupGame.draw(ctx);
-      if(this.indianaNPC) this.indianaNPC.draw(ctx);
-      if(this.jlNPC) this.jlNPC.draw(ctx);
-      if(this.oliNPC) this.oliNPC.draw(ctx);
-      // Hint se não venceu e está perto - mostra ambos NPCs
-      if(!this.setchCleared && this.npc && this.cupGame && this.cupGame.state==='idle'){
-        ctx.fillStyle='rgba(0,0,0,0.62)'; ctx.fillRect(CANVAS_W/2 - 168, CANVAS_H/2 + 100, 336, 14);
-        ctx.fillStyle='#ffd700'; ctx.font='5px monospace'; ctx.textAlign='center';
-        ctx.fillText('[E] SETCH COPINHOS | [E] JL IO-IO | [E] OLI XADREZ | [E] INDIANA CHICOTE', CANVAS_W/2, CANVAS_H/2 + 109); ctx.textAlign='left';
-      }
-      if(this.indianaNPC && !this.indianaGiftGiven){
-        ctx.fillStyle='rgba(210,166,121,0.92)'; ctx.font='5px monospace'; ctx.textAlign='center';
-        ctx.fillText('▼ INDIANA: CHICOTE 100% [E] ▼', this.indianaNPC.x, this.indianaNPC.y - 20); ctx.textAlign='left';
-      }
+      if(this.indianaNPC) this.indianaNPC.draw(ctx, _setchPlayer);
+      if(this.jlNPC) this.jlNPC.draw(ctx, _setchPlayer);
+      if(this.oliNPC) this.oliNPC.draw(ctx, _setchPlayer);
+      // Placar de presentes da sala: mostra o que já foi levado e o que falta.
+      // Substitui a antiga faixa de texto que duplicava a dica do Jogo do Copinho
+      // (o cupGame já desenha a instrução do [E] embaixo da mesa) e, de quebra,
+      // some com o excesso de texto na tela quando a sala está calma.
+      this.drawGiftChecklist(ctx, _setchPlayer);
+      // Os NPCs desenham o proprio prompt [E] quando o jogador chega perto
+      // (SetchVendor.drawPrompt), entao aqui nao repete as setas antigas.
       // Room NAO tem this.player (o player chega por update(dt, player)).
       // Ler this.player.hasIoiPassive lançava TypeError, caia no catch do Game.draw
       // e a sala inteira ficava preta (so o fundo da fase era desenhado).
-      const _jlPlayer = (typeof window!=='undefined' && window.game && window.game.player) || null;
-      if(this.jlNPC && !this.jlGiftGiven && !(_jlPlayer && _jlPlayer.hasIoiPassive)){
-        ctx.fillStyle='rgba(255,138,128,0.92)'; ctx.font='5px monospace'; ctx.textAlign='center';
-        ctx.fillText('▼ JL: PASSIVO IO-IO [E] ▼', this.jlNPC.x, this.jlNPC.y - 22); ctx.textAlign='left';
-      }
-      if(this.oliNPC && !this.oliGiftGiven){
-        ctx.fillStyle='rgba(192,132,252,0.92)'; ctx.font='5px monospace'; ctx.textAlign='center';
-        ctx.fillText('▼ OLI: XADREZ ♞ [E] ▼', this.oliNPC.x, this.oliNPC.y - 22); ctx.textAlign='left';
-      }
+      // Agora usamos a referencia salva em update (mesma fonte do desenho dos NPCs).
+      const _jlPlayer = _setchPlayer;
       if(this.setchCleared || this.indianaGiftGiven){
         ctx.fillStyle='rgba(74,222,128,0.88)'; ctx.font='6px monospace'; ctx.textAlign='center';
         const allGifts = this.indianaGiftGiven && this.jlGiftGiven && this.oliGiftGiven;
         const txt = allGifts ? '✓ SETCH, JL, OLI & INDIANA COMPLETOS • PORTAS LIBERADAS'
           : (this.setchCleared && this.indianaGiftGiven) ? '✓ SETCH & INDIANA COMPLETOS • PORTAS LIBERADAS'
-          : this.setchCleared ? '✓ JOGO VENCIDO • PORTAS LIBERADAS'
+          : this.setchCleared ? `✓ COPINHOS VENCIDO (${SETCH_ROUNDS} RODADAS) • PORTAS LIBERADAS`
           : '✓ CHICOTE ADQUIRIDO • PORTAS LIBERADAS';
         ctx.fillText(txt, CANVAS_W/2, CANVAS_H-12); ctx.textAlign='left';
       }
@@ -19253,17 +20526,24 @@ class Game {
           this.trySetchChoice(idx);
         }
       });
-      this.canvas.addEventListener('mousemove', (e)=>{
-        const rect=this.canvas.getBoundingClientRect();
-        this._hudMouse.x=(e.clientX - rect.left)*(CANVAS_W/rect.width);
-        this._hudMouse.y=(e.clientY - rect.top)*(CANVAS_H/rect.height);
-        // mover o mouse também tira a HUD do modo ocioso (antes ela continuava
-        // translúcida mesmo com o jogador parado, escondendo vida/arma)
-        this._hudIdleTimer=0; this._hudIdle=false;
-        const overPause = this.isHudPauseHover();
-        const overSetch = !overPause && this.isInSetchRoom() && this.currentRoom && this.currentRoom.cupGame && this.currentRoom.cupGame.state==='waiting' && this.currentRoom.cupGame.interactive;
-        this.canvas.style.cursor = (overPause || overSetch) ? 'pointer' : 'crosshair';
-      });
+this.canvas.addEventListener('mousemove', (e)=>{
+          const rect=this.canvas.getBoundingClientRect();
+          this._hudMouse.x=(e.clientX - rect.left)*(CANVAS_W/rect.width);
+          this._hudMouse.y=(e.clientY - rect.top)*(CANVAS_H/rect.height);
+          // mover o mouse também tira a HUD do modo ocioso (antes ela continuava
+          // translúcida mesmo com o jogador parado, escondendo vida/arma)
+          this._hudIdleTimer=0; this._hudIdle=false;
+          const overPause = this.isHudPauseHover();
+          const overSetch = !overPause && this.isInSetchRoom() && this.currentRoom && this.currentRoom.cupGame && this.currentRoom.cupGame.state==='waiting' && this.currentRoom.cupGame.interactive;
+          this.canvas.style.cursor = (overPause || overSetch) ? 'pointer' : 'crosshair';
+          // destaque do copo sob o mouse (copinho fica mais claro)
+          if(overSetch){
+            const cg=this.currentRoom.cupGame;
+            cg.hoverIndex = cg.hitTest(this._hudMouse.x, this._hudMouse.y);
+          } else if(this.currentRoom && this.currentRoom.cupGame){
+            this.currentRoom.cupGame.hoverIndex = -1;
+          }
+        });
       this.canvas.addEventListener('mouseleave', ()=>{ this._hudMouse.x=-1; this._hudMouse.y=-1; });
     }
   }
@@ -19591,11 +20871,11 @@ class Game {
       floor: this.floor,
       kills: (this.totalEnemiesDefeated|0) + (this.enemiesDefeated|0),
       seed: this.seed,
+      rooms: this.roomsExplored|0,
     };
     Records.add(kind, entry);
-    if(kind==='hackerWins'){
-      const p = (this.runTime/60000).toFixed(2);
-      this.showToast(`◉ HACKER DERROTADO em ${formatRunTime(this.runTime)} (${p} min) — vai pro recordes!`, 3600);
+    if(kind==='deaths'){
+      this.showToast(`💀 Derrota mais rápida: ${formatRunTime(this.runTime)} — vai pro recordes!`, 3200);
     }
     return entry;
   }
@@ -19622,10 +20902,10 @@ class Game {
     };
     fill('recFinishBody','recFinishEmpty',data.completions);
     fill('recQuitBody','recQuitEmpty',data.quits);
-    fill('recHackerBody','recHackerEmpty',data.hackerWins);
+    fill('recDeathBody','recDeathEmpty',data.deaths);
     const badge=document.getElementById('recordsBadge');
     if(badge){
-      const n = data.completions.length + data.quits.length + data.hackerWins.length;
+      const n = data.completions.length + data.quits.length + data.deaths.length;
       badge.textContent = n ? `${n} ${n===1?'registro':'registros'}` : 'vazio';
     }
   }
@@ -19709,6 +20989,8 @@ class Game {
     // CHICOTE - reseta puxão e chapeu no novo jogo
     this.player.hasIndianaHat=false;
     this.player.isChicotePulling=false; this.player.chicoteTarget=null; this.player.chicoteWhipRef=null;
+    // limpeza da proteção do grapple: sem isto o jogador nasceria invencível
+    this.player.chicotePullInvuln=false; this.player.chicotePullInvulnGrace=0; this.player.chicoteWhipFlightInvuln=false;
     // IO-IO - reseta passivo no novo jogo
     this.player.hasIoiPassive=false; this.player.ioiCooldown=0;
     // Fix Ash bug: Ash não pode ter especial nem secundária herdada da partida anterior (limpa após perder)
@@ -19889,12 +21171,10 @@ class Game {
         const stats=document.getElementById('gameOverStats');
         const wasBossVictory = this.currentRoom && this.currentRoom.isBossStair && this.currentRoom.bossStairDefeated;
         const wasHackerVictory = this.rooms.some(r=> r.isHacker && r.hackerDefeated) || (this.hackerArena && this.hackerArena.hackerDefeated) || (this.currentRoom && this.currentRoom.isHacker && this.currentRoom.hackerDefeated);
-        const hackerRoomRef=this.rooms.find(r=> r.isHacker && r.hackerDefeated) || this.hackerArena;
         if(wasHackerVictory){
           title.textContent='⭐ HACKER ANIQUILADO ⭐';
           title.style.color='#00ff88';
-          // PLACAR: quem venceu o Hacker também entra na tabela de quem finalizou
-          this.saveRecord('hackerWins');
+          // PLACAR: vencer o Hacker conta como finalização (melhor tempo overall)
           this.saveRecord('completions');
           const bossPhaseName = (FLOOR_THEMES[HACKER_FLOOR] && FLOOR_THEMES[HACKER_FLOOR].name.trim()) || (FLOOR_THEMES[6] && FLOOR_THEMES[6].name.trim()) || 'MINERADORA DE COINS';
           const allPhases = [1,2,3,4,5,6].map(i=> (FLOOR_THEMES[i] && FLOOR_THEMES[i].name.trim()) || '').join(', ').replace(/, ([^,]*)$/, ' e $1');
@@ -20043,6 +21323,7 @@ class Game {
 
     // 4) Limpa estados de combate para não morrer de novo imediatamente
     p.isChicotePulling = false; p.chicoteTarget = null; p.chicoteWhipRef = null;
+    p.chicotePullInvuln = false; p.chicotePullInvulnGrace = 0; p.chicoteWhipFlightInvuln = false;
     if(p.isCharging) p.cancelCharge();
     if(p.isSwordCharging) p.cancelSwordCharge();
     if(p.isChicoteCharging) p.cancelChicoteCharge();
@@ -20290,15 +21571,28 @@ class Game {
         else this.showToast('Chegue mais perto de Setch para jogar [E]', 1100);
         return true; // consome E para não ativar especial por engano
       }
+      cg.resetToIdle();         // garante mesa limpa antes de começar
+      cg.round = 1; cg.streak = 0; // sempre começa do zero
       cg.start();
-      this.showToast('Setch: Onde está a bolinha? Memorize!', 1500);
+      this.showToast(`Setch: Rodada 1/${SETCH_ROUNDS} - memorize a bolinha!`, 1600);
       // partículas início
       for(let k=0;k<10;k++) this.particles.push(new Particle(npc.x, npc.y-8, randRange(-1.2,1.2), randRange(-1.2,0.6), 280, '#a78bfa', 1.8));
       return true;
     }
     // Se já está em showing/shuffling, E não faz nada (espera)
     if(cg.state==='showing' || cg.state==='shuffling'){
-      this.showToast('Setch: Aguarde o embaralhamento...', 900);
+      // Se o jogador fugiu da mesa, o [E] serve para chamar ele de volta
+      if(!cg.nearTable){
+        cg.farCd = 0;
+        this.showToast('Setch: Aqui, na mesa! Aperta [E] aqui ó.', 1400);
+      } else {
+        this.showToast('Setch: Aguarde o embaralhamento...', 900);
+      }
+      return true;
+    }
+    // Entre rodadas: E não reinicia nada, só avisa
+    if(cg.state==='nextRound'){
+      this.showToast(`Setch: preparando a rodada ${cg.round+1}/${SETCH_ROUNDS}...`, 900);
       return true;
     }
     // Se está esperando escolha, E perto de um copo escolhe o mais próximo
@@ -20310,17 +21604,17 @@ class Game {
         const d=dist(this.player.x, this.player.y, c.displayX, c.displayY);
         if(d < bestDist){ bestDist=d; bestIdx=i; }
       }
-      if(bestDist < 64){
-        const res=cg.choose(bestIdx, this.player, this, room);
+      if(bestDist < SETCH_CUP_PICK_RANGE){
+        cg.choose(bestIdx, this.player, this, room);
         return true;
       } else {
         this.showToast('Aproxime-se do copo e pressione E, ou pressione 1/2/3', 1200);
         return true;
       }
     }
-    // Se perdeu e está em finishedLose, E rejoga
+    // Se perdeu e está em finishedLose, E rejoga (volta sempre para a rodada 1)
     if(cg.state==='finishedLose'){
-      cg.start();
+      cg.resetToIdle();
       this.showToast('Setch: De novo! Memorize...', 1400);
       return true;
     }
@@ -21549,6 +22843,15 @@ class Game {
       if(!alive || whip.dead){
         if(this.player.chicoteWhipRef === whip) this.player.chicoteWhipRef=null;
         if(this.player.isChicotePulling && this.player.chicoteWhipRef===whip) this.player.cancelChicotePull();
+        // Rede de segurança: se o whip morreu sem passar por nenhum dos fins
+        // normais (latch/explosão/chicote no ar), a proteção não pode ficar presa
+        // e deixar o jogador invencível. Só encerra se não estiver no meio de outro.
+        if(!this.player.isChicotePulling){
+          this.player.chicoteWhipFlightInvuln = false;
+          if(this.player.chicotePullInvuln && !this.player.chicoteWhipFlightInvuln){
+            this.player.endChicotePullProtection(90);
+          }
+        }
         this.chicoteWhips.splice(i,1);
       }
     }
@@ -22159,6 +23462,8 @@ class Game {
       const stats=document.getElementById('gameOverStats');
       title.textContent='RÉQUIEM INTERROMPIDO';
       title.style.color='#ff3b30';
+      // PLACAR: entra na tabela de quem PERDEU MAIS RÁPIDO (menor tempo vence).
+      this.saveRecord('deaths');
       stats.innerHTML=`Cyber Requiem • Ato <b>${this.floor}</b> • Sala ${this.currentRoom.gx},${this.currentRoom.gy} • Explorou <b>${this.roomsExplored}/${this.rooms.length}</b> salas neste ato<br>Tempo: <b>${formatRunTime(this.runTime)}</b> • Derrotou <b>${this.totalEnemiesDefeated + this.enemiesDefeated}</b> inimigos • Arma: ${this.player.weapon.name}<br>Jogador: <b>${this.playerName}</b> • Seed: ${this.seed}<br><span style="color:#8a8198;font-size:12px">Mundo cibernético ainda corrompido — tente novamente, o sistema reinicia.</span>`;
       this.gameOverScreen.classList.add('active');
     }
@@ -22659,10 +23964,16 @@ class Game {
         const cg=room.cupGame;
         let st='';
         if(cg){
-          if(cg.state==='showing') st=' MEMORIZE!';
-          else if(cg.state==='shuffling') st=' EMBARALHANDO...';
-          else if(cg.state==='waiting') st=' ESCOLHA 1/2/3!';
-          else if(cg.state==='revealing') st = cg.result==='win' ? ' ✓ ACERTOU!' : ' ✗ ERROU!';
+          const rd = ` R${cg.round}/${SETCH_ROUNDS}`;
+          const away = !cg.nearTable;
+          if(room.setchCleared) st=' ✓ VENCIDO';
+          else if(cg.state==='idle') st=rd+' [E] JOGAR';
+          else if(cg.state==='showing') st=rd+' MEMORIZE!';
+          else if(cg.state==='shuffling') st=rd+(cg.swapQueue.length?' ★EM PAR!':' EMBARALHANDO...');
+          else if(cg.state==='waiting') st=rd+(away?' VOLTA PRA MESA!' : ` ESCOLHA! ${Math.ceil(cg.chooseTimer/1000)}s`);
+          else if(cg.state==='nextRound') st=rd+' PRÓXIMA RODADA...';
+          else if(cg.state==='revealing') st = rd+(cg.result==='win' ? ' ✓ ACERTOU!' : ' ✗ ERROU!');
+          else if(cg.state==='finishedLose') st=rd+' [E] REJOGAR';
         }
         tag=`◉ SALA SETCH${st}`; tagColor='#ff6b9d';
       } else if(room.isMiniboss){

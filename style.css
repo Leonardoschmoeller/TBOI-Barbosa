@@ -144,7 +144,7 @@ html, body {
 }
 .record-card.rec-finish{ border-color:rgba(0,255,136,0.22); }
 .record-card.rec-quit{ border-color:rgba(255,140,66,0.22); }
-.record-card.rec-hacker{ border-color:rgba(217,70,239,0.24); }
+.record-card.rec-death{ border-color:rgba(255,59,48,0.24); }
 .record-head{ display:flex; flex-direction:column; gap:2px; margin-bottom:8px; }
 .record-title{
   font-family:'Press Start 2P', monospace;
@@ -154,7 +154,7 @@ html, body {
 }
 .rec-finish .record-title{ color:#7dffc4; }
 .rec-quit .record-title{ color:#ffb183; }
-.rec-hacker .record-title{ color:#f0a6ff; }
+.rec-death .record-title{ color:#ff8a80; }
 .record-sub{ font-family: system-ui, sans-serif; font-size:10px; color:#6d6785; }
 .record-table{ width:100%; border-collapse:collapse; table-layout:fixed; }
 .record-table th{
