@@ -6779,21 +6779,19 @@ class StairBoss {
 
     // Barra vida cabeça grande (topo) com marcadores de fase 64% e 34%
     const hpPct=clamp(this.hp/this.maxHp,0,1);
-    ctx.fillStyle='rgba(0,0,0,0.78)'; ctx.fillRect(x-8, y-18+bob, this.w+16, 7);
+    const barW=this.w+16, barH=8, barX=x-8, barY=y-20+bob;
+    ctx.fillStyle='rgba(0,0,0,0.82)'; ctx.fillRect(barX, barY, barW, barH);
     const col = phase===1 ? '#ffd700' : phase===2 ? '#ff8c42' : '#ff3b30';
-    ctx.fillStyle=hpPct>0.5? col : hpPct>0.2? '#ff8c42':'#ef4444'; ctx.fillRect(x-8, y-18+bob, (this.w+16)*hpPct, 7);
-    ctx.strokeStyle='rgba(255,255,255,0.22)'; ctx.lineWidth=1; ctx.strokeRect(x-8, y-18+bob, this.w+16, 7);
+    ctx.fillStyle=hpPct>0.5? col : hpPct>0.2? '#ff8c42':'#ef4444'; ctx.fillRect(barX, barY, barW*hpPct, barH);
+    ctx.strokeStyle='rgba(255,255,255,0.26)'; ctx.lineWidth=1; ctx.strokeRect(barX, barY, barW, barH);
     ctx.fillStyle='#fff'; ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
-    ctx.fillText(`BOSS ESCADA F${phase}`, this.x, y-24+bob); ctx.textAlign='left';
+    ctx.fillText(`BOSS ESCADA F${phase}  ${Math.ceil(this.hp)}/${this.maxHp}`, this.x, y-26+bob); ctx.textAlign='left';
     // Marcadores 64% e 34%
-    const m64X = x-8 + (this.w+16)*BOSS5_PHASE2_AT;
-    const m34X = x-8 + (this.w+16)*BOSS5_PHASE3_AT;
-    ctx.fillStyle='rgba(0,0,0,0.85)'; ctx.fillRect(m64X, y-18+bob, 1, 7); ctx.fillRect(m34X, y-18+bob, 1, 7);
-    ctx.fillStyle='rgba(255,215,0,0.85)'; ctx.fillRect(m64X, y-20+bob, 1, 3);
-    ctx.fillStyle='rgba(255,60,60,0.85)'; ctx.fillRect(m34X, y-20+bob, 1, 3);
-    // Texto fase pequena
-    ctx.fillStyle='rgba(255,255,255,0.62)'; ctx.font='4px monospace'; ctx.textAlign='center';
-    ctx.fillText('F2', m64X, y-26+bob); ctx.fillText('F3', m34X, y-26+bob); ctx.textAlign='left';
+    const m64X = barX + barW*BOSS5_PHASE2_AT;
+    const m34X = barX + barW*BOSS5_PHASE3_AT;
+    ctx.fillStyle='rgba(0,0,0,0.75)'; ctx.fillRect(m64X, barY, 1, barH); ctx.fillRect(m34X, barY, 1, barH);
+    ctx.fillStyle='rgba(255,215,0,0.9)'; ctx.fillRect(m64X, barY-2, 1, 2);
+    ctx.fillStyle='rgba(255,60,60,0.9)'; ctx.fillRect(m34X, barY-2, 1, 2);
 
     // Conectores braços (linhas da cabeça até mãos)
     ctx.strokeStyle=isFlash?'rgba(255,255,255,0.55)': isInvuln?'rgba(140,140,150,0.35)':'rgba(90,46,10,0.35)';
@@ -7844,23 +7842,24 @@ class HackerBoss {
     // motosserra lateral se tem? não, hacker não tem
     // barra vida hacker com glitch
     const hpPct=clamp(this.hp/this.maxHp,0,1);
-    const barW=this.w+14, barX=x-7, barY=y-14+bob;
-    ctx.fillStyle='rgba(0,0,0,0.78)'; ctx.fillRect(barX, barY, barW, 6);
-    // glitch preenchimento
+    // Barra maior e com o número: o Dark Vírus é o boss mais longo do jogo, e uma barra
+    // de 38px a 6px de altura não dava para ler o progresso de 150 de vida.
+    const barW=64, barH=8, barX=this.x-barW/2, barY=y-17+bob;
+    ctx.fillStyle='rgba(0,0,0,0.82)'; ctx.fillRect(barX, barY, barW, barH);
     const colPhase= phase===1?'#00ff88': phase===2?'#ff0040': phase===3?'#c084fc': '#ff0040';
     ctx.fillStyle=hpPct>0.5?colPhase:hpPct>0.25?'#ff8c42':'#ef4444';
-    // efeito glitch barra (corta)
-    const glitchCut= Math.floor(this.anim/90)%2===0 && hpPct<0.5 ? 4 : 0;
-    ctx.fillRect(barX, barY, (barW-glitchCut)*hpPct, 6);
-    ctx.strokeStyle='rgba(255,255,255,0.18)'; ctx.lineWidth=1; ctx.strokeRect(barX, barY, barW, 6);
+    // O corte de glitch foi removido de propósito: ele encurtava a barra em 4px a cada
+    // 90ms abaixo de 50%, ou seja, o número que a barra mostrava ficava errado justamente
+    // na fase mais apertada. O glitch fica só na moldura, sem mexer no preenchimento.
+    ctx.fillRect(barX, barY, barW*hpPct, barH);
+    ctx.strokeStyle='rgba(255,255,255,0.28)'; ctx.lineWidth=1; ctx.strokeRect(barX, barY, barW, barH);
     // marcadores fases
     const m75X=barX+barW*0.75, m50X=barX+barW*0.50, m10X=barX+barW*0.10;
-    ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.fillRect(m75X, barY,1,6); ctx.fillRect(m50X, barY,1,6);
-    ctx.fillStyle='rgba(255,0,64,0.85)'; ctx.fillRect(m10X, barY,1,6);
-    ctx.fillStyle='#fff'; ctx.font='4px monospace'; ctx.textAlign='center';
-    ctx.fillText('75', m75X, barY-3); ctx.fillText('50', m50X, barY-3); ctx.fillText('10', m10X, barY-3); ctx.textAlign='left';
+    ctx.fillStyle='rgba(0,0,0,0.75)'; ctx.fillRect(m75X, barY,1,barH); ctx.fillRect(m50X, barY,1,barH); ctx.fillRect(m10X, barY,1,barH);
+    ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.fillRect(m75X, barY-2,1,2); ctx.fillRect(m50X, barY-2,1,2);
+    ctx.fillStyle='rgba(255,0,64,0.9)'; ctx.fillRect(m10X, barY-3,1,3);
     ctx.fillStyle='#fff'; ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
-    ctx.fillText(`HACKER ${this.getPhaseName()}`, this.x, y-18+bob); ctx.textAlign='left';
+    ctx.fillText(`HACKER ${this.getPhaseName()}  ${Math.ceil(this.hp)}/${this.maxHp}`, this.x, y-22+bob); ctx.textAlign='left';
     // dash prep linha
     if(this.dashPrep>0){
       const p=1 - (this.dashPrep/HACKER_DASH_PREP);
@@ -21340,6 +21339,8 @@ class Game {
     if(this.nameInput) this.nameInput.value = this.playerName;
     this._hudIdleTimer=0;
     this._hudIdle=false;
+    this._chipsRevealT=0;
+    this._chipsFade=1;
     this._hudMouse={x:-1,y:-1};
 
     this.bindUI();
@@ -22834,6 +22835,8 @@ this.canvas.addEventListener('mousemove', (e)=>{
       if(this.player.secondaryWeapon){
         const ok=this.player.swapWeapon();
         if(ok){
+          // trocar de arma muda quais melhorias valem -> reabre a lista por 6s
+          this._chipsRevealT = 6000;
           this.showToast(`↔ MOTOSSERRA ↔ ${this.player.weapon.name} [E]`, 1300);
           for(let k=0;k<9;k++) this.particles.push(new Particle(this.player.x, this.player.y, randRange(-1.4,1.4), randRange(-1.4,0.6), 280, '#ff3b30', 2));
         }
@@ -24576,6 +24579,8 @@ this.canvas.addEventListener('mousemove', (e)=>{
     }
     // detecção de melhoria coletada (mostra raridade, nome e efeito com cor)
     if(this.player.obtainedUpgrades.size > this._lastUpgradeCount){
+      // Abri a lista de melhorias por 6s: é o momento em que o jogador quer reler o que pegou.
+      this._chipsRevealT = 6000;
       // detecção com níveis: mostra toast para novos ou nível aumentado
       const curLevels = new Map(this.player.upgradeLevels);
       for(const id of this.player.obtainedUpgrades){
@@ -24612,7 +24617,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
       if(curSpecialId){
         const sp = this.player.equippedSpecial;
         this.showToast(`★ ${sp.name} equipado! Pressione [E] para ativar • Cooldown ${sp.cooldown/1000}s`, 2600);
-        for(let k=0;k<16;k++){ const ang=Math.random()*Math.PI*2; this.particles.push(new Particle(this.player.x,this.player.y, Math.cos(ang)*randRange(1.4,4), Math.sin(ang)*randRange(1.4,4), 420, sp.color, 3)); }
+        for(let k=0;k<16;k++){ const ang=Math.random()*Math.PI*2; this.particles.push(new Particle(this.player.x,this.player.y, Math.cos(ang)*randRange(1.4,2), Math.sin(ang)*randRange(1.4,2), 420, sp.color, 3)); }
       } else {
         // desequipar? não usado, mas previsto
         this.showToast('Item especial removido', 1200);
@@ -24674,6 +24679,13 @@ this.canvas.addEventListener('mousemove', (e)=>{
       this._hudIdleTimer+=dt;
       if(this._hudIdleTimer>1800) this._hudIdle=true;
     }
+
+    // Lista de melhorias: aparece ao pegar/trocar de arma e some sozinha, para devolver
+    // a tela ao jogador durante a luta. Quem quiser reler mantém o HUD visível via pausa.
+    if(this._chipsRevealT > 0) this._chipsRevealT -= dt;
+    const combatNow = !!(this.currentRoom && this.currentRoom.enemies.some(e => !e.dead));
+    this._chipsFade = combatNow ? 0.30 : 1;
+    if(combatNow && this._chipsRevealT <= 0) this._chipsFade = 0.22;
 
     this.input.update();
     }catch(e){ console.error('Game update error', e); }
@@ -24947,25 +24959,31 @@ this.canvas.addEventListener('mousemove', (e)=>{
     const n = Math.max(1, Math.ceil(p.maxHp/2));
     const hSize = 15, hGap = 20, hX = 10, hY = 4;
     const heartsW = (n-1)*hGap + hSize;
+    const hpPct = p.maxHp>0 ? p.hp/p.maxHp : 0;
     // --- layout (medido antes de pintar, para o painel sair do tamanho certo) ---
     const conts = p.continues|0;
     const badgeW = conts > 0 ? 17 + String(conts).length*7 : 0;
     const state = this.getWeaponHudState();
     const slotW = state ? 62 : 0;
     const slotX = zoneR - slotW;
-    const badgeX = hX + heartsW + 6;
+    // Leitura numérica da vida: sem ela é preciso contar meios-corações no olho.
+    const hpTxt = `${Math.ceil(p.hp)}/${p.maxHp}`;
+    ctx.font = '5px "Press Start 2P"';
+    const hpTxtW = Math.ceil(ctx.measureText(hpTxt).width) + 8;
+    const hpX = hX + heartsW + 5;
+    const badgeX = hpX + hpTxtW + 5;
     const labelX = badgeX + (badgeW ? badgeW + 6 : 0);
     const labelMax = Math.max(16, (state ? slotX - 8 : zoneR) - labelX);
     const wn = p.weapon ? p.weapon.name : 'NORMAL';
     const wBase = wn==='SHOTGUN' ? 'SHOTGUN [5x]' : wn==='RAIO' ? 'RAIO ⚡ [pierce]' : wn==='RAIO_MATEMATICO' ? 'LAZER COD. [brimstone]' : wn==='LASER' ? 'LASER ◉ [carga]' : wn==='CARREGADA' ? 'CARREGADA [carga]' : wn==='BAZUCA' ? 'BAZUCA 💥 [área]' : wn==='METRALHADORA' ? 'METRALHADORA [temp]' : wn==='ESPADA' ? 'ESPADA ⚔️ [combo]' : wn==='LUVA' ? 'LUVA 🥊 x2 [dual]' : wn==='MOTOSSERRA' ? 'MOTOSSERRA 🪚 [carga]' : wn==='BASTAO' ? 'BASTÃO 🏏 [gira]' : wn==='CHICOTE' ? 'CHICOTE [carga]' : 'NORMAL';
     const extras = [];
-    if(p.characterId==='jg' && !p.hasBastao) extras.push('sem bastão');
-    else if(p.characterId==='jl') extras.push('67');
     if(p.hasFlameTrail) extras.push('🔥');
     if(p._hasSwiftBoots) extras.push('💨');
     if(p.hasNoclip) extras.push('◈');
     if(p.hasDillianShield) extras.push('🛡');
     if(p.hasDoubleShot) extras.push('x2');
+    if(p.hasGatoAntivirus) extras.push('🐱');
+    if(p.hasJoestarTechnique) extras.push('✴');
     let sec = null;
     if(p.secondaryWeapon) sec = (p.weapon === p.primaryWeapon ? p.secondaryWeapon.name : p.primaryWeapon.name);
     const wColor = wn==='SHOTGUN' ? 'rgba(255,140,66,0.95)' : wn==='RAIO' ? 'rgba(0,229,255,0.95)' : wn==='RAIO_MATEMATICO' ? 'rgba(184,255,251,0.96)' : wn==='LASER' ? 'rgba(255,26,46,0.96)' : wn==='CARREGADA' ? 'rgba(167,139,250,0.95)' : wn==='BAZUCA' ? 'rgba(255,59,48,0.95)' : wn==='METRALHADORA' ? 'rgba(255,59,48,0.95)' : wn==='ESPADA' ? 'rgba(220,220,230,0.95)' : wn==='LUVA' ? 'rgba(255,60,60,0.95)' : wn==='MOTOSSERRA' ? 'rgba(255,42,26,0.96)' : wn==='BASTAO' ? 'rgba(250,204,21,0.95)' : wn==='CHICOTE' ? 'rgba(194,138,82,0.95)' : 'rgba(255,235,59,0.9)';
@@ -24979,7 +24997,17 @@ this.canvas.addEventListener('mousemove', (e)=>{
       return false;
     };
     if(sec) tryAdd(`⇄ ${sec}`);
-    for(const ex of extras){ if(!tryAdd(ex)) break; }
+    // Passivos que não couberam viram o contador "+N" em vez de sumirem em silêncio:
+    // antes o `break` descartava todos os restantes e o jogador nunca sabia que os tinha.
+    let hidden = 0;
+    for(const ex of extras){ if(!tryAdd(ex)) hidden++; }
+    if(hidden > 0){
+      if(tryAdd(`+${hidden}`)){
+        // OK: nada a fazer, o +N já informa o total
+      } else {
+        label = `${wBase} +${hidden}`;
+      }
+    }
     ctx.font = `5px ${wFont}`;
     lw = ctx.measureText(label).width;
     if(lw > labelMax) label = fitText(ctx, label, labelMax, 5, wFont, 3.5);
@@ -24994,7 +25022,6 @@ this.canvas.addEventListener('mousemove', (e)=>{
     roundRectPath(ctx, 4, top, panelR - 4, ph, 7); ctx.clip();
     // --- corações ---
     // Aviso de vida baixa: moldura vermelha pulsante (mais intensa no último coração).
-    const hpPct = p.maxHp>0 ? p.hp/p.maxHp : 0;
     if(hpPct > 0 && hpPct <= 0.34){
       const crit = p.hp <= 1;
       const pulse = 0.5 + Math.sin(Date.now()*(crit?0.011:0.006))*0.5;
@@ -25003,6 +25030,30 @@ this.canvas.addEventListener('mousemove', (e)=>{
       ctx.strokeStyle = `rgba(255,80,68,${0.35 + pulse*(crit?0.55:0.30)})`; ctx.lineWidth = 1; ctx.stroke();
     }
     drawHealth(ctx, hX, hY, p.hp, p.maxHp, p.boneHearts|0, hSize, hGap);
+    // --- leitura numérica + barra contínua ---
+    // A barra dá o percentual exato num relance (os corações só mostram meios-corações)
+    // e o número confirma o valor. Ambos ficam entre os corações e o disquete.
+    {
+      const hy0 = top + 4, hh0 = ph - 8;
+      roundRectPath(ctx, hpX, hy0, hpTxtW, hh0, 5);
+      ctx.fillStyle = hpPct <= 0.34 ? 'rgba(255,40,40,0.18)' : 'rgba(255,255,255,0.07)';
+      ctx.fill();
+      ctx.strokeStyle = hpPct <= 0.34 ? 'rgba(255,80,68,0.55)' : 'rgba(255,255,255,0.16)';
+      ctx.lineWidth = 1; ctx.stroke();
+      // trilha da barra
+      const bw0 = hpTxtW - 6;
+      roundRectPath(ctx, hpX + 3, top + ph - 6, bw0, 2.5, 1.25);
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fill();
+      if(hpPct > 0){
+        const col = hpPct > 0.5 ? '#4ade80' : hpPct > 0.25 ? '#ffcc00' : '#ff3b30';
+        roundRectPath(ctx, hpX + 3, top + ph - 6, bw0 * clamp(hpPct, 0, 1), 2.5, 1.25);
+        ctx.fillStyle = col; ctx.fill();
+      }
+      ctx.font = '5px "Press Start 2P"'; ctx.textAlign = 'center';
+      ctx.fillStyle = hpPct > 0.5 ? '#e8f5e9' : hpPct > 0.25 ? '#ffe9a8' : '#ffb3ad';
+      ctx.fillText(hpTxt, hpX + hpTxtW/2, top + 9);
+      ctx.textAlign = 'left';
+    }
     // --- disquete da vida (continues) ---
     if(conts > 0){
       const pulse = 0.5 + Math.sin(Date.now()*0.005)*0.3;
@@ -25051,24 +25102,34 @@ this.canvas.addEventListener('mousemove', (e)=>{
     const top = 2, ph = HUD_BAR_H - 4;
     let x = HUD_RIGHT_MIN + HUD_PAD;
     // ===== DASH =====
-    const dw = 112;
+    // Antes: barra de 58px dentro de um painel de 112px (metade morta) e rótulo em 4px.
+    // Agora a barra ocupa a largura toda e o rótulo é 5px com um dígito decimal no final.
+    const dw = 116;
     const dashReady = p.dashCooldown <= 0;
     const dashPct = dashReady ? 1 : 1 - (p.dashCooldown / DASH_COOLDOWN);
+    const dashing = p.isDashing();
     roundRectPath(ctx, x, top, dw, ph, 7);
     ctx.fillStyle = dashReady ? 'rgba(0,217,255,0.12)' : 'rgba(8,8,16,0.74)'; ctx.fill();
     ctx.strokeStyle = dashReady ? 'rgba(0,217,255,0.40)' : 'rgba(255,255,255,0.09)'; ctx.lineWidth = 1; ctx.stroke();
-    roundRectPath(ctx, x+6, top+4, 58, 5, 2.5);
+    const dBarX = x + 6, dBarW = dw - 12, dBarY = top + 13, dBarH = 5;
+    roundRectPath(ctx, dBarX, dBarY, dBarW, dBarH, 2.5);
     ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fill();
     if(dashReady){
       ctx.save(); ctx.shadowColor = 'rgba(0,217,255,0.85)'; ctx.shadowBlur = 6;
-      roundRectPath(ctx, x+6, top+4, 58*dashPct, 5, 2.5); ctx.fillStyle = '#00d9ff'; ctx.fill();
+      roundRectPath(ctx, dBarX, dBarY, dBarW * dashPct, dBarH, 2.5); ctx.fillStyle = '#00d9ff'; ctx.fill();
       ctx.restore();
+      // marca de "pronto para usar" no fim da barra
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillRect(dBarX + dBarW - 3, dBarY - 1, 2, dBarH + 2);
     } else {
-      roundRectPath(ctx, x+6, top+4, 58*dashPct, 5, 2.5); ctx.fillStyle = '#5b6478'; ctx.fill();
+      roundRectPath(ctx, dBarX, dBarY, dBarW * dashPct, dBarH, 2.5); ctx.fillStyle = '#5b6478'; ctx.fill();
     }
-    ctx.font = '4px "Press Start 2P"'; ctx.textAlign = 'right';
-    ctx.fillStyle = dashReady ? '#7af2ff' : 'rgba(255,255,255,0.6)';
-    ctx.fillText(dashReady ? 'DASH PRONTO' : `DASH ${Math.ceil(p.dashCooldown/100) }s`, x+dw-5, top+8);
+    // rótulo: tecla + estado. "0.4s" no fim dá o instante exato em que dá pra usar.
+    const secsLeft = p.dashCooldown / 1000;
+    const dashLabel = dashReady ? 'DASH [SHIFT] PRONTO' : `DASH [SHIFT] ${secsLeft < 1 ? secsLeft.toFixed(1) : Math.ceil(secsLeft)}s`;
+    ctx.font = '5px "Press Start 2P"';
+    ctx.fillStyle = dashing ? '#ffffff' : dashReady ? '#7af2ff' : 'rgba(255,255,255,0.62)';
+    ctx.fillText(fitText(ctx, dashLabel, dw - 12, 5, '"Press Start 2P"', 4), x + 6, top + 9);
     ctx.textAlign = 'left';
     x += dw + 6;
     // ===== ESPECIAL [E] =====
@@ -25090,18 +25151,40 @@ this.canvas.addEventListener('mousemove', (e)=>{
       const active = !!sp.isActive, cooling = !!sp.isOnCooldown();
       ctx.fillStyle = active ? 'rgba(0,217,255,0.10)' : cooling ? 'rgba(255,255,255,0.04)' : 'rgba(255,204,0,0.07)';
       ctx.fillRect(x+2, top+2, sw-4, ph-4);
-      ctx.font = '4px "Press Start 2P"'; ctx.textAlign = 'left';
+      // nome do especial em 5px (era 4px e ainda competia com o status pelo mesmo espaço)
+      ctx.font = '5px "Press Start 2P"'; ctx.textAlign = 'left';
       ctx.fillStyle = active ? '#7af2ff' : cooling ? 'rgba(255,255,255,0.6)' : (sp.color || '#ffcc00');
-      // o status reserva só o que realmente ocupa (teto maior que os 70px antigos)
-      const stW = clamp(ctx.measureText(st).width, 30, 96);
-      ctx.fillText(fitText(ctx, `${sp.icon} ${sp.name} [E]`, sw - 10 - stW, 4), x+6, top+8);
+      ctx.font = '4px "Press Start 2P"';
+      const stW = clamp(ctx.measureText(st).width, 26, 104);
+      // o NOME é prioridade: dá até o mínimo do status antes de encolher o nome
+      ctx.font = '5px "Press Start 2P"';
+      const nameFull = `${sp.icon} ${sp.name}`;
+      const nameRoom = sw - 10 - stW;
+      if(ctx.measureText(nameFull).width <= nameRoom){
+        ctx.fillText(nameFull, x+6, top+9);
+      } else {
+        ctx.font = '4px "Press Start 2P"';
+        ctx.fillText(fitText(ctx, nameFull, nameRoom, 4, '"Press Start 2P"', 3.5), x+6, top+8);
+      }
       ctx.textAlign = 'right';
       ctx.fillText(fitText(ctx, st, stW, 4), x+sw-5, top+8);
       ctx.textAlign = 'left';
       const spct = active ? sp.getDurationPercent()*100 : cooling ? sp.getCooldownPercent()*100 : 100;
-      roundRectPath(ctx, x+6, top+13, sw-12, 3, 1.5);
+      // barra deixa espaço para a tecla [E], que antes só aparecia colada no nome
+      // (e sumia inteira quando o nome era longo).
+      const keyW = 11, spBarW = sw - 12 - keyW - 3;
+      roundRectPath(ctx, x+6, top+13, spBarW, 3, 1.5);
       ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fill();
-      if(spct > 0){ roundRectPath(ctx, x+6, top+13, (sw-12)*clamp(spct/100,0,1), 3, 1.5); ctx.fillStyle = sp.color || '#ffcc00'; ctx.fill(); }
+      if(spct > 0){ roundRectPath(ctx, x+6, top+13, spBarW*clamp(spct/100,0,1), 3, 1.5); ctx.fillStyle = sp.color || '#ffcc00'; ctx.fill(); }
+      const kx = x + 6 + spBarW + 3;
+      roundRectPath(ctx, kx, top+12.5, keyW, 5, 2);
+      ctx.fillStyle = active ? 'rgba(0,217,255,0.22)' : 'rgba(255,255,255,0.10)'; ctx.fill();
+      ctx.strokeStyle = active ? 'rgba(0,217,255,0.55)' : 'rgba(255,255,255,0.22)';
+      ctx.lineWidth = 1; ctx.stroke();
+      ctx.font = '4px "Press Start 2P"'; ctx.textAlign = 'center';
+      ctx.fillStyle = active ? '#7af2ff' : 'rgba(255,255,255,0.62)';
+      ctx.fillText('E', kx + keyW/2, top+16.5);
+      ctx.textAlign = 'left';
     } else {
       ctx.font = '4px "Press Start 2P"';
       ctx.fillStyle = 'rgba(255,255,255,0.35)';
@@ -25210,9 +25293,14 @@ this.canvas.addEventListener('mousemove', (e)=>{
     ctx.font='4px "Press Start 2P"'; ctx.fillStyle='rgba(255,255,255,0.88)';
     ctx.fillText(fitText(ctx, infoLine, pw-22, 4), px+13, py+17);
     ctx.textAlign='left';
-    // ===== Melhorias por arma (chips) - 2 linhas no canto inferior esquerdo =====
+    // ===== Melhorias (chips) - canto inferior esquerdo =====
+    // Antes só apareciam as melhorias da arma ATUAL e em 4px. Agora lista tudo que o
+    // jogador conseguiu: as ativas com a arma equipada em cor cheia, as de outras armas
+    // esmaecidas (continuam visíveis, mas se sabe que não estão valendo agora).
     let ids=[];
     const wName = p.weapon ? p.weapon.name : null;
+    if(p.obtainedUpgrades) for(const gid of p.obtainedUpgrades) if(!ids.includes(gid)) ids.push(gid);
+    if(p.upgradeLevels) for(const [gid, lv] of p.upgradeLevels) if(lv > 0 && !ids.includes(gid)) ids.push(gid);
     if(wName){
       const all=[...(p.weaponUpgrades[wName]||[])];
       for(const gid of (p.weaponUpgrades['ALL']||[])){
@@ -25220,59 +25308,90 @@ this.canvas.addEventListener('mousemove', (e)=>{
         const compat = def.compatible || [def.weapon];
         if((compat.includes(wName) || compat.includes('ALL') || def.weapon==='ALL') && !all.includes(gid)) all.push(gid);
       }
-      ids=[...all];
+      for(const gid of all) if(!ids.includes(gid)) ids.push(gid);
     }
     for(const sid of (p.weaponUpgrades['SPECIAL']||[])) if(!ids.includes(sid)) ids.push(sid);
     ids=[...new Set(ids)];
-    const CHIP_X_MAX = Math.max(168, Math.min(336, px - 12));   // nunca invade o painel de informações
-    const CHIP_MAX_ROWS = 2;
-    ctx.font='4px "Press Start 2P"';
+    const CHIP_X_MAX = Math.max(196, Math.min(360, px - 12));   // nunca invade o painel de informações
+    const CHIP_MAX_ROWS = 3;
+    const CHIP_FONT = '5px "Press Start 2P"';
+    const CHIP_ROW_H = 13, CHIP_H = 11, CHIP_LBL_W = 46;
+    ctx.font=CHIP_FONT;
     if(ids.length>0){
-      const rows=[[]], rW=[0,0];
+      const rows=[[]], rW=[0];
       let overflow = 0;
       for(const uid of ids){
         const def = UPGRADE_MAP.get(uid); if(!def) continue;
         const r = RARITY[def.rarity];
         const lvl = p.upgradeLevels.get(uid) || 1, maxLv = def.maxLevel || 1;
         const label = `${def.name}${maxLv>1?` ${lvl}/${maxLv}`:''}`;
-        const bw = ctx.measureText(label).width + 9;
+        const bw = ctx.measureText(label).width + 10;
+        // inativa = vale para outra arma: esmaece mas continua listada
+        const compat = def.compatible || [def.weapon];
+        const active = !wName ? false
+          : (def.weapon==='ALL' || def.weapon==='SPECIAL' || compat.includes('ALL')
+             || compat.includes(wName) || def.weapon===wName);
         let ri = rows.length-1;
-        if(rows[ri].length && 58 + rW[ri] + bw > CHIP_X_MAX){
+        if(rows[ri].length && CHIP_LBL_W + rW[ri] + bw > CHIP_X_MAX){
           if(rows.length >= CHIP_MAX_ROWS){ overflow++; continue; }
+          // rW precisa crescer junto com rows: com 2 linhas o array fixo [0,0] nunca
+          // denunciou o furo, mas na 3ª linha rW[2] vinha undefined e o x do chip saía NaN.
           ri = rows.push([]) - 1;
+          rW[ri] = 0;
         }
-        rows[ri].push({x: 58 + rW[ri], w: bw, label, r});
+        rows[ri].push({x: CHIP_LBL_W + rW[ri], w: bw, label, r, active});
         rW[ri] += bw + 3;
       }
       if(overflow>0){
         const label = `+${overflow}`;
-        const bw = ctx.measureText(label).width + 9;
+        const bw = ctx.measureText(label).width + 10;
         const ri = rows.length-1;
         // Descarta chips do fim da última linha até o "+N" caber. O pop único de antes
         // só cobria o caso de 1 chip; com "+NN" largo e linha cheia ainda passava da caixa.
-        while(58 + rW[ri] + bw > CHIP_X_MAX && rows[ri].length){
+        while(CHIP_LBL_W + rW[ri] + bw > CHIP_X_MAX && rows[ri].length){
           const last = rows[ri].pop();
           rW[ri] -= last.w + 3;
         }
-        rows[ri].push({x: 58 + rW[ri], w: bw, label, r: RARITY.COMUM});
+        rows[ri].push({x: CHIP_LBL_W + rW[ri], w: bw, label, r: RARITY.COMUM, active: false, isMore: true});
         rW[ri] += bw + 3;
       }
-      const rowH = 11, boxH = rows.length * rowH + 5;
+      const rowH = CHIP_ROW_H, boxH = rows.length * rowH + 6;
       const boxY = CANVAS_H - 12 - boxH;
-      roundRectPath(ctx, 4, boxY, Math.min(CHIP_X_MAX, Math.max(Math.max(...rW) + 58, 52) + 2), boxH, 7);
-      ctx.fillStyle='rgba(10,10,18,0.62)'; ctx.fill();
-      ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.lineWidth=1; ctx.stroke();
-      ctx.fillStyle='rgba(255,255,255,0.55)';
+      const boxW = Math.min(CHIP_X_MAX, Math.max(Math.max(...rW) + CHIP_LBL_W, 52) + 2);
+      // Alfa do bloco inteiro: some na luta, volta quando a sala limpa / melhoria nova.
+      // A lista fica legível quando importa, e some quando atrapalharia a mira.
+      const boxA = this._chipsFade !== undefined ? this._chipsFade : 1;
+      ctx.save();
+      ctx.globalAlpha = boxA;
+      roundRectPath(ctx, 4, boxY, boxW, boxH, 7);
+      ctx.fillStyle='rgba(10,10,18,0.72)'; ctx.fill();
+      ctx.strokeStyle='rgba(255,255,255,0.09)'; ctx.lineWidth=1; ctx.stroke();
+      // cabeçalho: rótulo + contador real (antes só dizia "MELHORIAS", sem quantidade)
+      ctx.font='4px "Press Start 2P"';
+      ctx.fillStyle='rgba(255,255,255,0.62)';
       ctx.fillText('MELHORIAS', 9, boxY + 11);
+      ctx.font='4px monospace'; ctx.textAlign='right';
+      ctx.fillStyle='rgba(255,255,255,0.45)';
+      ctx.fillText(`${ids.length}`, boxW, boxY + 11);
+      ctx.textAlign='left';
       rows.forEach((chips, ri)=>{
-        const cy = boxY + 4 + ri*rowH;
+        const cy = boxY + 4 + ri*rowH + 1;
         for(const c of chips){
-          roundRectPath(ctx, c.x, cy, c.w, 9, 4.5);
+          roundRectPath(ctx, c.x, cy, c.w, CHIP_H, 5.5);
+          ctx.globalAlpha = boxA * (c.active || c.isMore ? 1 : 0.45);
           ctx.fillStyle=c.r.bg; ctx.fill();
           ctx.strokeStyle=c.r.border; ctx.lineWidth=1; ctx.stroke();
-          ctx.fillStyle=c.r.color; ctx.fillText(c.label, c.x+4.5, cy + 7);
+          ctx.font=CHIP_FONT;
+          ctx.fillStyle=c.r.color; ctx.fillText(c.label, c.x+5, cy + 8);
+          // marca de inativa: ponto vazado, para não depender só da transparência
+          if(!c.active && !c.isMore){
+            ctx.fillStyle='rgba(0,0,0,0.55)';
+            ctx.fillRect(c.x + c.w - 5, cy + 3, 2, 2);
+          }
+          ctx.globalAlpha = boxA;
         }
       });
+      ctx.restore();
     } else {
       let totalLevels=0; for(const v of p.upgradeLevels.values()) totalLevels+=v;
       const totalIds = p.obtainedUpgrades ? p.obtainedUpgrades.size : 0;
