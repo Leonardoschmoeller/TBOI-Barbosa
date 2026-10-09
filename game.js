@@ -4212,7 +4212,7 @@ const BOSS5_SPOTLIGHT_DMG_BONUS = 1.55; // mãos no chão tomam +55% dano (janel
 // ===================== HACKER - BOSS FINAL SECRETO (FASE FINAL) =====================
 // Boss secreto após Boss da Escada, sala corrompida com glitches e Dark Vírus
 // Mesmo tamanho do jogador, visual parecido com Neutro mas corrompido/hacker
-const HACKER_HP = 52; // vida total (4 fases: 13 / 13 / 20.8 / 5.2)
+const HACKER_HP = 150; // vida total (4 fases: 37.5 / 37.5 / 60 / 15)
 const HACKER_SIZE = 24; // mesmo do jogador
 const HACKER_SPEED = 1.85;
 const HACKER_DASH_SPEED = 7.2;
@@ -4241,6 +4241,46 @@ const HACKER_PUNCH_DAMAGE = 2; // 1 coração por soco
 const HACKER_PUNCH_COOLDOWN = 520;
 const HACKER_GLITCH_INTERVAL = 180; // glitch visual a cada 180ms na sala
 const HACKER_DIALOG_TIME = 2200; // duração do diálogo inicial
+
+// --- Ataques extras do Dark Vírus ---
+// Fase 1 - GLITCH
+const HACKER_FAN_COUNT = 3;            // leque de tiros
+const HACKER_FAN_SPREAD = 0.26;        // abertura total do leque
+const HACKER_FAN_COOLDOWN = 2100;      // intervalo do leque
+const HACKER_RADIAL_COUNT_P1 = 8;      // rajada circular de código
+const HACKER_RADIAL_COOLDOWN = 3600;
+const HACKER_BLINK_COOLDOWN = 5200;    // teleporte glitch
+const HACKER_BLINK_PREP = 240;         // aviso antes do teleporte
+// Fase 2 - BAZUCA / VÍRUS
+const HACKER_MISSILE_COUNT = 3;        // salva de mísseis teleguiados fracos
+const HACKER_MISSILE_COOLDOWN = 2600;
+const HACKER_MISSILE_SPREAD = 0.34;
+const HACKER_VIRUS_SPEED = 3.4;        // projétil de vírus (lento, desviando)
+const HACKER_VIRUS_HOMING = 0.028;     // curva por frame (fraca, dá pra desviar)
+const HACKER_VIRUS_DAMAGE = 1;
+const HACKER_VIRUS_RAIN_COUNT = 4;     // chuva de código no chão
+const HACKER_VIRUS_RAIN_COOLDOWN = 4200;
+const HACKER_VIRUS_RAIN_WARNING = 700; // aviso antes de cada impacto
+const HACKER_VIRUS_RAIN_RADIUS = 40;
+const HACKER_VIRUS_RAIN_DAMAGE = 2;    // 1 coração
+// Fase 3 - DARK CAR / RAIO
+const HACKER_SPIRAL_COUNT = 12;        // espiral de projéteis
+const HACKER_SPIRAL_COOLDOWN = 3400;
+const HACKER_RAY_COOLDOWN = 5200;
+const HACKER_RAY_WARNING = 620;        // aviso do feixe
+const HACKER_RAY_DURATION = 900;       // feixe travado
+const HACKER_RAY_SWEEP_DURATION = 1250;// feixe varrendo a sala
+const HACKER_RAY_WIDTH = 16;
+const HACKER_RAY_DAMAGE = 2;
+const HACKER_RAY_HIT_COOLDOWN = 520;
+const HACKER_DOUBLE_CAR_CHANCE = 0.55; // chance de o carro voltar (2 atropelos)
+// Fase 4 - PUNHO
+const HACKER_SHOCKWAVE_DAMAGE = 2;     // onda do soco
+const HACKER_SHOCKWAVE_COOLDOWN = 1500;
+const HACKER_SHOCKWAVE_MAX_R = 62;
+const HACKER_RUSH_COOLDOWN = 2600;     // investida da fase 4
+const HACKER_RUSH_SPEED = 9.4;
+const HACKER_RUSH_DURATION = 300;
 
 // Corrupted Stair & Hacker Room
 const HACKER_ROOM_GLITCH_COLORS = ['#00ff88','#ff0040','#00e5ff','#ffcc00','#c084fc'];
@@ -6838,6 +6878,32 @@ class HackerBoss {
     this.battleTime=0;
     this.codeChars=['0','1','█','▓','▒','<','>','/','\\','*'];
     this.lastCodeParticle=0;
+    // Ataques extras do Dark Vírus
+    this.fanTimer=HACKER_FAN_COOLDOWN + randRange(-300,500);
+    this.radialTimer=HACKER_RADIAL_COOLDOWN;
+    this.blinkCooldown=HACKER_BLINK_COOLDOWN;
+    this.blinkState='idle'; // idle, prep, blink
+    this.blinkTimer=0;
+    this.blinkTarget={x:0,y:0};
+    this.missileTimer=HACKER_MISSILE_COOLDOWN;
+    this.rainTimer=HACKER_VIRUS_RAIN_COOLDOWN;
+    this.virusDrops=[];
+    this.spiralTimer=HACKER_SPIRAL_COOLDOWN;
+    this.rayTimer=HACKER_RAY_COOLDOWN;
+    this.rayState='idle'; // idle, warning, active
+    this.rayTimerLeft=0;
+    this.rayDuration=HACKER_RAY_DURATION;
+    this.rayMode='lock'; // lock, sweep
+    this.rayX=0; this.rayY=0;
+    this.raySweepDir=1; this.raySweepT=0;
+    this.rayFrom=0; this.rayTo=0;
+    this.rayHitCooldown=0;
+    this.shockwaves=[];
+    this.shockwaveTimer=HACKER_SHOCKWAVE_COOLDOWN;
+    this.rushCooldown=HACKER_RUSH_COOLDOWN;
+    this.isRushing=false;
+    this.rushTime=0; this.rushDir={x:0,y:0};
+    this.carBounces=0;
   }
   getPhase(){
     const pct=this.hp/this.maxHp;
@@ -6848,7 +6914,7 @@ class HackerBoss {
   }
   getPhaseName(){
     const p=this.getPhase();
-    return p===1?'GLITCH': p===2?'BAZUCA': p===3?'DARK CAR': 'PUNHO';
+    return p===1?'GLITCH': p===2?'VÍRUS': p===3?'DARK CAR': 'PUNHO';
   }
   takeDamage(dmg){
     if(this.dead) return false;
@@ -6908,9 +6974,21 @@ class HackerBoss {
     const phase=this.getPhase();
     this.phase=phase;
     this.enrage=clamp(this.battleTime/80000,0,0.22);
+    // subsistemas do Dark Vírus rodam sempre (independente de dash/carro)
+    this.updateVirusDrops(dt, player, room, particles);
+    if(this.carState==='idle') this.updateRay(dt, player, walls, particles, room);
+    this.updateShockwaves(dt, player, particles);
     // car state machine tem prioridade máxima (fase 3)
     if(this.carState!=='idle'){
       this.updateCar(dt, player, walls, particles, room);
+      return;
+    }
+    if(this.isRushing){
+      this.updateRush(dt, player, walls, particles, room);
+      return;
+    }
+    if(this.blinkState!=='idle'){
+      this.updateBlink(dt, player, walls, particles, room);
       return;
     }
     if(this.isDashing){
@@ -6961,6 +7039,16 @@ class HackerBoss {
     if(this.healTimer>0) this.healTimer-=dt;
     if(this.carCooldown>0 && phase===3) this.carCooldown-=dt;
     if(this.punchTimer>0) this.punchTimer-=dt;
+    // timers dos ataques extras (só descem na fase em que são usados)
+    if(phase<=2 && this.fanTimer>0) this.fanTimer-=dt;
+    if(phase<=2 && this.radialTimer>0) this.radialTimer-=dt;
+    if(this.blinkCooldown>0) this.blinkCooldown-=dt;
+    if(phase===2 && this.missileTimer>0) this.missileTimer-=dt;
+    if(phase>=2 && this.rainTimer>0) this.rainTimer-=dt;
+    if(phase===3 && this.spiralTimer>0) this.spiralTimer-=dt;
+    if(this.rayTimer>0 && this.rayState==='idle') this.rayTimer-=dt;
+    if(this.shockwaveTimer>0) this.shockwaveTimer-=dt;
+    if(this.rushCooldown>0) this.rushCooldown-=dt;
 
     // FASE 1: tiros normais + dash
     if(phase===1){
@@ -6994,6 +7082,26 @@ class HackerBoss {
         const dir=normalize(player.x-this.x, player.y-this.y);
         this.dashDir=dir; this.dashPrep=HACKER_DASH_PREP;
         this.dashCooldown=99999;
+      }
+      // NOVO: leque de tiros (3) — fecha ângulos, obriga a desviar
+      if(this.fanTimer<=0){
+        this.fireFan(bulletOut, particles, player, HACKER_FAN_COUNT, HACKER_FAN_SPREAD, {
+          speed:HACKER_BULLET_SPEED*0.94, damage:HACKER_BULLET_DAMAGE, range:400,
+          size:4.5, color:'#00ff88', glow:'rgba(0,255,136,0.3)'
+        });
+        this.fanTimer=HACKER_FAN_COOLDOWN * (1 - this.enrage*0.16) + randRange(-250,400);
+      }
+      // NOVO: rajada circular de código
+      if(this.radialTimer<=0){
+        this.fireRadial(bulletOut, particles, HACKER_RADIAL_COUNT_P1, this.anim*0.002, {
+          speed:3.1, damage:HACKER_BULLET_DAMAGE, range:340,
+          size:4, color:'#00e5ff', glow:'rgba(0,229,255,0.28)'
+        }, room);
+        this.radialTimer=HACKER_RADIAL_COOLDOWN * (1 - this.enrage*0.16) + randRange(-400,600);
+      }
+      // NOVO: teleporte glitch reaparece perto do jogador
+      if(this.blinkCooldown<=0 && this.blinkState==='idle'){
+        this.startBlink(player, walls, particles, room);
       }
       // glitch code particles
       if(Math.random()<0.18){
@@ -7060,6 +7168,30 @@ class HackerBoss {
         this.dashDir=dir; this.dashPrep=HACKER_DASH_PREP;
         this.dashCooldown=99999;
       }
+      // NOVO: salva de mísseis de vírus em leque largo
+      if(this.missileTimer<=0){
+        const base=Math.atan2(player.y-this.y, player.x-this.x);
+        for(let i=0;i<HACKER_MISSILE_COUNT;i++){
+          const off=(i-(HACKER_MISSILE_COUNT-1)/2)*HACKER_MISSILE_SPREAD + randRange(-0.05,0.05);
+          const ang=base+off;
+          bulletOut.push(new Bullet(this.x,this.y, Math.cos(ang), Math.sin(ang), 'enemy', {
+            speed:HACKER_VIRUS_SPEED, damage:HACKER_VIRUS_DAMAGE, range:300,
+            size:4, color:'#c084fc', glow:'rgba(192,132,252,0.30)', isHackerVirus:true
+          }));
+        }
+        this.missileTimer=HACKER_MISSILE_COOLDOWN * (1 - this.enrage*0.16) + randRange(-300,450);
+        for(let k=0;k<10;k++) particles.push(new Particle(this.x,this.y, randRange(-1.4,1.4), randRange(-1.4,0.6), 260, '#c084fc',1.8));
+        if(room) room.shake=Math.max(room.shake||0, 26);
+      }
+      // NOVO: chuva de código — marcações no chão que estouram
+      if(this.rainTimer<=0){
+        this.spawnVirusRain(player, walls, particles);
+        this.rainTimer=HACKER_VIRUS_RAIN_COOLDOWN * (1 - this.enrage*0.16) + randRange(-500,700);
+      }
+      // NOVO: teleporte glitch
+      if(this.blinkCooldown<=0 && this.blinkState==='idle'){
+        this.startBlink(player, walls, particles, room);
+      }
       // glitch
       if(Math.random()<0.22) particles.push(new Particle(this.x+randRange(-14,14), this.y-10+randRange(-6,6), randRange(-0.7,0.7), -0.9, 300, '#ff0040',1.4));
     }
@@ -7111,8 +7243,11 @@ class HackerBoss {
       }
       // carro
       if(this.carCooldown<=0 && this.carState==='idle'){
+        // o carro cancela o feixe (senão dispararia de fora da tela)
+        if(this.rayState!=='idle'){ this.rayState='idle'; this.rayTimer=HACKER_RAY_COOLDOWN; }
         this.carState='prep';
         this.carTimer=HACKER_CAR_PREP_TIME;
+        this.carBounces=0;
         this.carY=player.y;
         this.carDir=player.x < CANVAS_W/2 ? 1 : -1; // vem do lado oposto ao jogador para atropelar
         // aviso glitch na borda
@@ -7126,6 +7261,23 @@ class HackerBoss {
         const dir=normalize(player.x-this.x, player.y-this.y);
         this.dashDir=dir; this.dashPrep=HACKER_DASH_PREP;
         this.dashCooldown=99999;
+      }
+      // NOVO: espiral de projéteis
+      if(this.spiralTimer<=0 && this.carState==='idle'){
+        this.fireRadial(bulletOut, particles, HACKER_SPIRAL_COUNT, this.anim*0.0026, {
+          speed:2.9, damage:HACKER_BULLET_DAMAGE, range:360,
+          size:4.5, color:'#c084fc', glow:'rgba(192,132,252,0.3)'
+        }, room);
+        this.spiralTimer=HACKER_SPIRAL_COOLDOWN * (1 - this.enrage*0.18) + randRange(-400,600);
+      }
+      // NOVO: raio de varredura (codificado)
+      if(this.rayTimer<=0 && this.rayState==='idle' && this.carState==='idle'){
+        this.startRay(player, particles);
+      }
+      // NOVO: chuva de código também na fase 3
+      if(this.rainTimer<=0 && this.carState==='idle'){
+        this.spawnVirusRain(player, walls, particles, 5);
+        this.rainTimer=HACKER_VIRUS_RAIN_COOLDOWN * 0.9 + randRange(-400,600);
       }
       if(Math.random()<0.28){
         const glitchCol=HACKER_ROOM_GLITCH_COLORS[randInt(0,HACKER_ROOM_GLITCH_COLORS.length-1)];
@@ -7156,9 +7308,23 @@ class HackerBoss {
           }
         }
         this.punchTimer=HACKER_PUNCH_COOLDOWN;
+        // NOVO: onda de choque no soco (anel que se expande e machuca)
+        if(this.shockwaveTimer<=0){
+          this.shockwaves.push({x:this.x+ (dx/d)*10, y:this.y+(dy/d)*10, r:8, maxR:HACKER_SHOCKWAVE_MAX_R, life:520, max:520, hitCd:0});
+          this.shockwaveTimer=HACKER_SHOCKWAVE_COOLDOWN * (1 - this.enrage*0.2);
+          if(room) room.shake=Math.max(room.shake||0, 44);
+        }
         for(let k=0;k<8;k++) particles.push(new Particle(this.x + (dx/d)*16, this.y + (dy/d)*16, (dx/d)*randRange(1,2)+randRange(-0.6,0.6), (dy/d)*randRange(1,2)+randRange(-0.6,0.6), 180, '#ff0040',1.8));
         // shake e som
         if(room) room.shake=Math.max(room.shake||0, 52);
+      }
+      // NOVO: investida relâmpago (fecha distância e machuca no corpo a corpo)
+      if(this.rushCooldown<=0 && d>70){
+        this.rushDir=normalize(player.x-this.x, player.y-this.y);
+        this.isRushing=true; this.rushTime=HACKER_RUSH_DURATION;
+        this.rushCooldown=HACKER_RUSH_COOLDOWN * (1 - this.enrage*0.2) + randRange(-300,500);
+        for(let k=0;k<14;k++) particles.push(new Particle(this.x,this.y, -this.rushDir.x*randRange(1,3)+randRange(-0.8,0.8), -this.rushDir.y*randRange(1,3)+randRange(-0.8,0.8), 220, '#ff0040',2));
+        if(room) room.shake=Math.max(room.shake||0, 34);
       }
       // em rage, soca mais rápido
       if(this.punchTimer>0) this.punchTimer-=dt;
@@ -7185,6 +7351,226 @@ class HackerBoss {
       const ch=this.codeChars[randInt(0,this.codeChars.length-1)];
       particles.push(new Particle(this.x+randRange(-18,18), this.y-14, randRange(-0.4,0.4), -1.2, 420, 'rgba(0,255,136,0.9)',1.1));
       // desenha char como partícula? partícula simples já basta
+    }
+  }
+  // ===================== ATAQUES EXTRAS (DARK VÍRUS) =====================
+  // leque de projéteis mirando no jogador
+  fireFan(bulletOut, particles, player, count, spread, opts={}){
+    const base=Math.atan2(player.y-this.y, player.x-this.x);
+    for(let i=0;i<count;i++){
+      const ang=base + (count>1 ? (i/(count-1)-0.5)*spread : 0) + randRange(-0.03,0.03);
+      bulletOut.push(new Bullet(this.x,this.y, Math.cos(ang), Math.sin(ang), 'enemy', opts));
+    }
+    for(let k=0;k<8;k++){
+      const a=base+randRange(-spread/2,spread/2);
+      particles.push(new Particle(this.x,this.y, Math.cos(a)*randRange(0.8,2), Math.sin(a)*randRange(0.8,2), 170, opts.color||'#00ff88',1.6));
+    }
+  }
+  // rajada circular completa (espiral quando baseAng gira)
+  fireRadial(bulletOut, particles, count, baseAng, opts={}, room=null){
+    for(let i=0;i<count;i++){
+      const ang=baseAng + (i/count)*Math.PI*2;
+      bulletOut.push(new Bullet(this.x,this.y, Math.cos(ang), Math.sin(ang), 'enemy', opts));
+    }
+    for(let k=0;k<10;k++){
+      const a=Math.random()*Math.PI*2;
+      particles.push(new Particle(this.x,this.y, Math.cos(a)*randRange(1.4,3.2), Math.sin(a)*randRange(1.4,3.2), 220, opts.color||'#00e5ff',1.7));
+    }
+    if(room) room.shake=Math.max(room.shake||0, 24);
+  }
+  // ---- teleporte glitch ----
+  startBlink(player, walls, particles, room){
+    const base=Math.atan2(player.y-this.y, player.x-this.x);
+    const ang=base+randRange(-1.25,1.25);
+    const rad=randRange(70,120);
+    let tx=clamp(this.x+Math.cos(ang)*rad, WALL_THICK+this.w/2+2, CANVAS_W-WALL_THICK-this.w/2-2);
+    let ty=clamp(this.y+Math.sin(ang)*rad, WALL_THICK+this.h/2+2, CANVAS_H-WALL_THICK-this.h/2-2);
+    // evita parede
+    let tries=0;
+    while(tries<8 && this.collidesWalls(tx,ty,walls)){ tx=clamp(tx+randRange(-40,40), WALL_THICK+16, CANVAS_W-WALL_THICK-16); ty=clamp(ty+randRange(-40,40), WALL_THICK+16, CANVAS_H-WALL_THICK-16); tries++; }
+    this.blinkTarget={x:tx,y:ty};
+    this.blinkState='prep';
+    this.blinkTimer=HACKER_BLINK_PREP;
+    if(room) room.shake=Math.max(room.shake||0, 16);
+  }
+  updateBlink(dt, player, walls, particles, room){
+    if(this.blinkState==='prep'){
+      this.blinkTimer-=dt;
+      if(Math.random()<0.5) particles.push(new Particle(this.blinkTarget.x+randRange(-10,10), this.blinkTarget.y+randRange(-10,10), randRange(-0.6,0.6), -0.9, 260, '#00ff88',1.4));
+      if(this.blinkTimer<=0){
+        // some
+        if(room) room.explosions.push({x:this.x,y:this.y,radius:12,life:320,max:320,isHackerGlitch:true});
+        for(let k=0;k<18;k++) particles.push(new Particle(this.x,this.y, randRange(-1.6,1.6), randRange(-1.6,0.6), 320, '#00e5ff',1.8));
+        this.x=this.blinkTarget.x; this.y=this.blinkTarget.y;
+        // surge
+        if(room) room.explosions.push({x:this.x,y:this.y,radius:14,life:360,max:360,isHackerGlitch:true});
+        for(let k=0;k<22;k++) particles.push(new Particle(this.x,this.y, randRange(-2,2), randRange(-2,0.6), 340, '#00ff88',2));
+        this.blinkState='idle';
+        this.blinkCooldown=HACKER_BLINK_COOLDOWN * (1 - this.enrage*0.2) + randRange(-400,700);
+      }
+      return;
+    }
+    this.blinkState='idle';
+  }
+  // ---- chuva de código (meteoros no chão) ----
+  spawnVirusRain(player, walls, particles, count=HACKER_VIRUS_RAIN_COUNT){
+    const base=Math.atan2(player.y-this.y, player.x-this.x);
+    for(let i=0;i<count;i++){
+      const ang=base + (i-(count-1)/2)*0.30 + randRange(-0.18,0.18);
+      const rad=randRange(50,165);
+      let tx=clamp(this.x+Math.cos(ang)*rad, WALL_THICK+34, CANVAS_W-WALL_THICK-34);
+      let ty=clamp(this.y+Math.sin(ang)*rad, WALL_THICK+34, CANVAS_H-WALL_THICK-34);
+      let tries=0;
+      while(tries<6 && this.collidesWalls(tx,ty,walls)){ tx=clamp(tx+randRange(-30,30), WALL_THICK+34, CANVAS_W-WALL_THICK-34); ty=clamp(ty+randRange(-30,30), WALL_THICK+34, CANVAS_H-WALL_THICK-34); tries++; }
+      const warn=Math.max(320, HACKER_VIRUS_RAIN_WARNING*(1 - this.enrage*0.18) + i*90);
+      this.virusDrops.push({x:tx,y:ty,warnTimer:warn,warnTotal:warn,struck:false,life:warn+300,radius:HACKER_VIRUS_RAIN_RADIUS});
+      for(let k=0;k<6;k++) particles.push(new Particle(tx,ty, randRange(-0.8,0.8), randRange(-0.8,0.8), 260, '#00ff88',1.3));
+    }
+    if(particles) for(let k=0;k<10;k++) particles.push(new Particle(this.x,this.y-10, randRange(-1.2,1.2), -1, 340, 'rgba(0,229,255,0.9)',1.4));
+  }
+  updateVirusDrops(dt, player, room, particles){
+    for(let i=this.virusDrops.length-1;i>=0;i--){
+      const m=this.virusDrops[i];
+      if(!m.struck){
+        m.warnTimer-=dt;
+        if(Math.random()<0.45) particles.push(new Particle(m.x+randRange(-m.radius,m.radius), m.y+randRange(-m.radius,m.radius), randRange(-0.5,0.5), -1.1, 300, 'rgba(0,255,136,0.9)',1.2));
+        if(m.warnTimer<=0){
+          m.struck=true;
+          if(room && room.explosions) room.explosions.push({x:m.x,y:m.y,radius:14,life:380,max:380,isHackerVirus:true});
+          for(let k=0;k<16;k++) particles.push(new Particle(m.x,m.y, randRange(-1.8,1.8), randRange(-1.8,1.8), randRange(240,460), '#00ff88',2));
+          if(dist(player.x,player.y,m.x,m.y) < m.radius + 8 && !player.isInvulnerable()){
+            if(player.takeDamage(HACKER_VIRUS_RAIN_DAMAGE)){
+              for(let k=0;k<10;k++) particles.push(new Particle(player.x,player.y, randRange(-2,2), randRange(-2,0.5), 300, '#00ff88',2.2));
+              if(room) room.shake=Math.max(room.shake||0, 58);
+            }
+          }
+        }
+      }
+      m.life-=dt;
+      if(m.life<=0) this.virusDrops.splice(i,1);
+    }
+  }
+  // ---- raio codificado (feixe travado ou varrendo) ----
+  startRay(player, particles){
+    this.rayMode = Math.random()<0.55 ? 'sweep' : 'lock';
+    this.rayState='warning';
+    this.rayTimerLeft=Math.max(380, HACKER_RAY_WARNING*(1 - this.enrage*0.18));
+    const toPlayer=Math.atan2(player.y-this.y, player.x-this.x);
+    if(this.rayMode==='lock'){
+      this.rayFrom=toPlayer; this.rayTo=toPlayer; this.raySweepT=toPlayer;
+    } else {
+      // leque varrendo ±0.85rad em torno da direção do jogador
+      const lead=toPlayer+randRange(-0.2,0.2);
+      this.rayFrom=lead-0.85; this.rayTo=lead+0.85; this.raySweepT=this.rayFrom;
+    }
+    this.raySweepDir=1;
+    for(let k=0;k<16;k++) particles.push(new Particle(this.x,this.y, randRange(-1.4,1.4), randRange(-1.4,0.6), 300, '#00e5ff',1.8));
+  }
+  updateRay(dt, player, walls, particles, room){
+    if(this.rayState==='warning'){
+      this.rayTimerLeft-=dt;
+      if(this.rayTimerLeft<=0){
+        this.rayState='active';
+        this.rayDuration = this.rayMode==='sweep' ? HACKER_RAY_SWEEP_DURATION : HACKER_RAY_DURATION;
+        this.rayTimerLeft=this.rayDuration;
+        this.rayHitCooldown=0;
+        if(room) room.shake=Math.max(room.shake||0, this.rayMode==='sweep'? 92 : 74);
+      }
+      return;
+    }
+    if(this.rayState!=='active') return;
+    this.rayTimerLeft-=dt;
+    if(this.rayMode==='lock'){
+      // trava em cima do jogador
+      this.raySweepT=Math.atan2(player.y-this.y, player.x-this.x);
+    } else {
+      this.raySweepT=lerp(this.rayFrom, this.rayTo, 1 - clamp(this.rayTimerLeft/this.rayDuration,0,1));
+    }
+    const len = this.rayMode==='sweep' ? 1200 : 760;
+    this.rayX=this.x; this.rayY=this.y;
+    const ex=this.rayX+Math.cos(this.raySweepT)*len;
+    const ey=this.rayY+Math.sin(this.raySweepT)*len;
+    // parede corta o feixe
+    let cut=len;
+    for(const w of walls){
+      const steps=Math.ceil(len/12);
+      for(let s=1;s<=steps;s++){
+        const t=s/steps;
+        const px=this.rayX+Math.cos(this.raySweepT)*len*t;
+        const py=this.rayY+Math.sin(this.raySweepT)*len*t;
+        if(circleRectCollide(px,py,2,w.x,w.y,w.w,w.h)){ cut=len*t; break; }
+      }
+      if(cut<len) break;
+    }
+    const tx=ex-this.rayX, ty=ey-this.rayY;
+    const tlen=Math.hypot(tx,ty)||1;
+    const nx=tx/tlen, ny=ty/tlen;
+    const toPX=player.x-this.rayX, toPY=player.y-this.rayY;
+    const proj=Math.max(0, Math.min(cut, toPX*nx+toPY*ny));
+    const cx=this.rayX+nx*proj, cy=this.rayY+ny*proj;
+    const d=Math.hypot(player.x-cx, player.y-cy);
+    if(d < HACKER_RAY_WIDTH/2 + player.w*0.36){
+      this.rayHitCooldown-=dt;
+      if(this.rayHitCooldown<=0 && !player.isInvulnerable()){
+        if(player.takeDamage(HACKER_RAY_DAMAGE)){
+          for(let k=0;k<12;k++) particles.push(new Particle(player.x,player.y, randRange(-2.2,2.2), randRange(-2.2,0.6), 300, '#00e5ff',2.2));
+        }
+        this.rayHitCooldown=HACKER_RAY_HIT_COOLDOWN * (1 - this.enrage*0.2);
+      }
+    }
+    if(Math.random()<0.85) particles.push(new Particle(cx+randRange(-4,4), cy+randRange(-6,6), randRange(-0.8,0.8), randRange(-0.8,0.4), 160, 'rgba(0,229,255,0.95)',1.5));
+    if(this.rayTimerLeft<=0){
+      this.rayState='idle';
+      this.rayTimer=HACKER_RAY_COOLDOWN * (1 - this.enrage*0.2) + randRange(-700,900);
+    }
+  }
+  // ---- ondas de choque (soco fase 4) ----
+  updateShockwaves(dt, player, particles){
+    for(let i=this.shockwaves.length-1;i>=0;i--){
+      const s=this.shockwaves[i];
+      s.life-=dt;
+      const prog=1 - clamp(s.life/s.max,0,1);
+      s.r=8 + (s.maxR-8)*prog;
+      s.hitCd-=dt;
+      if(s.hitCd<=0 && dist(player.x,player.y,s.x,s.y) < s.r + player.w*0.34 && !player.isInvulnerable()){
+        if(player.takeDamage(HACKER_SHOCKWAVE_DAMAGE)){
+          for(let k=0;k<10;k++) particles.push(new Particle(player.x,player.y, randRange(-2,2), randRange(-2,0.5), 280, '#ff0040',2.2));
+        }
+        s.hitCd=560;
+      }
+      if(Math.random()<0.6) particles.push(new Particle(s.x+randRange(-s.r,s.r), s.y+randRange(-s.r,s.r)*0.7, randRange(-0.6,0.6), randRange(-0.6,0.3), 180, 'rgba(255,0,64,0.85)',1.4));
+      if(s.life<=0) this.shockwaves.splice(i,1);
+    }
+  }
+  // ---- investida relâmpago (fase 4) ----
+  updateRush(dt, player, walls, particles, room){
+    this.rushTime-=dt;
+    const nx=this.x + this.rushDir.x * HACKER_RUSH_SPEED;
+    const ny=this.y + this.rushDir.y * HACKER_RUSH_SPEED;
+    let hitWall=false;
+    if(this.collidesWalls(nx,this.y,walls)) hitWall=true; else this.x=nx;
+    if(this.collidesWalls(this.x,ny,walls)) hitWall=true; else this.y=ny;
+    this.x=clamp(this.x, WALL_THICK+this.w/2, CANVAS_W-WALL_THICK-this.w/2);
+    this.y=clamp(this.y, WALL_THICK+this.h/2, CANVAS_H-WALL_THICK-this.h/2);
+    for(let k=0;k<3;k++) particles.push(new Particle(this.x - this.rushDir.x*randRange(4,12), this.y - this.rushDir.y*randRange(4,12), -this.rushDir.x*randRange(1,2.6), -this.rushDir.y*randRange(1,2.6), 190, 'rgba(255,0,64,0.9)',1.8));
+    if(rectCollide(player.x-player.w/2,player.y-player.h/2,player.w,player.h, this.x-this.w/2,this.y-this.h/2,this.w,this.h)){
+      if(!player.isInvulnerable() && this.canDamage()){
+        if(player.takeDamage(HACKER_PUNCH_DAMAGE)){
+          for(let k=0;k<10;k++) particles.push(new Particle(player.x,player.y, randRange(-2,2), randRange(-2,0.5), 280, '#ff0040',2.4));
+        }
+        this.resetDamageCooldown();
+        const ang=Math.atan2(player.y-this.y, player.x-this.x);
+        player.x+=Math.cos(ang)*16; player.y+=Math.sin(ang)*16;
+        if(room) room.shake=Math.max(room.shake||0, 70);
+      }
+    }
+    if(this.rushTime<=0 || hitWall){
+      this.isRushing=false;
+      if(hitWall && room){
+        room.shake=Math.max(room.shake||0, 60);
+        room.explosions.push({x:this.x,y:this.y,radius:16,life:380,max:380,isHackerVirus:true});
+      }
+      for(let k=0;k<12;k++) particles.push(new Particle(this.x,this.y, randRange(-1.6,1.6), randRange(-1.6,0.6), 240, '#ff0040',1.8));
     }
   }
   updateCar(dt, player, walls, particles, room){
@@ -7230,7 +7616,21 @@ class HackerBoss {
       }
     } else if(this.carState==='recover'){
       if(this.carTimer<=0){
+        // NOVO: 2º atropelo (carro volta pelo lado oposto)
+        if(this.carBounces < 1 && Math.random() < HACKER_DOUBLE_CAR_CHANCE){
+          this.carBounces++;
+          this.carState='prep';
+          this.carTimer=HACKER_CAR_PREP_TIME*0.72;
+          this.carDir*=-1;
+          this.carY=clamp(player.y, WALL_THICK+24, CANVAS_H-WALL_THICK-24);
+          this.x = this.carDir===1 ? -30 : CANVAS_W+30;
+          this.y = this.carY;
+          for(let k=0;k<18;k++) particles.push(new Particle(this.carDir===1?WALL_THICK+12:CANVAS_W-WALL_THICK-12, this.carY+randRange(-12,12), randRange(-0.6,0.6), randRange(-0.6,0.6), 520, '#ffcc00',1.8));
+          if(room) room.shake=Math.max(room.shake||0, 52);
+          return;
+        }
         this.carState='idle';
+        this.carBounces=0;
         this.carCooldown=HACKER_CAR_COOLDOWN * (1 - this.enrage*0.18) + randRange(-800,1000);
       }
     }
@@ -7266,6 +7666,82 @@ class HackerBoss {
         ctx.fillText(this.codeChars[randInt(0,this.codeChars.length-1)], this.x+randRange(-16,16), this.y-12+bob+Math.sin(this.anim*0.02)*2);
         ctx.textAlign='left';
       }
+    }
+    // NOVO: telegraph do teleporte glitch
+    if(this.blinkState==='prep'){
+      const prog=1 - (this.blinkTimer/HACKER_BLINK_PREP);
+      const bx=this.blinkTarget.x, by=this.blinkTarget.y;
+      ctx.strokeStyle=`rgba(0,229,255,${0.35+prog*0.45})`; ctx.lineWidth=1.4; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.arc(bx, by, 6+prog*16, 0, Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle=`rgba(0,229,255,${0.20+prog*0.22})`;
+      ctx.beginPath(); ctx.arc(bx, by, 6+prog*16, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle=`rgba(0,255,136,${0.6+prog*0.35})`; ctx.font='5px monospace'; ctx.textAlign='center';
+      ctx.fillText('WARP', bx, by-8); ctx.textAlign='left';
+    }
+    // NOVO: chuva de código — marcações de aviso no chão
+    for(const m of this.virusDrops){
+      if(m.struck) continue;
+      const prog=1 - clamp(m.warnTimer/m.warnTotal,0,1);
+      const blink=Math.floor(m.warnTimer/70)%2===0;
+      ctx.strokeStyle=`rgba(0,255,136,${0.35+ (blink?0.35:0)})`; ctx.lineWidth=1.6;
+      ctx.beginPath(); ctx.arc(m.x, m.y, m.radius, 0, Math.PI*2); ctx.stroke();
+      ctx.fillStyle=`rgba(0,255,136,${0.10+(blink?0.10:0)})`;
+      ctx.beginPath(); ctx.arc(m.x, m.y, m.radius, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle=`rgba(255,0,64,${0.55*prog})`; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(m.x, m.y, m.radius*(1-prog), 0, Math.PI*2); ctx.stroke();
+      // mira cruzada
+      ctx.strokeStyle=`rgba(255,0,64,${0.45})`; ctx.lineWidth=1;
+      ctx.beginPath();
+      ctx.moveTo(m.x-m.radius, m.y); ctx.lineTo(m.x+m.radius, m.y);
+      ctx.moveTo(m.x, m.y-m.radius); ctx.lineTo(m.x, m.y+m.radius);
+      ctx.stroke();
+    }
+    // NOVO: feixe codificado (aviso + ativo)
+    if(this.rayState!=='idle'){
+      const ox=this.x, oy=this.y+bob;
+      const a=this.raySweepT;
+      const len = this.rayMode==='sweep' ? 1200 : 760;
+      const ex=ox+Math.cos(a)*len, ey=oy+Math.sin(a)*len;
+      if(this.rayState==='warning'){
+        const prog=1 - clamp(this.rayTimerLeft/HACKER_RAY_WARNING,0,1);
+        ctx.strokeStyle=`rgba(0,229,255,${0.35+prog*0.45})`; ctx.lineWidth=1.4; ctx.setLineDash([7,5]);
+        ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(ex,ey); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle=`rgba(0,229,255,${0.55+prog*0.4})`; ctx.font='6px monospace'; ctx.textAlign='center';
+        ctx.fillText(this.rayMode==='sweep'?'RASTRO':'RAIO', ox+Math.cos(a)*44, oy+Math.sin(a)*44-6);
+        ctx.textAlign='left';
+      } else {
+        const pulse=0.5+Math.sin(this.anim*0.03)*0.3;
+        ctx.lineCap='round';
+        ctx.strokeStyle=`rgba(0,229,255,${0.22})`;
+        ctx.lineWidth=HACKER_RAY_WIDTH+7;
+        ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(ex,ey); ctx.stroke();
+        ctx.strokeStyle=`rgba(0,229,255,${0.55+pulse*0.25})`;
+        ctx.lineWidth=HACKER_RAY_WIDTH;
+        ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(ex,ey); ctx.stroke();
+        ctx.strokeStyle='rgba(255,255,255,0.92)';
+        ctx.lineWidth=Math.max(2, HACKER_RAY_WIDTH*0.3);
+        ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(ex,ey); ctx.stroke();
+        ctx.lineCap='butt';
+        ctx.fillStyle=`rgba(0,255,255,${0.35+pulse*0.3})`;
+        ctx.beginPath(); ctx.arc(ox, oy, HACKER_RAY_WIDTH*0.9+pulse*3, 0, Math.PI*2); ctx.fill();
+      }
+    }
+    // NOVO: ondas de choque da fase 4
+    for(const s of this.shockwaves){
+      const alpha=clamp(s.life/s.max,0,1);
+      ctx.strokeStyle=`rgba(255,0,64,${alpha*0.62})`;
+      ctx.lineWidth=3; ctx.setLineDash([5,3]);
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.strokeStyle=`rgba(255,255,255,${alpha*0.42})`;
+      ctx.lineWidth=1.2;
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r*0.88, 0, Math.PI*2); ctx.stroke();
+    }
+    // NOVO: rastro da investida
+    if(this.isRushing){
+      ctx.fillStyle='rgba(255,0,64,0.18)';
+      ctx.beginPath(); ctx.arc(this.x, this.y+bob, this.w*0.9, 0, Math.PI*2); ctx.fill();
     }
     // car aviso linha
     if(this.carState==='prep'){
@@ -7422,6 +7898,7 @@ class Bullet {
     this.chain = opts.chain||0; // cadeia elétrica (upgrade RAIO muito raro)
     this.pierceCount = opts.pierceCount ?? (opts.pierce ? 999 : 0); // 999 = infinito para RAIO, 1-3 para pistola
     this.isBazuca = !!opts.isBazuca; // bazuca explode em área
+    this.isHackerVirus = !!opts.isHackerVirus; // projétil de vírus do Hacker (curva devagar)
     this.isArrow = !!opts.isArrow; // arco simples
     this.isSwordWave = !!opts.isSwordWave; // corte de vento da espada
     this.isRayMatematico = !!opts.isRayMatematico; // Dev principal
@@ -7434,6 +7911,21 @@ class Bullet {
     this.dead = false;
   }
   update(dt, walls) {
+    // Vírus do Hacker: curva lentamente na direção do jogador (teleguiado fraco, desviável)
+    if(this.isHackerVirus){
+      try{
+        const p = (typeof window!=='undefined' && window.game && window.game.player) ? window.game.player : null;
+        if(p){
+          const tx = p.x - this.x, ty = p.y - this.y;
+          const tLen = Math.hypot(tx, ty) || 1;
+          const turn = HACKER_VIRUS_HOMING;
+          let nx = this.dirX * (1-turn) + (tx/tLen) * turn;
+          let ny = this.dirY * (1-turn) + (ty/tLen) * turn;
+          const nLen = Math.hypot(nx, ny) || 1;
+          this.dirX = nx/nLen; this.dirY = ny/nLen;
+        }
+      }catch(e){}
+    }
     // Mini lazer teleguiado: curva suavemente em direção ao inimigo mais próximo
     if(this.isMiniRay){
       try{
@@ -7657,6 +8149,32 @@ class Bullet {
       ctx.fillStyle='#ffffff';
       ctx.fillRect(backX -2, backY -2, 4, 1.5);
       ctx.fillRect(backX -1, backY +1, 3, 1);
+      return;
+    }
+    // Vírus do Hacker: glifo de código com cauda instável (teleguiado fraco)
+    if(this.isHackerVirus){
+      const ang=Math.atan2(this.dirY,this.dirX);
+      ctx.strokeStyle=this.glow;
+      ctx.lineWidth=this.size+2.2; ctx.lineCap='round';
+      ctx.globalAlpha=0.6;
+      ctx.beginPath();
+      ctx.moveTo(this.x - this.dirX*13, this.y - this.dirY*13);
+      ctx.lineTo(this.x, this.y);
+      ctx.stroke();
+      ctx.globalAlpha=1; ctx.lineCap='butt';
+      ctx.fillStyle=this.glow;
+      ctx.beginPath(); ctx.arc(this.x, this.y, this.size+4, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle=this.color;
+      ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle='#ffffff';
+      ctx.beginPath(); ctx.arc(this.x, this.y, this.size*0.42, 0, Math.PI*2); ctx.fill();
+      // pontas instáveis (glitch)
+      ctx.fillStyle='rgba(0,229,255,0.85)';
+      ctx.beginPath();
+      ctx.moveTo(this.x+Math.cos(ang)*6, this.y+Math.sin(ang)*6);
+      ctx.lineTo(this.x+Math.cos(ang+2.5)*3, this.y+Math.sin(ang+2.5)*3);
+      ctx.lineTo(this.x+Math.cos(ang-2.5)*3, this.y+Math.sin(ang-2.5)*3);
+      ctx.closePath(); ctx.fill();
       return;
     }
     // Bazuca: foguete com chama
@@ -19565,10 +20083,10 @@ if(e.canDamageHead()){
       } else if(!isVictory && hacker){
         const pct=hacker.hp/hacker.maxHp;
         ctx.fillStyle='rgba(255,255,255,0.72)'; ctx.font='6px monospace'; ctx.textAlign='center';
-        if(pct>0.75) ctx.fillText('Fase 1: Tiros + Dash', CANVAS_W/2, CANVAS_H-22);
-        else if(pct>0.5) ctx.fillText('Fase 2: Bazuca (2 dano) + Invocação', CANVAS_W/2, CANVAS_H-22);
-        else if(pct>0.10) ctx.fillText('Fase 3: Invocação + Cura + CARRO 2.5♥', CANVAS_W/2, CANVAS_H-22);
-        else ctx.fillText('Fase 4: SÓ SOCOS!', CANVAS_W/2, CANVAS_H-22);
+        if(pct>0.75) ctx.fillText('Fase 1: Tiros + Leque + Espiral + WARP', CANVAS_W/2, CANVAS_H-22);
+        else if(pct>0.5) ctx.fillText('Fase 2: Bazuca + Mísseis + Chuva de Código', CANVAS_W/2, CANVAS_H-22);
+        else if(pct>0.10) ctx.fillText('Fase 3: CARRO x2 + RAIO + Cura + Invocação', CANVAS_W/2, CANVAS_H-22);
+        else ctx.fillText('Fase 4: SOCOS + Ondas + Investida!', CANVAS_W/2, CANVAS_H-22);
         ctx.textAlign='left';
         if(Math.floor(Date.now()/500)%2===0){
           ctx.fillStyle='rgba(0,255,136,0.72)'; ctx.font='6px monospace'; ctx.textAlign='center';
@@ -19799,6 +20317,7 @@ if(e.canDamageHead()){
       else if(ex.isBossStairDeath) targetR=96;
       else if(ex.isHackerDeath) targetR=96;
       else if(ex.isHackerGlitch) targetR=36;
+      else if(ex.isHackerVirus) targetR=HACKER_VIRUS_RAIN_RADIUS;
       else if(ex.isMinibossDeath) targetR=80;
       else if(ex.isLaserPerfect) targetR=26;
       else if(ex.isLaserHoming) targetR=20;
@@ -19913,6 +20432,29 @@ if(e.canDamageHead()){
         ctx.fillStyle=`rgba(255,255,255,${alpha*0.52})`;
         ctx.font='6px monospace'; ctx.textAlign='center';
         ctx.fillText(['0','1','█'][Math.floor(alpha*3)%3], ex.x, ex.y+2); ctx.textAlign='left';
+      } else if(ex.isHackerVirus){
+        // impacto da chuva de código (glitch verde/ciano)
+        ctx.strokeStyle=`rgba(0,255,136,${alpha*0.62})`;
+        ctx.lineWidth=2.4;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle=`rgba(0,255,136,${alpha*0.16})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle=`rgba(0,229,255,${alpha*0.30})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.58, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle=`rgba(255,0,64,${alpha*0.40})`;
+        ctx.lineWidth=1.2;
+        for(let a=0;a<4;a++){
+          const ang=(a/4)*Math.PI*2 + 0.4;
+          ctx.beginPath();
+          ctx.moveTo(ex.x+Math.cos(ang)*r*0.3, ex.y+Math.sin(ang)*r*0.3);
+          ctx.lineTo(ex.x+Math.cos(ang)*r*0.95, ex.y+Math.sin(ang)*r*0.95);
+          ctx.stroke();
+        }
+        if(alpha>0.4){
+          ctx.fillStyle=`rgba(255,255,255,${alpha*0.85})`;
+          ctx.font='6px monospace'; ctx.textAlign='center';
+          ctx.fillText(['ERR','0xFF','!','<>'][Math.floor(alpha*4)%4], ex.x, ex.y+2); ctx.textAlign='left';
+        }
       } else if(ex.isShieldPush){
         // Onda de repulsão do escudo
         ctx.strokeStyle=`rgba(0,229,255,${alpha*0.55})`;
