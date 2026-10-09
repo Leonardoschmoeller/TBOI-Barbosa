@@ -2315,6 +2315,38 @@ const MACACO_SPAWN_FLOORS = [6]; // apenas Fase 6 Mineradora de Coins (requisito
 const BORED_APE_SPAWN_FLOORS = MACACO_SPAWN_FLOORS;
 const APE_NFT_SPAWN_FLOORS = MACACO_SPAWN_FLOORS;
 
+// ===================== PAINEL CENTRAL (sala da Fase 1) =====================
+// Sala especial da Fase 1: não tem inimigos, tem um painel/terminal no centro.
+// Chegando perto e apertando [E] abre o terminal de códigos.
+// A sala é EXCLUSIVA: só é gerada para o jogador cujo nome é PAINEL_ALLOWED_NAME.
+const PAINEL_ROOM_FLOORS = [1]; // fase(s) onde a sala aparece
+const PAINEL_ALLOWED_NAME = 'SCHMOELLER'; // nome do jogador que libera a sala
+const PAINEL_MAX_LEN = 16;       // máx. caracteres no campo do terminal
+const PAINEL_W = 74;             // largura do console
+const PAINEL_H = 96;             // altura do console
+const PAINEL_INTERACT_RANGE = 58; // distância para o [E] abrir o terminal
+const PAINEL_CODE_BORZUK = 'BORZUK'; // código que libera tudo
+// Normaliza o nome no mesmo espírito da sanitizePlayerName (sem acento, sem
+// espaço nas pontas, MAIÚSCULAS) para que "schmoeller", "Schmoeller" e
+// "SCHMOELLER " batam. Espaço no MEIO continua contando como nome diferente.
+function isPainelAllowedName(name){
+  let s=String(name==null?'':name).replace(/\s+/g,' ').trim();
+  if(!s) return false;
+  try{ s=s.normalize('NFD').replace(/[\u0300-\u036f]/g,''); }catch(_){}
+  return s.toUpperCase()===PAINEL_ALLOWED_NAME;
+}
+// Tabela de códigos do painel: fonte única de verdade (name/desc alimentam a coluna lateral)
+const PAINEL_CODES = {
+  F1: { name:'F1', desc:'Ir para a Fase 1 — Porão' },
+  F2: { name:'F2', desc:'Ir para a Fase 2' },
+  F3: { name:'F3', desc:'Ir para a Fase 3' },
+  F4: { name:'F4', desc:'Ir para a Fase 4 — Santuário' },
+  F5: { name:'F5', desc:'Ir para a Fase 5 — Escada (Boss)' },
+  F6: { name:'F6', desc:'Ir para a Fase 6 — Mineradora (Boss final)' },
+  BORZUK: { name:'BORZUK', desc:'Libera TODAS as melhorias e TODOS os passivos' }
+};
+const PAINEL_CODE_LIST = Object.keys(PAINEL_CODES);
+
 // ===================== SALA SETCH (2x TAMANHO) =====================
 const SETCH_ROOM_CHANCE = 1.0; // 100% por andar quando elegível (Fase 5 ou 6) - requisito: 100% ou na fase 5 ou na fase 6
 const SETCH_ROOM_FLOORS = [5,6]; // só aparece em Fase 5 ou 6
@@ -3466,6 +3498,10 @@ const JG_BASTAO_CHARGE_TIME = 520; // ms para carregar arremesso (segurar)
 const JG_BASTAO_RETURN_SPEED = 10.5;
 const JG_BASTAO_DAMAGE = 2.8;
 const JG_BASTAO_SIZE = 9;
+// Onda de energia disparada quando o bastão volta pra mão do JG
+const JG_BASTAO_WAVE_RADIUS = 132; // raio da onda ao redor do JG
+const JG_BASTAO_WAVE_PUSH = 30;    // força base do empurrão radial
+const JG_BASTAO_WAVE_STUN = 1500;  // 1.5s de paralisia (requisito)
 
 // ===================== NOVA ARMA INCOMUM - MOTOSSERRA (ÁREA RETA AFINADA + BARRA CURA) =====================
 // AFINADA: ataque curto RETO em retângulo AFIADO na frente, altamente preciso e responsivo
@@ -5975,6 +6011,26 @@ class StairBoss {
       // ainda atualiza meteors/dash visuais durante morte para não travar
       return;
     }
+    // Fase 3: janela vulnerável (antes de qualquer return de dash, para o
+    // escudo nunca poder ficar preso ligado/desligado)
+    if(this.phase===3){
+      if(this.vulnWindow>0){
+        this.vulnWindow-=dt;
+        if(this.vulnWindow<=0){
+          this.vulnWindow=0;
+          this.headInvulnerable=true;
+          this.vulnCooldown= BOSS5_VULN_COOLDOWN_P3 * (1 - this.enrage*0.22) + randRange(-180,220);
+        }
+      } else {
+        if(this.vulnCooldown>0) this.vulnCooldown-=dt;
+        // Janela abre por double slam OU por timeout. Nunca trava em 999999:
+        // sem isso, se as duas mãos morressem na fase 3 (sem double slam para
+        // abrir a janela) o escudo ficaria eterno e o boss invencível.
+        if(this.vulnCooldown<=0 && !this.isRayWarning && !this.isRayActive && !this.isDashing && this.dashPrep<=0){
+          this.openVulnWindow(particles);
+        }
+      }
+    }
     // --- DASH BOSS (investida da cabeça) tem prioridade de movimento ---
     if(this.isDashing){
       this.dashTime-=dt;
@@ -6047,23 +6103,6 @@ class StairBoss {
         if(room) room.shake=140;
         // Pequeno stun do boss após quebrar escudo (janela extra)
         this.hitFlash=380;
-      }
-    }
-    // Fase 3: controle de janela vulnerável
-    if(this.phase===3){
-      if(this.vulnWindow>0){
-        this.vulnWindow-=dt;
-        if(this.vulnWindow<=0){
-          this.headInvulnerable=true;
-          this.vulnCooldown= BOSS5_VULN_COOLDOWN_P3 * (1 - this.enrage*0.22) + randRange(-180,220);
-        }
-      } else {
-        if(this.vulnCooldown>0) this.vulnCooldown-=dt;
-        // Janela abre apenas via double slam ou timeout forçado
-        if(this.vulnCooldown<=0 && !this.isRayWarning && !this.isRayActive && this.dashPrep<=0){
-          // força double slam para abrir janela caso não tenha acontecido
-          this.vulnCooldown = 999999; // trava até double slam abrir
-        }
       }
     }
 
@@ -6242,13 +6281,7 @@ class StairBoss {
       if(this._pendingVulnOpen!==undefined){
         this._pendingVulnOpen-=dt;
         if(this._pendingVulnOpen<=0){
-          this._pendingVulnOpen=undefined;
-          if(this.phase===3 && !this.dead){
-            this.vulnWindow = BOSS5_VULN_WINDOW_P3;
-            this.headInvulnerable=false;
-            this.hitFlash=160;
-            for(let k=0;k<16;k++){ const ang=Math.random()*Math.PI*2; particles.push(new Particle(this.x,this.y, Math.cos(ang)*randRange(1.2,3), Math.sin(ang)*randRange(1.2,3), 340, '#ffd700', 2)); }
-          }
+          this.openVulnWindow(particles);
         }
       }
     } else {
@@ -6749,6 +6782,26 @@ class StairBoss {
   getHeadRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
   getHands(){ return [this.leftHand, this.rightHand]; }
   isHeadInvulnerable(){ return this.headInvulnerable; }
+  // A cabeça pode receber dano agora? Fase 2 bloqueia total, fase 3 fora da janela
+  // aceita chip damage (takeDamage já reduz). Usar nas armas/contato evita
+  // que o boss fique "invencível" para quem não atira.
+  canDamageHead(){
+    if(this.dead) return false;
+    if(!this.headInvulnerable) return true;
+    return this.phase===3;
+  }
+  // Abre (ou reabre) a janela vulnerável da fase 3. Chamado pelo double slam
+  // e também pelo timeout, garantindo que o escudo NUNCA vire permanente.
+  openVulnWindow(particles){
+    if(this.dead || this.phase!==3 || this.vulnWindow>0) return;
+    this._pendingVulnOpen = undefined;
+    this.vulnWindow = BOSS5_VULN_WINDOW_P3;
+    this.headInvulnerable = false;
+    this.hitFlash = Math.max(this.hitFlash||0, 160);
+    if(particles){
+      for(let k=0;k<16;k++){ const ang=Math.random()*Math.PI*2; particles.push(new Particle(this.x,this.y, Math.cos(ang)*randRange(1.2,3), Math.sin(ang)*randRange(1.2,3), 340, '#ffd700', 2)); }
+    }
+  }
 }
 
 // ===================== HACKER - BOSS FINAL SECRETO (DARK VÍRUS) =====================
@@ -8173,6 +8226,49 @@ class RocketFist {
 }
 
 // ===================== BASTÃO PROJECTILE (JG EXCLUSIVO) =====================
+// Onda de energia do retorno: quando o bastão volta pra mão, explode uma onda
+// radial que empurra e paralisa (atordoa) os inimigos por 1.5s.
+// Retorna quantos inimigos foram atingidos.
+function spawnBastaoReturnWave(game, x, y){
+  if(!game || !game.currentRoom) return 0;
+  const room = game.currentRoom;
+  const cx = x, cy = y;
+  if(room.explosions) room.explosions.push({x:cx, y:cy, radius:12, life:460, max:460, isBastaoWave:true});
+  let affected = 0;
+  if(room.enemies){
+    for(const e of room.enemies){
+      if(e.dead) continue;
+      const d = dist(cx, cy, e.x, e.y);
+      if(d > JG_BASTAO_WAVE_RADIUS) continue;
+      const ang = d<0.001 ? Math.random()*Math.PI*2 : Math.atan2(e.y-cy, e.x-cx);
+      const falloff = 1 - Math.min(d/JG_BASTAO_WAVE_RADIUS, 1);
+      const push = JG_BASTAO_WAVE_PUSH * (0.5 + falloff);
+      e.x += Math.cos(ang)*push;
+      e.y += Math.sin(ang)*push;
+      if(e.stunTimer!==undefined) e.stunTimer = Math.max(e.stunTimer||0, JG_BASTAO_WAVE_STUN);
+      e.stunVisual = true;
+      e.hitFlash = Math.max(e.hitFlash||0, 200);
+      affected++;
+      // não empurra pra dentro da parede: desfaz metade do deslocamento se colidir
+      let onWall = false;
+      for(const w of room.walls) if(rectCollide(e.x-e.w/2, e.y-e.h/2, e.w, e.h, w.x, w.y, w.w, w.h)){ onWall = true; break; }
+      if(onWall){ e.x -= Math.cos(ang)*push*0.5; e.y -= Math.sin(ang)*push*0.5; }
+      e.x = clamp(e.x, WALL_THICK+e.w/2, CANVAS_W-WALL_THICK-e.w/2);
+      e.y = clamp(e.y, WALL_THICK+e.h/2, CANVAS_H-WALL_THICK-e.h/2);
+      if(game.particles){
+        for(let k=0;k<5;k++) game.particles.push(new Particle(e.x, e.y, Math.cos(ang)*randRange(0.7,1.7), Math.sin(ang)*randRange(0.7,1.7), 260, 'rgba(250,204,21,0.8)', 1.9));
+        for(let k=0;k<3;k++) game.particles.push(new Particle(e.x, e.y-10+randRange(-4,4), randRange(-0.4,0.4), -0.8, 220, '#fffbeb', 1.3));
+      }
+    }
+  }
+  if(game.particles){
+    for(let k=0;k<24;k++){ const a=Math.random()*Math.PI*2; const sp=randRange(1.8,4.2); game.particles.push(new Particle(cx, cy, Math.cos(a)*sp, Math.sin(a)*sp, 380, 'rgba(250,204,21,0.9)', 2.4)); }
+    for(let k=0;k<14;k++){ const a=Math.random()*Math.PI*2; const sp=randRange(1.2,3); game.particles.push(new Particle(cx, cy, Math.cos(a)*sp, Math.sin(a)*sp, 300, 'rgba(255,255,255,0.8)', 1.8)); }
+  }
+  game.shake = Math.max(game.shake||0, 45);
+  return affected;
+}
+
 // Bastão arremessável que gira durante o voo, causa dano e retorna automaticamente
 // Sem duplicação: apenas um bastão pode existir por vez (gerenciado por Player.hasBastao)
 class BastaoProjectile {
@@ -10382,6 +10478,63 @@ class GatoAntivirusPickup extends Item {
   }
 }
 
+// ===================== IO-IO (PASSIVA - PRESENTE DO JL NO CHÃO) =====================
+// O JL deixa o IO-IO no chão em vez de ligar a passiva na hora. Mesmo padrão do
+// Gato Antivírus: pickup automático ao encostar (não ocupa slot de especial).
+class IoiPassivePickup extends Item {
+  constructor(x, y){
+    super(x, y, 20, 20, 'ioio_passiva');
+    this.isIoiPickup = true;
+    this.isNpcGift = true;
+  }
+  onCollect(player){
+    if(player.hasIoiPassive) return false;
+    if(typeof player.enableIoiPassive === 'function') player.enableIoiPassive();
+    else player.hasIoiPassive = true;
+    return true;
+  }
+  draw(ctx){
+    const x=this.x, y=this.y + this.bob, s=this.w;
+    const pulse = 0.5 + Math.sin(this.anim*2.4)*0.32;
+    const col = '#e53935';
+    // sombra
+    ctx.fillStyle='rgba(0,0,0,0.28)';
+    ctx.beginPath(); ctx.ellipse(x, y+ s*0.45, s*0.5, 4, 0, 0, Math.PI*2); ctx.fill();
+    // glow vermelho
+    ctx.fillStyle=`rgba(229,57,53,${0.22+pulse*0.14})`;
+    ctx.beginPath(); ctx.arc(x, y, s*0.7 + pulse*4, 0, Math.PI*2); ctx.fill();
+    // fundo
+    ctx.fillStyle='#1a0a0a';
+    ctx.fillRect(x - s/2, y - s/2 +2, s, s-4);
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x - s/2, y - s/2 +2, s, s-4);
+    // faixa superior
+    ctx.fillStyle = col;
+    ctx.fillRect(x - s/2 +1, y - s/2 +2, s-2, 3);
+    // io-io girando
+    const spin=this.anim*2.2;
+    ctx.save();
+    ctx.translate(x, y); ctx.rotate(spin);
+    ctx.strokeStyle= col; ctx.lineWidth=1.6;
+    ctx.beginPath(); ctx.arc(0, 0, 6.5, 0, Math.PI*2); ctx.stroke();
+    ctx.strokeStyle= (Math.floor(this.anim/90)%2) ? '#ffd54a' : '#ffffff';
+    ctx.lineWidth=1.2;
+    ctx.beginPath(); ctx.arc(0, 0, 3.4, 0, Math.PI*2); ctx.stroke();
+    ctx.restore();
+    // rótulo: presente que o JL deixou no chão
+    ctx.fillStyle='#ffd54a';
+    ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
+    ctx.fillText('PASSIVA', x, y+ s/2 +9);
+    ctx.textAlign='left';
+    // partícula periódica
+    if(Math.random()<0.10){
+      ctx.fillStyle=col;
+      ctx.fillRect(x+randRange(-5,5), y+randRange(-5,3), 1.5,1.5);
+    }
+  }
+}
+
 // ===================== PLAYER =====================
 class Player {
   constructor(x, y) {
@@ -12340,12 +12493,21 @@ class Player {
       if(this.rayMatematicoMinigameActive) this.cancelRayMatematicoMinigame();
     }
     // LASER REMOVIDA
-    // Se bastão foi arremessado e projectile morreu sem callback (edge), recupera
-    if(this.characterId==='jg' && !this.hasBastao && (!this.bastaoProjectile || this.bastaoProjectile.dead)){
-      // Verifica se passou tempo suficiente desde arremesso (evita recuperar instantâneo)
-      if(this.bastaoProjectile && this.bastaoProjectile.dead){
-        this.returnBastao();
+    // Recuperação do bastão do JG.
+    // Antes só chamava returnBastao() se existisse um projectile morto referenciado.
+    // Se o bastão era arremessado e a referência sumia SEM o projétil morrer (morte com
+    // Disquete da Vida, teleporte pra arena do Hacker, limpeza de listas), o JG ficava
+    // com hasBastao=false para sempre: sem ataque, velocidade 2.05 e camisa laranja
+    // (trava o jogo e deixa o personagem vermelho). Sem projétil em voo = já voltou.
+    if(this.characterId==='jg' && !this.hasBastao){
+      const proj=this.bastaoProjectile;
+      let emVoo=false;
+      if(proj && !proj.dead){
+        // só conta como "em voo" se o jogo ainda estiver rastreando o projétil
+        const g=(typeof window!=='undefined' && window.game) ? window.game : null;
+        emVoo=!!(g && g.bastaoProjectiles && g.bastaoProjectiles.indexOf(proj)!==-1);
       }
+      if(!emVoo) this.returnBastao();
     }
     // Espada combo timer
     if(this.swordComboTimer > 0){
@@ -16450,23 +16612,23 @@ class IndianaJonesNPC extends SetchVendor {
     this.hypeLines=['Boa! Você tem olho de águia.','Isso é técnica, não sorte.','Boa. O chicote fica mais fácil de usar.'];
     this.pokeLines=['Ops. Os copos te venceram dessa vez.','Relaxa, da próxima sai.','O Setch é esperto, mas é justo.'];
   }
-  // Tenta dar o Chicote: 100% sucesso se ainda não deu
+  // Deixa o Chicote NO CHÃO para o jogador pegar com [Q] (não equipa na hora)
   tryGiveGift(player, game, room){
     if(this.giftGiven) return {ok:false, reason:'already_given'};
-    // Cria arma Chicote e equipa como secundária (ou primária se não tem)
-    const gave = player.setSecondaryWeapon('chicote');
-    // Mesmo se falhou por lock de personagem (ex: JG/Kinight lock), ainda dá chapéu + item no chão
-    if(gave){
-      player.weapon = player.secondaryWeapon;
-    } else {
-      // Se lock impediu equipar, dropa item no chão perto do NPC como fallback
-      if(game && game.currentRoom){
-        const it=new WeaponItem(this.x+18, this.y+12, 'chicote');
-        it.spawnDelay=0;
-        game.currentRoom.items.push(it);
-      }
+    // O presente fica no chão: o jogador decide quando pegar/trocar com [Q].
+    // Nada de setSecondaryWeapon aqui - equipped direto, o item sumiria da sala.
+    let dropped=false, alreadyHad=false;
+    const ownNames=[player.weapon?.name, player.primaryWeapon?.name, player.secondaryWeapon?.name]
+      .filter(Boolean).map(n=>String(n).toLowerCase());
+    if(ownNames.includes('chicote')) alreadyHad=true;
+    if(game && game.currentRoom && !alreadyHad){
+      const it=new WeaponItem(this.x+26, this.y+14, 'chicote');
+      it.spawnDelay=0;
+      it.isNpcGift = true;
+      game.currentRoom.items.push(it);
+      dropped=true;
     }
-    // Chapéu de couro garantido
+    // Chapéu de couro garantido (passiva, não ocupa slot: entra junto)
     if(!player.hasIndianaHat) player.enableIndianaHat();
     this.giftGiven=true;
     if(room) room.indianaGiftGiven=true;
@@ -16476,11 +16638,16 @@ class IndianaJonesNPC extends SetchVendor {
       for(let k=0;k<18;k++) game.particles.push(new Particle(this.x,this.y, randRange(-1.6,1.6), randRange(-1.6,0.6), 380, '#8b4513', 2.4));
       for(let k=0;k<10;k++) game.particles.push(new Particle(this.x,this.y, randRange(-1,1), randRange(-1,0.6), 300, 'rgba(180,220,255,0.85)', 1.8));
       if(game.currentRoom) game.currentRoom.explosions.push({x:this.x,y:this.y,radius:12,life:360,max:360,isChicoteGift:true});
-      if(game.showToast) game.showToast('🤠 Indiana: Tome meu Chicote! Puxe paredes e cause explosão!', 2600);
+      const msg = alreadyHad
+        ? '🤠 Indiana: Você já tem o Chicote... fica com o chapéu então!'
+        : dropped
+          ? '🤠 Indiana: Deixei meu CHICOTE no chão! Aperte [Q] perto dele para pegar.'
+          : '🤠 Indiana: Tome meu chapéu e boa sorte lá na frente!';
+      if(game.showToast) game.showToast(msg, 3000);
     }
-    this.say('Ele é seu agora. Cuide bem.', 2600);
+    this.say('Ele está aí no chão. Cuide bem.', 2600);
     this.celebrate();
-    return {ok:true, weapon:'chicote'};
+    return {ok:true, weapon:'chicote', dropped, alreadyHad};
   }
   draw(ctx, player){
     const W=this.w, H=this.h;
@@ -16612,10 +16779,18 @@ class JLNPC extends SetchVendor {
     this.hypeLines=['ISSO! Io-io girou junto!','Boa, tá afiado hoje!','Acerto limpo, parceiro.'];
     this.pokeLines=['Ah, o copinho te venceu.','Dessa vez o Setch ganhou essa.','Tá de olho ruim hoje, hein?'];
   }
-  // Dá o passivo IO-IO (flag permanente, não ocupa o slot de especial)
+  // Deixa o IO-IO NO CHÃO (passiva ligada ao encostar), em vez de ativar na hora
   tryGiveGift(player, game, room){
     if(this.giftGiven || player.hasIoiPassive) return {ok:false, reason:'already_given'};
-    player.enableIoiPassive();
+    // Presente no chão: o jogador passa por cima para ativar a passiva.
+    let dropped=false;
+    if(game && game.currentRoom){
+      const it=new IoiPassivePickup(this.x+20, this.y+12);
+      it.spawnDelay=140;
+      it.isNpcGift = true;
+      game.currentRoom.items.push(it);
+      dropped=true;
+    }
     this.giftGiven=true;
     if(room) room.jlGiftGiven=true;
     if(game){
@@ -16623,11 +16798,13 @@ class JLNPC extends SetchVendor {
       for(let k=0;k<18;k++) game.particles.push(new Particle(this.x,this.y, randRange(-1.7,1.7), randRange(-1.7,0.6), 380, '#e53935', 2.4));
       for(let k=0;k<8;k++) game.particles.push(new Particle(this.x,this.y, randRange(-1.1,1.1), randRange(-1.5,0.5), 300, '#ffd54a', 1.8));
       if(game.currentRoom) game.currentRoom.explosions.push({x:this.x,y:this.y,radius:12,life:340,max:340,isIoiGift:true});
-      if(game.showToast) game.showToast('🪀 JL: Toma meu IO-IO! Ao levar dano, ele gira em você e machuca os inimigos!', 3000);
+      if(game.showToast) game.showToast(dropped
+        ? '🪀 JL: Deixei meu IO-IO no chão! Passe por cima dele para pegar a passiva.'
+        : '🪀 JL: Cuide do seu IO-IO!', 3000);
     }
-    this.say('Ele orbita em você agora. IO-IO!', 2600);
+    this.say('Tá no chão. Passa por cima.', 2600);
     this.celebrate();
-    return {ok:true, passive:'ioio'};
+    return {ok:true, passive:'ioio', dropped};
   }
   draw(ctx, player){
     const W=this.w, H=this.h;
@@ -16754,7 +16931,7 @@ class OliNPC extends SetchVendor {
     if(this.glow>0.4 && Math.random()<0.02) this.pieceFx=220;
     if(this.pieceFx>0) this.pieceFx-=dt;
   }
-  // Dá o item especial de xadrez (equipado no slot de especial do jogador)
+  // Deixa o item especial de Xadrez NO CHÃO para pegar/trocar com [E]
   tryGiveGift(player, game, room){
     if(this.giftGiven) return {ok:false, reason:'already_given'};
     if(player.equippedSpecial && player.equippedSpecial.id==='oli_xadrez'){
@@ -16762,11 +16939,16 @@ class OliNPC extends SetchVendor {
       if(room) room.oliGiftGiven = true;
       return {ok:false, reason:'already_has'};
     }
-    const hadSpecial = player.equippedSpecial;
-    const special = createSpecialItem('oli_xadrez');
-    if(!special) return {ok:false, reason:'create_failed'};
-    if(typeof player.equipSpecial === 'function') player.equipSpecial(special);
-    else player.equippedSpecial = special; // fallback de compatibilidade
+    if(!SPECIAL_REGISTRY['oli_xadrez']) return {ok:false, reason:'create_failed'};
+    // Presente no chão: mesmo fluxo dos especiais espalhados no mapa (pega/troca com [E]).
+    let dropped=false;
+    if(game && game.currentRoom){
+      const it=new SpecialItemPickup(this.x+22, this.y+14, 'oli_xadrez');
+      it.spawnDelay=140;
+      it.isNpcGift = true;
+      game.currentRoom.items.push(it);
+      dropped=true;
+    }
     this.giftGiven=true;
     if(room) room.oliGiftGiven=true;
     if(game){
@@ -16774,13 +16956,15 @@ class OliNPC extends SetchVendor {
       for(let k=0;k<18;k++) game.particles.push(new Particle(this.x,this.y, randRange(-1.6,1.6), randRange(-1.7,0.6), 380, '#a78bfa', 2.4));
       for(let k=0;k<8;k++) game.particles.push(new Particle(this.x,this.y, randRange(-1.1,1.1), randRange(-1.4,0.5), 300, '#e9d5ff', 1.8));
       if(game.currentRoom) game.currentRoom.explosions.push({x:this.x,y:this.y,radius:12,life:340,max:340,isChessGift:true});
-      let msg = '♞ Oli: Toma meu XADREZ! Invoca Torre ♜, Bispo ♝, Rainha ♛ e Rei ♚ em ciclo. [E] para usar.';
-      if(hadSpecial && hadSpecial.id!=='oli_xadrez') msg += ` (substituiu ${hadSpecial.name})`;
+      const had = player.equippedSpecial ? player.equippedSpecial.name : null;
+      const msg = dropped
+        ? '♞ Oli: Deixei meu XADREZ no chão! Aperte [E] perto dele para equipar' + (had ? ` (troca ${had})` : '') + '.'
+        : '♞ Oli: Cuide do xadrez! Torre, Bispo, Rainha e Rei em ciclo.';
       if(game.showToast) game.showToast(msg, 3000);
     }
-    this.say('As peças são suas. Bom xeque!', 2600);
+    this.say('As peças estão aí no chão. Bom xeque!', 2600);
     this.celebrate();
-    return {ok:true, special:'oli_xadrez'};
+    return {ok:true, special:'oli_xadrez', dropped};
   }
   draw(ctx, player){
     const W=this.w, H=this.h;
@@ -16921,6 +17105,9 @@ class Room {
                        // desenho usava this.anim sem existir, então os pisca-pisca
                        // da Sala Setch ficavam sempre apagados (NaN % 2 === 0).
     this.isSetch = false; // Sala Setch (2x tamanho, NPC copinhos)
+    // PAINEL CENTRAL: sala da Fase 1 com o console de códigos (sem inimigos)
+    this.isPainelCentral = false;
+    this.painel = { x: CANVAS_W/2, y: CANVAS_H/2, anim: Math.random()*1000, glow: 0, used: 0, scan: 0 };
     this.setchDefeated = false; // true quando venceu minigame (sala limpa)
     this.setchStarted = false;
     this.setchRewardGiven = false;
@@ -16958,6 +17145,8 @@ class Room {
     if (this.doors.right) { add(CANVAS_W - t, 0, t, cy - dh/2); add(CANVAS_W - t, cy + dh/2, t, CANVAS_H - (cy + dh/2)); }
     else add(CANVAS_W - t, 0, t, CANVAS_H);
 
+    // Painel Central: sala limpa, sem pilares (o console fica no centro)
+    if(this.isPainelCentral) return;
     // Sala Setch (2x) : arena grande, sem pilares centrais para destacar tamanho duplo
     if(this.isSetch){
       // nenhum pilar central, mantém arena livre para copos e NPC
@@ -16995,6 +17184,7 @@ class Room {
      if(this.isBossStair) return;
      if(this.isHacker) return;
      if(this.isSetch) return; // Sala Setch sem inimigos, só NPC
+    if(this.isPainelCentral) return; // Painel Central sem inimigos, só o console
      if(this.isPartyHorde) return; // horda tem spawn próprio por ondas
      // dificuldade escala com fase - Fase 4 mais difícil + DashEnemy
      if(this.isMiniboss) return; // miniboss lida separado
@@ -17251,11 +17441,11 @@ class Room {
     const specialChance = this.type==='treasure' ? 0.10 : 0.05;
     if(rng() < specialChance && !this.isRare && !this.isMiniboss && !this.isBossStair && !this.isPartyHorde && this.items.length < 4){
       const rollSpecial = rng();
-      // Distribuição: 30% espada, 30% escudo, 40% flecha_stand (incomum, levemente mais comum para teste)
+      // Distribuição: espada, escudo e flecha_stand (incomum)
       // Fácil alterar: ajuste limites abaixo para mudar chance
       let pickId;
-      if(rollSpecial < 0.30) pickId='espada_flamejante';
-      else if(rollSpecial < 0.60) pickId='escudo_magico';
+      if(rollSpecial < 0.28) pickId='espada_flamejante';
+      else if(rollSpecial < 0.56) pickId='escudo_magico';
       else pickId='flecha_stand';
       // Evita duplicar mesmo tipo no chão da mesma sala
       if(!this.items.some(it=> it.isSpecialPickup && it.specialId===pickId)){
@@ -17615,16 +17805,27 @@ class Room {
     return true;
   }
   // Placar de presentes da Sala Setch (canto superior direito).
-  // Mostra o que a sala oferece e o que o jogador já pegou, com ✓ no que saiu.
+  // 3 estados por linha: pendente (pulsa) = NPC ainda não entregou • "NO CHÃO" =
+  // o presente foi largado no chão e ainda não pego • ✓ = o jogador pegou.
   drawGiftChecklist(ctx, player){
     if(!this.isSetch) return;
     const cg = this.cupGame;
     const hasIoi = !!(player && player.hasIoiPassive);
+    const ownWeapons = player
+      ? [player.weapon?.name, player.primaryWeapon?.name, player.secondaryWeapon?.name]
+        .filter(Boolean).map(n=>String(n).toLowerCase())
+      : [];
+    const hasChicote = ownWeapons.includes('chicote');
+    const hasXadrez = !!(player && player.equippedSpecial && player.equippedSpecial.id==='oli_xadrez');
     const items = [
-      { label:'COPINHOS', icon:'🎩', color:'#ffd700', done:!!this.setchCleared },
-      { label:'CHICOTE',  icon:'🧢', color:'#d2a679', done:!!this.indianaGiftGiven },
-      { label:'IO-IO',    icon:'🪀', color:'#ff8a80', done:!!this.jlGiftGiven || hasIoi },
-      { label:'XADREZ',   icon:'♞',  color:'#c084fc', done:!!this.oliGiftGiven },
+      { label:'COPINHOS', icon:'🎩', color:'#ffd700',
+        done:!!this.setchCleared, dropped:false },
+      { label:'CHICOTE',  icon:'🧢', color:'#d2a679',
+        done:hasChicote, dropped:!!this.indianaGiftGiven },
+      { label:'IO-IO',    icon:'🪀', color:'#ff8a80',
+        done:hasIoi, dropped:!!this.jlGiftGiven },
+      { label:'XADREZ',   icon:'♞',  color:'#c084fc',
+        done:hasXadrez, dropped:!!this.oliGiftGiven },
     ];
     const w = 92, h = 8 + items.length*11;
     const bx = CANVAS_W - WALL_THICK - w - 8;
@@ -17640,9 +17841,17 @@ class Room {
     for(let i=0;i<items.length;i++){
 const it = items[i];
         const y = by + 19 + i*11;
+      // "NO CHÃO": entregue pelo NPC mas o item ainda está largado no chão
+      const waiting = !it.done && it.dropped;
       if(it.done){
         ctx.fillStyle='rgba(74,222,128,0.9)';
         ctx.fillText('✓', bx+5, y);
+      } else if(waiting){
+        const p=0.55+Math.sin(this.anim*0.006 + i*0.9)*0.45;
+        ctx.globalAlpha=0.55+p*0.45;
+        ctx.fillStyle='#ffd54a';
+        ctx.fillText('▼', bx+5, y);
+        ctx.globalAlpha=1;
       } else {
         // item pendente pulsa levemente pra chamar o olho
         const p=0.55+Math.sin(this.anim*0.006 + i*0.9)*0.45;
@@ -17651,7 +17860,7 @@ const it = items[i];
         ctx.fillText(it.icon, bx+5, y);
         ctx.globalAlpha=1;
       }
-      ctx.fillStyle= it.done ? 'rgba(74,222,128,0.85)' : 'rgba(255,255,255,0.82)';
+      ctx.fillStyle= it.done ? 'rgba(74,222,128,0.85)' : (waiting ? '#ffd54a' : 'rgba(255,255,255,0.82)');
       ctx.font='5px monospace';
       ctx.fillText(it.label, bx+18, y);
       ctx.font='5px "Press Start 2P"';
@@ -17670,6 +17879,159 @@ const it = items[i];
     ctx.textAlign='left';
     ctx.restore();
   }
+  // ===================== PAINEL CENTRAL (sala da Fase 1) =====================
+  // Transforma a sala numa sala de console: sem inimigos, sem espinhos, sem
+  // pilares. O painel fica no centro e abre o terminal de códigos com [E].
+  makePainelCentralRoom(rng){
+    if(this.isStart || this.isExit || this.isRare || this.isMiniboss || this.isBossStair ||
+       this.isHacker || this.isPartyHorde || this.isSetch || this.isPainelCentral) return false;
+    this.isPainelCentral = true;
+    this.type = 'painel';
+    // Sala de serviço: sem inimigos, sem espinhos e sem itens largados
+    this.spikes = [];
+    this.enemies = [];
+    this.items = [];
+    this.fires = [];
+    // Limpa pilares do centro para o console não ficar preso dentro da parede
+    this.walls = this.walls.filter(w=>{
+      const wx=w.x+w.w/2, wy=w.y+w.h/2;
+      return dist(wx, wy, CANVAS_W/2, CANVAS_H/2) >= 150;
+    });
+    this.painel = { x: CANVAS_W/2, y: CANVAS_H/2 - 6, anim: (rng? rng():Math.random())*1000, glow: 0, used: 0, scan: 0 };
+    return true;
+  }
+  // Player chegou perto do painel? (chama o terminal)
+  isNearPainel(player){
+    if(!this.isPainelCentral || !this.painel || !player) return false;
+    return dist(this.painel.x, this.painel.y, player.x, player.y) < PAINEL_INTERACT_RANGE;
+  }
+  updatePainel(dt, player){
+    if(!this.isPainelCentral) return;
+    if(player) this._playerRef = player;
+    const p = this.painel;
+    p.anim += dt;
+    p.scan = (p.scan + dt*0.06) % 1;
+    const near = this.isNearPainel(player);
+    p.glow = lerp(p.glow, near ? 1 : 0, 0.12);
+    if(p.used > 0) p.used -= dt;
+  }
+  drawPainel(ctx, player){
+    if(!this.isPainelCentral || !this.painel) return;
+    const p = this.painel;
+    const t = p.anim*0.004;
+    const W = PAINEL_W, H = PAINEL_H;
+    const x = p.x - W/2, y = p.y - H/2;
+    const pulse = 0.5 + Math.sin(t*2.2)*0.5;
+    const glow = p.glow;
+    const accent = [ '#22d3ee', '#a78bfa', '#4ade80' ];
+    // sombra no chão
+    ctx.fillStyle='rgba(0,0,0,0.34)';
+    ctx.beginPath(); ctx.ellipse(p.x, y+H+4, W*0.46, 7, 0, 0, Math.PI*2); ctx.fill();
+    // halo do console
+    ctx.fillStyle=`rgba(34,211,238,${0.05 + glow*0.10 + pulse*0.03})`;
+    ctx.beginPath(); ctx.arc(p.x, p.y, W*0.95 + pulse*7 + glow*8, 0, Math.PI*2); ctx.fill();
+    // corpo do console
+    ctx.fillStyle='#11151f';
+    roundRectPath(ctx, x, y, W, H, 8); ctx.fill();
+    ctx.fillStyle='#1b2130';
+    roundRectPath(ctx, x+3, y+3, W-6, H-6, 6); ctx.fill();
+    ctx.strokeStyle=`rgba(34,211,238,${0.35 + glow*0.45})`;
+    ctx.lineWidth=1.6; roundRectPath(ctx, x, y, W, H, 8); ctx.stroke();
+    // haste/base
+    ctx.fillStyle='#0b0f18';
+    ctx.fillRect(x+10, y+H-1, 14, 8);
+    ctx.fillRect(x+W-24, y+H-1, 14, 8);
+    // tela
+    const sx=x+8, sy=y+8, sw=W-16, sh=H*0.46;
+    ctx.fillStyle='rgba(2,8,14,0.92)';
+    roundRectPath(ctx, sx, sy, sw, sh, 4); ctx.fill();
+    ctx.save();
+    roundRectPath(ctx, sx, sy, sw, sh, 4); ctx.clip();
+    // scanlines + varredura
+    ctx.fillStyle='rgba(34,211,238,0.05)';
+    for(let i=0;i<sh;i+=3) ctx.fillRect(sx, sy+i, sw, 1);
+    const scanY = sy + (p.scan * (sh+14)) - 7;
+    ctx.fillStyle='rgba(34,211,238,0.22)';
+    ctx.fillRect(sx, scanY, sw, 7);
+    // linhas de código na tela
+    ctx.font='5px monospace'; ctx.textAlign='left';
+    const glyphs=['0','1','█','▓','F','>'];
+    for(let i=0;i<4;i++){
+      let line='';
+      for(let k=0;k<7;k++) line += glyphs[Math.floor((p.anim*0.004 + i*1.7 + k*0.6)) % glyphs.length];
+      ctx.fillStyle=`rgba(74,222,128,${0.30 + 0.18*Math.sin(t*3 + i)})`;
+      ctx.fillText(line, sx+5, sy+9 + i*9);
+    }
+    // glifo central piscando
+    ctx.font='9px monospace'; ctx.textAlign='center';
+    ctx.fillStyle=`rgba(34,211,238,${0.55 + pulse*0.45})`;
+    ctx.fillText('▣', p.x, sy+sh-6);
+    ctx.restore();
+    ctx.strokeStyle='rgba(34,211,238,0.30)'; ctx.lineWidth=1;
+    roundRectPath(ctx, sx, sy, sw, sh, 4); ctx.stroke();
+    // LEDs + teclas
+    for(let i=0;i<4;i++){
+      const col = accent[i%accent.length];
+      const on = ((Math.floor(p.anim/260) + i) % 3) !== 0;
+      ctx.fillStyle = on ? col : 'rgba(255,255,255,0.10)';
+      ctx.beginPath(); ctx.arc(x+12 + i*10, y+H*0.60, 2.4, 0, Math.PI*2); ctx.fill();
+    }
+    // teclado/ventilação
+    ctx.fillStyle='rgba(255,255,255,0.06)';
+    for(let r=0;r<2;r++) for(let c=0;c<7;c++) ctx.fillRect(x+10 + c*7, y+H*0.72 + r*6, 4, 3);
+    // slot de código: mostra o que foi usado por último
+    if(p.used>0){
+      const a = clamp(p.used/700, 0, 1);
+      ctx.font='6px "Press Start 2P"'; ctx.textAlign='center';
+      ctx.fillStyle=`rgba(74,222,128,${a})`;
+      ctx.fillText('CÓDIGO ACEITO', p.x, y-8);
+    }
+    // título + prompt [E]
+    ctx.font='7px "Press Start 2P"'; ctx.textAlign='center';
+    ctx.fillStyle='rgba(255,255,255,0.86)';
+    ctx.fillText('PAINEL CENTRAL', p.x, y-14);
+    if(glow>0.15){
+      const blink = Math.floor(Date.now()/420)%2===0;
+      ctx.font='6px "Press Start 2P"';
+      ctx.fillStyle=`rgba(34,211,238,${blink?0.95:0.45})`;
+      ctx.fillText('[E] ABRIR TERMINAL', p.x, y+H+22);
+      ctx.font='5px monospace';
+      ctx.fillStyle='rgba(255,255,255,0.60)';
+      ctx.fillText('F1-F6 mudam de fase • BORZUK libera tudo', p.x, y+H+34);
+    }
+    ctx.textAlign='left';
+  }
+  // Cenário da sala: fundo, bordas e textos do Painel Central
+  drawPainelRoomBg(ctx){
+    if(!this.isPainelCentral) return;
+    const t = this.anim*0.004;
+    ctx.fillStyle='rgba(12,26,38,0.20)';
+    ctx.fillRect(WALL_THICK, WALL_THICK, CANVAS_W-WALL_THICK*2, CANVAS_H-WALL_THICK*2);
+    // grid técnico
+    ctx.strokeStyle='rgba(34,211,238,0.07)'; ctx.lineWidth=0.5;
+    for(let x=WALL_THICK; x<CANVAS_W-WALL_THICK; x+=40){ ctx.beginPath(); ctx.moveTo(x, WALL_THICK); ctx.lineTo(x, CANVAS_H-WALL_THICK); ctx.stroke(); }
+    for(let y=WALL_THICK; y<CANVAS_H-WALL_THICK; y+=40){ ctx.beginPath(); ctx.moveTo(WALL_THICK, y); ctx.lineTo(CANVAS_W-WALL_THICK, y); ctx.stroke(); }
+    // borda da sala
+    ctx.strokeStyle='rgba(34,211,238,0.45)'; ctx.lineWidth=3;
+    ctx.setLineDash([12,6]);
+    ctx.strokeRect(WALL_THICK+4, WALL_THICK+4, CANVAS_W-WALL_THICK*8, CANVAS_H-WALL_THICK*8);
+    ctx.setLineDash([]);
+    // faixa superior
+    ctx.fillStyle='rgba(0,0,0,0.30)'; ctx.fillRect(CANVAS_W/2 - 110, WALL_THICK+6, 220, 18);
+    ctx.fillStyle='rgba(34,211,238,0.95)'; ctx.font='8px "Press Start 2P"'; ctx.textAlign='center';
+    ctx.fillText('▣ PAINEL CENTRAL ▣', CANVAS_W/2, WALL_THICK+18); ctx.textAlign='left';
+    ctx.fillStyle='rgba(255,255,255,0.70)'; ctx.font='5px monospace'; ctx.textAlign='center';
+    ctx.fillText('TERMINAL DE CÓDIGOS • FASE 1', CANVAS_W/2, WALL_THICK+27); ctx.textAlign='left';
+    // dados "caindo" no fundo
+    ctx.font='6px monospace';
+    for(let i=0;i<10;i++){
+      const px = WALL_THICK + 18 + ((i*137) % (CANVAS_W - WALL_THICK*2 - 36));
+      const py = WALL_THICK + 20 + ((this.anim*0.05 + i*97) % (CANVAS_H - WALL_THICK*2 - 40));
+      ctx.fillStyle=`rgba(34,211,238,${0.06 + 0.08*Math.sin(t*2+i)})`;
+      ctx.fillText(String((this.anim*0.01 + i*7)|0) % 10, px, py);
+    }
+  }
+
   // ===================== SALA SETCH (2x TAMANHO) =====================
   makeSetchRoom(rng){
     if(this.isStart || this.isExit || this.isRare || this.isMiniboss || this.isBossStair || this.isHacker || this.isPartyHorde || this.isSetch) return false;
@@ -17709,7 +18071,8 @@ const it = items[i];
     this.oliGiftGiven = false;
     // referência da sala nos NPCs (falas, gestos e desenho do prompt do copinho)
     for(const n of [this.npc, this.indianaNPC, this.jlNPC, this.oliNPC]) if(n) n.room = this;
-    // Marca sala como ainda não limpa (precisa vencer minigame para considerar limpa)
+    // Sala do Setch: isCleared() retorna sempre true, então as portas já nascem
+    // abertas (nada a marcar aqui).
     return true;
   }
   spawnPartyWave(rng){
@@ -17880,9 +18243,13 @@ const it = items[i];
       return this.partyHordeDefeated && this.enemies.length === 0;
     }
     if(this.isSetch){
-      // Sala Setch: limpa após vencer minigame OU receber Chicote do Indiana (100% garantido)
-      return this.setchCleared || this.setchRewardGiven || this.indianaGiftGiven;
+      // Sala Setch: portas SEMPRE abertas. A sala é uma parada opcional (copos +
+      // presentes no chão) e nunca pode trancar o jogador nem travar o portal de
+      // saída da fase (isFloorCleared depende de todas as salas isCleared()).
+      return true;
     }
+    // Painel Central: não tem inimigos, então já entra limpa
+    if(this.isPainelCentral) return true;
     return this.enemies.length === 0;
   }
   // para fase: só considera limpa se inimigos zero (itens podem ficar)
@@ -17924,6 +18291,8 @@ const it = items[i];
       }
       if(this._partyNextWaveFlash>0) this._partyNextWaveFlash-=dt;
     }
+    // ===================== PAINEL CENTRAL - console de códigos =====================
+    if(this.isPainelCentral) this.updatePainel(dt, player);
     // ===================== SETCH - NPC e copos + INDIANA =====================
     if(this.isSetch){
       this._playerRef = player || this._playerRef || null;
@@ -18153,7 +18522,7 @@ const it = items[i];
             if(b.dead) break;
             // Se pierce, pode ainda tentar cabeça no mesmo frame? Permitimos continuar para cabeça
           }
-          // Tenta cabeça se não invulnerável
+          // Tenta cabeça se não invulnerável (a fase 3 tem tratamento de chip logo abaixo)
           if(!e.isHeadInvulnerable()){
             if(circleRectCollide(b.x,b.y,b.size, e.x - e.w/2, e.y - e.h/2, e.w, e.h)){
               if(isPierce){ b.hitEnemies.add(e); if(b.hitEnemies.size > maxPierce) b.dead=true; } else b.dead=true;
@@ -18311,18 +18680,11 @@ const it = items[i];
                 const falloff = 1 - (dHead / expR) * 0.5;
                 const dmg = expD * falloff;
                 // Cabeça: fase2 bloqueia total, fase3 fora da janela = chip reduzido (justo)
-                if(!other.isHeadInvulnerable()){
+                if(other.canDamageHead()){
                   const died=other.takeDamage(dmg);
                   for(let k=0;k<5;k++) globalParticles.push(new Particle(other.x, other.y, randRange(-1.8,1.8), randRange(-1.2,0.5), 260, '#ff3b30', 2));
                   if(died){
                     for(let k=0;k<12;k++){const ang2=Math.random()*Math.PI*2; globalParticles.push(new Particle(other.x, other.y, Math.cos(ang2)*randRange(1.4,4), Math.sin(ang2)*randRange(1.2,3), 320, '#ff6a00', 3));}
-                  }
-                } else if(other.phase===3 && other.vulnWindow<=0){
-                  const died=other.takeDamage(dmg);
-                  for(let k=0;k<3;k++) globalParticles.push(new Particle(b.x,b.y, randRange(-1,1), randRange(-1,0.6), 150, 'rgba(180,180,190,0.85)', 1.2));
-                  for(let k=0;k<2;k++) globalParticles.push(new Particle(other.x, other.y, randRange(-1.2,1.2), randRange(-1,0.4), 150, 'rgba(255,215,0,0.45)', 1.3));
-                  if(died){
-                    for(let k=0;k<12;k++){const ang2=Math.random()*Math.PI*2; globalParticles.push(new Particle(other.x, other.y, Math.cos(ang2)*randRange(1.4,4), Math.sin(ang2)*randRange(1.2,3), 320, '#ffd700', 3));}
                   }
                 } else {
                   for(let k=0;k<3;k++) globalParticles.push(new Particle(b.x,b.y, randRange(-1,1), randRange(-1,0.6), 160, 'rgba(180,180,190,0.9)', 1.5));
@@ -18417,7 +18779,7 @@ const it = items[i];
         if(e.type==='stair_boss'){
           if(this.isBossStair && !this.bossFightStarted && !this.bossStairDefeated) continue; // diálogo ainda não respondido, sem dano
           // Testa cabeça sempre (se tocar, danifica)
-          if(!e.isHeadInvulnerable()){
+if(e.canDamageHead()){
             if(rectCollide(player.x - player.w/2, player.y - player.h/2, player.w, player.h, e.x - e.w/2, e.y - e.h/2, e.w, e.h)){
               const timer = player.powerStarHitTimers.get(e) || 0;
               if(timer<=0){
@@ -18746,6 +19108,7 @@ const it = items[i];
         else if(it.isUpgrade) col = it.rarity.color;
         else if(it.type==='double_shot') col='#5a8fd4';
         else if(it.type==='disquete_vida') col=DISQUETE_VIDA_COLOR;
+        else if(it.type==='ioio_passiva') col='#e53935';
         for(let k=0;k<12;k++){ const ang=Math.random()*Math.PI*2, sp=randRange(1.2,4); globalParticles.push(new Particle(it.x, it.y, Math.cos(ang)*sp, Math.sin(ang)*sp, randRange(260,420), col, randInt(2,4))); }
         // efeito extra para muito rara
         if(it.isUpgrade && it.rarity.id==='MUITO_RARA'){
@@ -19336,6 +19699,12 @@ const it = items[i];
         ctx.fillText('ARENA FECHADA', CANVAS_W/2, CANVAS_H-20); ctx.textAlign='left';
       }
     }
+    // ===================== PAINEL CENTRAL - console + cenário =====================
+    if(this.isPainelCentral){
+      const _painelPlayer = this._playerRef || (typeof window!=='undefined' && window.game ? window.game.player : null);
+      this.drawPainelRoomBg(ctx);
+      this.drawPainel(ctx, _painelPlayer);
+    }
     // ===================== SALA SETCH (2x TAMANHO) - decoração dupla + NPC + COPOS =====================
     if(this.isSetch){
       const isCleared = this.isCleared();
@@ -19391,15 +19760,16 @@ const it = items[i];
       // e a sala inteira ficava preta (so o fundo da fase era desenhado).
       // Agora usamos a referencia salva em update (mesma fonte do desenho dos NPCs).
       const _jlPlayer = _setchPlayer;
-      if(this.setchCleared || this.indianaGiftGiven){
-        ctx.fillStyle='rgba(74,222,128,0.88)'; ctx.font='6px monospace'; ctx.textAlign='center';
-        const allGifts = this.indianaGiftGiven && this.jlGiftGiven && this.oliGiftGiven;
-        const txt = allGifts ? '✓ SETCH, JL, OLI & INDIANA COMPLETOS • PORTAS LIBERADAS'
-          : (this.setchCleared && this.indianaGiftGiven) ? '✓ SETCH & INDIANA COMPLETOS • PORTAS LIBERADAS'
-          : this.setchCleared ? `✓ COPINHOS VENCIDO (${SETCH_ROUNDS} RODADAS) • PORTAS LIBERADAS`
-          : '✓ CHICOTE ADQUIRIDO • PORTAS LIBERADAS';
-        ctx.fillText(txt, CANVAS_W/2, CANVAS_H-12); ctx.textAlign='left';
-      }
+      // Portas da Sala Setch estão sempre abertas: a linha só informa o quanto
+      // dos presentes opcionais já saiu (o ✓ do placar continua sendo o placar).
+      ctx.fillStyle='rgba(74,222,128,0.88)'; ctx.font='6px monospace'; ctx.textAlign='center';
+      const anyGift = this.indianaGiftGiven || this.jlGiftGiven || this.oliGiftGiven;
+      const allGifts = this.setchCleared && anyGift;
+      const txt = allGifts ? '✓ SETCH, JL, OLI & INDIANA COMPLETOS • PORTAS ABERTAS'
+        : this.setchCleared ? `✓ COPINHOS VENCIDO (${SETCH_ROUNDS} RODADAS) • PORTAS ABERTAS`
+        : anyGift ? '✓ PRESENTE ENTREGUE NO CHÃO • PORTAS ABERTAS'
+        : '↔ PORTAS ABERTAS • PRESENTES NO CHÃO SÃO OPCIONAIS';
+      ctx.fillText(txt, CANVAS_W/2, CANVAS_H-12); ctx.textAlign='left';
     }
 
     // rastros de fogo (desenha no chão, sob itens)
@@ -19433,6 +19803,7 @@ const it = items[i];
       else if(ex.isLaserPerfect) targetR=26;
       else if(ex.isLaserHoming) targetR=20;
       else if(ex.isChicoteExplosion) targetR=CHICOTE_EXPLOSION_RADIUS;
+      else if(ex.isBastaoWave) targetR=JG_BASTAO_WAVE_RADIUS;
       else if(ex.isChicoteGift) targetR=36;
       else if(ex.isChicoteHat) targetR=30;
       const r = 14 + (1-alpha)* (targetR - 14);
@@ -19836,6 +20207,38 @@ const it = items[i];
           ctx.fillStyle=`rgba(210,166,121,${alpha*0.92})`; ctx.font='8px monospace'; ctx.textAlign='center';
           ctx.fillText('💨', ex.x, ex.y+3); ctx.textAlign='left';
         }
+      } else if(ex.isBastaoWave){
+        // Onda de energia do bastão JG - anéis dourados concêntricos + raios
+        ctx.strokeStyle=`rgba(250,204,21,${alpha*0.70})`;
+        ctx.lineWidth=4;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle=`rgba(250,204,21,${alpha*0.16})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle=`rgba(255,251,235,${alpha*0.50})`;
+        ctx.lineWidth=2;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.70, 0, Math.PI*2); ctx.stroke();
+        ctx.strokeStyle=`rgba(253,230,138,${alpha*0.40})`;
+        ctx.lineWidth=1.4;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.42, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle=`rgba(255,255,255,${alpha*0.55})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.18, 0, Math.PI*2); ctx.fill();
+        if(alpha>0.35){
+          ctx.strokeStyle=`rgba(255,255,255,${alpha*0.42})`;
+          ctx.lineWidth=1.2; ctx.setLineDash([5,4]);
+          ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.88, 0, Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+          // raios da onda
+          ctx.strokeStyle=`rgba(250,204,21,${alpha*0.55})`;
+          ctx.lineWidth=1.6;
+          for(let s=0;s<8;s++){
+            const sa=(s/8)*Math.PI*2 + (1-alpha)*1.2;
+            ctx.beginPath();
+            ctx.moveTo(ex.x+Math.cos(sa)*r*0.55, ex.y+Math.sin(sa)*r*0.55);
+            ctx.lineTo(ex.x+Math.cos(sa)*r*0.95, ex.y+Math.sin(sa)*r*0.95);
+            ctx.stroke();
+          }
+          ctx.fillStyle=`rgba(250,204,21,${alpha*0.92})`; ctx.font='10px monospace'; ctx.textAlign='center';
+          ctx.fillText('★', ex.x, ex.y+4); ctx.textAlign='left';
+        }
       } else if(ex.isChicoteGift){
         ctx.strokeStyle=`rgba(210,166,121,${alpha*0.62})`;
         ctx.lineWidth=3.5;
@@ -20023,9 +20426,12 @@ const it = items[i];
 
 // ===================== MAP GENERATOR =====================
 class MapGenerator {
-  constructor(seed, floor=1) {
+  // playerName: só a sala do Painel Central depende disso (ver PAINEL_ALLOWED_NAME)
+  constructor(seed, floor=1, playerName='') {
     this.seed = seed ?? Math.floor(Math.random()*1e9);
     this.floor = floor;
+    this.playerName = playerName || '';
+    this.painelAllowed = isPainelAllowedName(this.playerName);
     this.rng = mulberry32(this.seed);
   }
   generate() {
@@ -20087,6 +20493,21 @@ class MapGenerator {
       // já tem spawn, ok
     }
 
+    // PAINEL CENTRAL: sala do console de códigos (só na Fase 1 E só para o
+    // jogador cujo nome é PAINEL_ALLOWED_NAME - SCHMOELLER).
+    // Entra antes das salas opcionais (rara/miniboss/festa/setch) para que
+    // nenhuma outra sala especial ocupe o mesmo lugar.
+    if(this.painelAllowed && PAINEL_ROOM_FLOORS.includes(this.floor)){
+      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch && !r.isPainelCentral);
+      if(candidates.length){
+        // prefere uma sala de beco (1 porta) para o console ficar isolado
+        let pool=candidates;
+        const deadEnds=candidates.filter(r=> Object.values(r.doors).filter(Boolean).length===1);
+        if(deadEnds.length && rng()<0.6) pool=deadEnds;
+        const rc = pool[Math.floor(rng()*pool.length)];
+        rc.makePainelCentralRoom(rng);
+      }
+    }
     // Fase 5: sala do boss da escada (obrigatória, na sala da escada = exitRoom)
     if(this.floor===5 && exitRoom){
       // Transforma a sala da escada em arena de boss (substitui exit normal)
@@ -20108,7 +20529,7 @@ class MapGenerator {
     }
     // Sala rara especial: chance configurável rareRoomChance por andar (não start/exit)
     if(rng() < rareRoomChance){
-      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch);
+      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch && !r.isPainelCentral);
       if(candidates.length){
         // escolhe uma sala aleatória não-start/exit, prefere que não seja já sobrecarregada
         const rc = candidates[Math.floor(rng()*candidates.length)];
@@ -20118,7 +20539,7 @@ class MapGenerator {
     // Sala Miniboss: pode aparecer em QUALQUER fase exceto 5 e 6 (35% chance, configurável MINIBOSS_ROOM_CHANCE)
     // Fase 5 e 6 têm boss próprio (Stair / Hacker), não gera miniboss
     if(this.floor!==5 && this.floor!==HACKER_FLOOR && rng() < MINIBOSS_ROOM_CHANCE){
-      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch);
+      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch && !r.isPainelCentral);
       if(candidates.length){
         // prefere sala com 1 porta (dead end) para arena mais isolada
         let pool=candidates;
@@ -20130,7 +20551,7 @@ class MapGenerator {
     }
     // Sala de Festa (Horda) — pode aparecer em qualquer fase 1-6 (20%)
     if(rng() < PARTY_HORDE_CHANCE){
-      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch);
+      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch && !r.isPainelCentral);
       if(candidates.length){
         let pool=candidates;
         const twoDoors=candidates.filter(r=> Object.values(r.doors).filter(Boolean).length===2);
@@ -20141,7 +20562,7 @@ class MapGenerator {
     }
     // Sala Setch (2x tamanho) - GARANTIDA 100% ou na Fase 5 ou na Fase 6 (requisito)
     if(SETCH_ROOM_FLOORS.includes(this.floor) && rng() < SETCH_ROOM_CHANCE){
-      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch);
+      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch && !r.isPainelCentral);
       // prefere sala mais distante do start com pelo menos 2 portas para espaço
       if(candidates.length){
         const distant = candidates.filter(r=> Math.abs(r.gx-2)+Math.abs(r.gy-2) >= SETCH_ROOM_MIN_DISTANCE);
@@ -20160,7 +20581,7 @@ class MapGenerator {
     // Fase 3 pode ter shotgun também, mas garante apenas se não houver shotgun nem rare/miniboss (já tem item)
     const hasShotgun = rooms.some(r=>r.items.some(it=>it.type==='shotgun'));
     if(!hasShotgun && !rooms.some(r=>r.isRare || r.isMiniboss || r.isBossStair || r.isHacker || r.isPartyHorde || r.isSetch)){
-      const candidates = rooms.filter(r=>!r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch);
+      const candidates = rooms.filter(r=>!r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch && !r.isPainelCentral);
       if(candidates.length){
         const rc = candidates[Math.floor(rng()*candidates.length)];
         if(rc.items.length<2){
@@ -20182,7 +20603,7 @@ class MapGenerator {
     // Garante uma arma CARREGADA por andar (arma comum) se ainda não houver, reforçando característica comum
     const hasCarregada = rooms.some(r=>r.items.some(it=> it.type==='carregada' || it.weaponType==='carregada'));
     if(!hasCarregada){
-      const candidates = rooms.filter(r=>!r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch);
+      const candidates = rooms.filter(r=>!r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch && !r.isPainelCentral);
       if(candidates.length){
         // tenta colocar em sala que ainda tem espaço, evita lotar
         const filtered = candidates.filter(r=> r.items.length < 2);
@@ -20205,7 +20626,7 @@ class MapGenerator {
     // Garante pelo menos um Item Especial (E) por andar para testar mecânica (inclui Power Star raro na Fase 5)
     const hasSpecial = rooms.some(r=> r.items.some(it=> it.isSpecialPickup));
     if(!hasSpecial){
-      const candidates = rooms.filter(r=>!r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch);
+      const candidates = rooms.filter(r=>!r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch && !r.isPainelCentral);
       if(candidates.length){
         const filtered = candidates.filter(r=> r.items.length < 3);
         const pool = filtered.length ? filtered : candidates;
@@ -20219,11 +20640,11 @@ class MapGenerator {
           for(const w of rc.walls) if(rectCollide(x-10,y-10,20,20,w.x,w.y,w.w,w.h)) {onWall=true;break;}
           if(!onWall && dist(x,y,CANVAS_W/2,CANVAS_H/2)>70) break;
         }while(tries<16);
-        // Garante variedade: inclui Flecha Stand incomum (40% chance), alterna entre 3
+        // Garante variedade: alterna entre espada, escudo e flecha_stand
         const rS=rng();
         let specialId;
-        if(rS<0.30) specialId='espada_flamejante';
-        else if(rS<0.60) specialId='escudo_magico';
+        if(rS<0.34) specialId='espada_flamejante';
+        else if(rS<0.68) specialId='escudo_magico';
         else specialId='flecha_stand';
         const sp = new SpecialItemPickup(x,y, specialId);
         sp.spawnDelay = 360;
@@ -20356,6 +20777,8 @@ class Game {
     this.motosserraZone=null;
     // POCHITA: +2 ataques principais nos lados do personagem (zonas laterais com dano real)
     this.motosserraSideZones=null;
+    // PAINEL CENTRAL: terminal de códigos da sala da Fase 1 (aberto/fechado)
+    this.painelTerminalOpen = false;
     // CRONÔMETRO + PLACAR: tempo da run atual e nome do jogador (persistido)
     this.runTime = 0;
     this.playerName = Records.readName();
@@ -20497,6 +20920,12 @@ class Game {
     });
     document.getElementById('btnPauseMenu').addEventListener('click', ()=> { this.hidePause(); this.goMenu(); });
     window.addEventListener('keydown', (e)=>{
+      // PAINEL CENTRAL: com o terminal aberto, ESC fecha o terminal e P não pausa
+      if(this.painelTerminalOpen){
+        if(e.key==='Escape'){ e.preventDefault(); this.closePainelTerminal(); }
+        else if(e.key.toLowerCase()==='p') e.preventDefault();
+        return;
+      }
       // ESC fecha controles/personagem primeiro, depois pausa
       if(e.key==='Escape' && this.characterScreen && this.characterScreen.classList.contains('active')){ this.hideCharacterSelect(); return; }
       if(e.key==='Escape' && this.controlsScreen.classList.contains('active')){ this.hideControls(); return; }
@@ -20705,6 +21134,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
   pause(){
     if(this.state!=='PLAYING') return;
     if(this.bossDialogActive) return; // não pausa durante diálogo do boss
+    this.closePainelTerminal(); // terminal do painel central não sobrevive ao pause
     this.state='PAUSED';
     if(this.pauseScreen) this.pauseScreen.classList.add('active');
     this.updatePauseInfo();
@@ -20927,6 +21357,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
     this.gameContainer.classList.remove('phase5');
     this.gameContainer.classList.remove('phase6');
     this.hideBossDialog();
+    this.closePainelTerminal();
     this.renderRecords();     // tabelas do menu ficam sempre atualizadas
   }
   resizeCanvas(){ const dpr=Math.min(window.devicePixelRatio||1,2); }
@@ -21039,6 +21470,9 @@ this.canvas.addEventListener('mousemove', (e)=>{
     if(this.player.powerStarHitTimers) this.player.powerStarHitTimers.clear();
     this.bossDialogActive = false;
     this.hideBossDialog();
+    // PAINEL CENTRAL: terminal fechado no início de cada partida
+    this.painelTerminalOpen = false;
+    this.closePainelTerminal();
     // // DEBUG: já começa com Espada Flamejante equipada para testar E imediatamente (comente se quiser começar sem)
     // this.player.equipSpecial(createSpecialItem('espada_flamejante'));
     // // DEBUG Flecha: this.player.equipSpecial(createSpecialItem('flecha_stand'));
@@ -21060,7 +21494,9 @@ this.canvas.addEventListener('mousemove', (e)=>{
   generateFloor(floor, seed){
     const genSeed = seed ?? Math.floor(Math.random()*1e9);
     this.seed = genSeed;
-    const gen = new MapGenerator(genSeed, floor);
+    // O nome do jogador é repassado ao gerador: a sala do Painel Central só
+    // nasce para quem tem o nome liberado (PAINEL_ALLOWED_NAME).
+    const gen = new MapGenerator(genSeed, floor, this.playerName);
     const map = gen.generate();
     this.rooms = map.rooms;
     this.roomLookup = map.roomLookup;
@@ -21103,7 +21539,13 @@ this.canvas.addEventListener('mousemove', (e)=>{
     this.floorTransitioning=false;
     this.updateFloorVisual();
     // toast específico
-    if(floor===1) { /* já mostrado em startGame */ }
+    if(floor===1) {
+      // Confirma silenciosamente que a sala exclusiva entrou no mapa (nome liberado)
+      if(PAINEL_ROOM_FLOORS.includes(floor) && isPainelAllowedName(this.playerName)
+         && this.rooms.some(r=>r.isPainelCentral)){
+        this.showToast(`▣ Painel Central ativo para ${this.playerName} • procure a sala com o console ▣`, 3000);
+      }
+    }
     else this.showToast(`➤ Cyber Requiem • Ato ${floor} - ${FLOOR_THEMES[floor].name} • ${this.rooms.length} salas • Rede cibernética instável`, 2600);
   }
 
@@ -21142,6 +21584,13 @@ this.canvas.addEventListener('mousemove', (e)=>{
       this.player.x=CANVAS_W/2; this.player.y=CANVAS_H/2+40;
       this.player.vx=0; this.player.vy=0;
       this.bullets=[]; this.meleeSwings=[]; this.fists=[]; this.bastaoProjectiles=[]; this.lazerBeams=[]; this.chicoteWhips=[]; this.particles=[];
+      // JG: o bastão em voo foi descartado no teleporte -> devolve pra mão
+      // (evita renascer sem bastão: sem ataque, lento e laranja)
+      if(this.player.characterId==='jg'){
+        this.player.bastaoProjectile=null;
+        if(!this.player.hasBastao) this.player.hasBastao=true;
+        this.player.isBastaoCharging=false; this.player.bastaoChargeTime=0;
+      }
       this.transitionCooldown=600;
       this._hackerTransition=false;
       this.showToast('◉ HACKER: Fui eu que contaminei seu código com o Dark Vírus! ◉', 2600);
@@ -21294,6 +21743,205 @@ this.canvas.addEventListener('mousemove', (e)=>{
     this._toastTimer = setTimeout(()=> this.toast.classList.add('hidden'), ms);
   }
 
+  // ===================== PAINEL CENTRAL - TERMINAL DE CODIGOS =====================
+  // Sala da Fase 1 com um painel/terminal no meio. O jogador chega perto e
+  // aperta [E]: abre um overlay com campo de digitacao (esquerda) + a lista de
+  // codigos conhecidos (direita). O jogo pausa enquanto o terminal esta aberto
+  // (mesmo mecanismo do dialogo do boss), entao nao ha danger de morrer digitando.
+  // Codigos: F1..F6 trocam de fase, BORZUK libera todas as melhorias e passivos.
+  openPainelTerminal(){
+    if(this.painelTerminalOpen) return;
+    if(this.state!=='PLAYING' || this.bossDialogActive) return;
+    this.painelTerminalOpen = true;
+    const g = this;
+    // Solta as teclas que estavam presas: senao o personagem sai andando sozinho
+    // quando o terminal fecha (o jogo ignora o input enquanto o terminal esta aberto)
+    this.clearTerminalKeys();
+    // Cria o overlay uma vez e reaproveita
+    let dlg=document.getElementById('painelTerminal');
+    if(!dlg){
+      dlg=document.createElement('div');
+      dlg.id='painelTerminal';
+      dlg.className='painel-central';
+      document.getElementById('gameContainer').appendChild(dlg);
+      // Estilo inline fallback caso o CSS nao carregue (mesmo truque do dialogo do boss)
+      dlg.style.cssText='position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.72);backdrop-filter:blur(6px);z-index:32;';
+    }
+    // Estrutura: painel com campo (esquerda) + lista de codigos (direita)
+    dlg.innerHTML=`
+      <div class="painel-central-box">
+        <div class="painel-central-head">
+          <span class="painel-central-title">PAINEL CENTRAL</span>
+          <span class="painel-central-hint">digite o codigo e aperte ENTER</span>
+        </div>
+        <div class="painel-central-body">
+          <div class="painel-central-input-col">
+            <div class="painel-central-prompt">&gt;<span class="painel-central-caret">_</span></div>
+            <input id="painelInput" class="painel-central-input" type="text" maxlength="${PAINEL_MAX_LEN}"
+                   autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="F1">
+            <div class="painel-central-feedback" id="painelFeedback"></div>
+            <button id="painelRun" class="painel-central-run">EXECUTAR</button>
+            <button id="painelClose" class="painel-central-close">FECHAR [ESC]</button>
+          </div>
+          <div class="painel-central-codes" id="painelCodes"></div>
+        </div>
+        <div class="painel-central-foot">o terminal pausa o jogo • F1-F6 mudam de fase • BORZUK libera tudo</div>
+      </div>`;
+    dlg.style.display='flex';
+
+    const input=document.getElementById('painelInput');
+    const feedback=document.getElementById('painelFeedback');
+    const runBtn=document.getElementById('painelRun');
+    const closeBtn=document.getElementById('painelClose');
+
+    // Renderiza a coluna de codigos
+    const renderCodes=()=>{
+      const box=document.getElementById('painelCodes');
+      if(!box) return;
+      box.innerHTML='';
+      for(const code of PAINEL_CODE_LIST){
+        const def=PAINEL_CODES[code];
+        const row=document.createElement('div');
+        row.className='painel-central-code';
+        row.innerHTML=`
+          <div class="painel-central-code-name">${def.name}</div>
+          <div class="painel-central-code-desc">${def.desc}</div>`;
+        // Clicar num codigo ja digita ele no campo (atalho, sem obrigar digitar)
+        row.onclick=()=>{ input.value=code; try{ input.focus(); }catch(_){} };
+        box.appendChild(row);
+      }
+    };
+    renderCodes();
+
+    // Executa o que esta escrito no campo
+    const runCode=()=>{
+      const raw=(input.value||'').trim().toUpperCase();
+      if(!raw){ if(feedback){ feedback.textContent='digite um codigo'; feedback.className='painel-central-feedback is-warn'; } return; }
+      if(!PAINEL_CODE_LIST.includes(raw)){
+        if(feedback){ feedback.textContent=`codigo invalido: ${raw}`; feedback.className='painel-central-feedback is-err'; }
+        g.shake=Math.max(g.shake||0, 18);
+        return;
+      }
+      const res = g.runPainelCode(raw);
+      if(!res || !res.ok){
+        if(feedback){ feedback.textContent=(res && res.msg) || `falha ao executar ${raw}`; feedback.className='painel-central-feedback is-err'; }
+        renderCodes();
+        return;
+      }
+      if(feedback){ feedback.textContent=res.msg || `${raw} executado`; feedback.className='painel-central-feedback is-ok'; }
+      input.value='';
+      renderCodes();
+      // Fecha sozinho: o efeito (trocada de fase / itens) acontece na hora
+      g.closePainelTerminal();
+    };
+
+    if(runBtn) runBtn.onclick=runCode;
+    if(closeBtn) closeBtn.onclick=()=> g.closePainelTerminal();
+    if(input){
+      // Terminal sempre em MAIUSCULAS (os codigos sao todos em caixa alta)
+      input.oninput=()=>{ const pos=input.selectionStart; input.value=(input.value||'').toUpperCase(); try{ input.setSelectionRange(pos,pos); }catch(_){} };
+      input.onkeydown=(ev)=>{
+        ev.stopPropagation(); // nao deixa a tecla chegar no jogo (setas atiram, ESPACO ataca)
+        if(ev.key==='Enter'){ ev.preventDefault(); runCode(); }
+        else if(ev.key==='Escape'){ ev.preventDefault(); g.closePainelTerminal(); }
+      };
+      input.onkeyup=(ev)=> ev.stopPropagation();
+    }
+    // Fecha o terminal quando o jogador clica fora do painel
+    dlg.onclick=(ev)=>{ if(ev.target===dlg) g.closePainelTerminal(); };
+    // Foca o campo para digitar direto
+    try{ input.focus(); input.select(); }catch(_){}
+  }
+  closePainelTerminal(){
+    const dlg=document.getElementById('painelTerminal');
+    if(dlg) dlg.style.display='none';
+    if(!this.painelTerminalOpen) return;
+    this.painelTerminalOpen=false;
+    // Limpa teclas capturadas: garante que o personagem nao saia andando ao fechar
+    this.clearTerminalKeys();
+  }
+  // Zera o estado de teclado do InputHandler (defensivo: o input pode ser um stub
+  // em testes sem Set.clear).
+  clearTerminalKeys(){
+    try{
+      const inp=this.input;
+      if(!inp) return;
+      if(inp.keys && typeof inp.keys.clear==='function') inp.keys.clear();
+      if(inp.justPressed && typeof inp.justPressed.clear==='function') inp.justPressed.clear();
+    }catch(_){}
+  }
+
+  // ===== EFEITO: BORZUK - todas as melhorias + todos os passivos =====
+  // Libera tudo de uma vez: cada UPGRADE_DEFS ate o maxLevel e todos os
+  // passivos do jogador. Usado pelo codigo BORZUK do Painel Central.
+  grantAllUpgradesAndPassives(){
+    const p = this.player;
+    if(!p) return {upgrades:0, passives:0};
+    let upgrades=0;
+    // 1) Melhorias: repete addUpgrade enquanto canAddUpgrade aceitar (sai no maxLevel)
+    for(const def of UPGRADE_DEFS){
+      let guard=0;
+      while(p.canAddUpgrade(def.id) && guard++ < 12){
+        if(p.addUpgrade(def.id)) upgrades++;
+        else break;
+      }
+    }
+    // 2) Passivos: cada enable* é idempotente (retorna false se já tiver)
+    let passives=0;
+    const give=(fn)=>{ try{ if(typeof p[fn]==='function' && p[fn]()) passives++; }catch(_){} };
+    if(p.hasFlameTrail!==true && typeof p.enableFlameTrail==='function'){ p.enableFlameTrail(); passives++; }
+    if(p._hasSwiftBoots!==true){ p._hasSwiftBoots=true; p.speed=(p.speed||0)+0.75; passives++; }
+    give('enableDoubleShot');
+    give('enableNoclip');
+    give('enableDillianShield');
+    give('enableJoestarTechnique');
+    give('enableIoiPassive');
+    if(p.hasGatoAntivirus!==true){ p.hasGatoAntivirus=true; passives++; }
+    return {upgrades, passives};
+  }
+
+  // ===== EFEITO: CODIGO DE FASE (F1..F6) =====
+  // Troca direto para a fase pedida. Mantem vida/armas/melhorias (como o portal
+  // de saida) e protege contra troca durante transicao ja em andamento.
+  irParaFase(target){
+    const f = clamp(Math.floor(target)||0, 1, this.maxFloor||6);
+    if(this.floorTransitioning) return {ok:false, msg:'transicao em andamento...'};
+    if(f===this.floor) return {ok:false, msg:`voce ja esta na Fase ${f}`};
+    this.totalEnemiesDefeated += this.enemiesDefeated;
+    // Token: se o jogador for pro menu / reiniciar durante a troca, o callback
+    // morre aqui em vez de gerar andar em cima da run nova.
+    const token = ++this._transitionToken;
+    this.floorTransitioning = true;
+    const themeName = (FLOOR_THEMES[f] && FLOOR_THEMES[f].name.trim()) || `FASE ${f}`;
+    this.showToast(`▣ PAINEL CENTRAL: indo para a Fase ${f} — ${themeName} ▣`, 2000);
+    for(let i=0;i<30;i++){ const ang=Math.random()*Math.PI*2; this.particles.push(new Particle(CANVAS_W/2, CANVAS_H/2, Math.cos(ang)*randRange(1.5,4.6), Math.sin(ang)*randRange(1.5,4.6), 520, ['#22d3ee','#a78bfa','#4ade80'][randInt(0,2)], 3)); }
+    this.shake=Math.max(this.shake||0, 70);
+    setTimeout(()=>{
+      if(token!==this._transitionToken) return;   // troca cancelada (menu/restart)
+      this.generateFloor(f);
+      this.transitionCooldown=600;
+      this.floorTransitioning=false;
+    }, 520);
+    return {ok:true, msg:`indo para a Fase ${f}`};
+  }
+
+  // Executa um codigo digitado no Painel Central. Retorna {ok, msg}.
+  runPainelCode(code){
+    const raw=(code||'').trim().toUpperCase();
+    if(raw==='BORZUK'){
+      const r=this.grantAllUpgradesAndPassives();
+      if(this.showToast) this.showToast(`★ BORZUK: ${r.upgrades} melhorias + ${r.passives} passivos liberados!`, 3200);
+      const px=this.player? this.player.x : CANVAS_W/2, py=this.player? this.player.y : CANVAS_H/2;
+      for(let k=0;k<70;k++){ const ang=Math.random()*Math.PI*2, sp=randRange(1.6,6); this.particles.push(new Particle(px,py, Math.cos(ang)*sp, Math.sin(ang)*sp, randRange(420,900), ['#ffd700','#4ade80','#a78bfa','#ffffff'][randInt(0,3)], randInt(2.5,5))); }
+      this.shake=Math.max(this.shake||0, 120);
+      return {ok:true, msg:`BORZUK: ${r.upgrades} melhorias + ${r.passives} passivos`};
+    }
+    // F1..F6 -> trocar de fase
+    const m = /^F([1-6])$/.exec(raw);
+    if(m) return this.irParaFase(parseInt(m[1],10));
+    return {ok:false, msg:`codigo invalido: ${raw}`};
+  }
+
   // ===== DISQUETE DA VIDA - continue =====
   // Chamado no lugar do game over quando o jogador morre com pelo menos 1 continue salvo.
   // Devolve true se o continue foi usado (jogo segue), false se não havia nenhum.
@@ -21331,6 +21979,9 @@ this.canvas.addEventListener('mousemove', (e)=>{
     p.activeFists = []; p.activeFist = null; p.bastaoProjectile = null;
     this.bullets = []; this.meleeSwings = []; this.fists = [];
     this.bastaoProjectiles = []; this.lazerBeams = []; this.chicoteWhips = [];
+    // JG: se morreu com o bastão arremessado, ele volta pra mão ao renascer
+    // (sem isto o JG renasce sem bastão: não ataca, fica lento e laranja)
+    if(p.characterId==='jg'){ p.hasBastao = true; p.isBastaoCharging = false; p.bastaoChargeTime = 0; }
     if(this.motosserraZone) this.motosserraZone.active = false;
     if(this.motosserraSideZones) for(const z of this.motosserraSideZones) z.active=false;
     p.motosserraActive = false;
@@ -21502,9 +22153,15 @@ this.canvas.addEventListener('mousemove', (e)=>{
   // Modular por personagem: JG/Kinight bloqueiam troca na hora do swap (mantém hint para feedback)
   // ===================== SETCH - INTERAÇÃO NPC =====================
   isInSetchRoom(){ return !!(this.currentRoom && this.currentRoom.isSetch); }
+  // Sala do Painel Central (terminal de códigos da Fase 1)
+  isInPainelRoom(){ return !!(this.currentRoom && this.currentRoom.isPainelCentral); }
   trySetchInteraction(){
     if(!this.isInSetchRoom()) return false;
     const room=this.currentRoom;
+    // Presentes deixados no chão pelos NPCs têm PRIORIDADE: sem isso o [E]
+    // cairia nos hints/diálogos do Setch e o item nunca seria alcançável.
+    // (Chicote usa [Q] e IO-IO é automático, então aqui é só o especial do Oli.)
+    if(this.trySpecialSwapOrPickup()) return true;
     // Prioridade Indiana Jones - Chicote 100% garantido (requisito)
     if(room.indianaNPC && !room.indianaGiftGiven && !room.indianaNPC.giftGiven){
       const nearIndiana = dist(this.player.x, this.player.y, room.indianaNPC.x, room.indianaNPC.y) < CHICOTE_INTERACT_RANGE;
@@ -21527,15 +22184,15 @@ this.canvas.addEventListener('mousemove', (e)=>{
       // JL e Oli continuam acessíveis mesmo sem o minigame do Setch
       if(room.jlNPC && !room.jlGiftGiven && !this.player.hasIoiPassive){
         const nearJL2 = dist(this.player.x, this.player.y, room.jlNPC.x, room.jlNPC.y) < JL_INTERACT_RANGE + 18;
-        if(nearJL2){ this.showToast('JL: Aproxime-se e pressione [E] para ganhar o passivo IO-IO!', 1400); return true; }
+        if(nearJL2){ this.showToast('JL: Aproxime-se e pressione [E] - ele deixa o IO-IO no chão!', 1400); return true; }
       }
       if(room.oliNPC && !room.oliGiftGiven){
         const nearOli2 = dist(this.player.x, this.player.y, room.oliNPC.x, room.oliNPC.y) < OLI_NPC_INTERACT_RANGE + 18;
-        if(nearOli2){ this.showToast('Oli: Aproxime-se e pressione [E] para ganhar o item especial de Xadrez!', 1400); return true; }
+        if(nearOli2){ this.showToast('Oli: Aproxime-se e pressione [E] - o XADREZ fica no chão ([E] para equipar)!', 1400); return true; }
       }
       if(room.indianaNPC && !room.indianaGiftGiven){
         const nearInd2 = dist(this.player.x, this.player.y, room.indianaNPC.x, room.indianaNPC.y) < CHICOTE_INTERACT_RANGE + 18;
-        if(nearInd2) this.showToast('Indiana: Aproxime-se e pressione [E] para ganhar o Chicote! 100%', 1400);
+        if(nearInd2) this.showToast('Indiana: Aproxime-se e pressione [E] - o CHICOTE fica no chão ([Q] para pegar)! 100%', 1400);
         else this.showToast('Aproxime-se de Indiana [E] CHICOTE 100% ou Setch [E] COPINHOS', 1400);
         return true;
       }
@@ -21628,6 +22285,54 @@ this.canvas.addEventListener('mousemove', (e)=>{
     }
     return false;
   }
+  // Fluxo normal da tecla E: troca/pega de especial no chão > ativação do equipado.
+  // Extraído do update para deixar o handler de E legível (e poder ser reutilizado).
+  handleSpecialKeyE(){
+    if(this.player.characterId==='ash'){
+      if(this.player.secondaryWeapon){
+        const ok=this.player.swapWeapon();
+        if(ok){
+          this.showToast(`↔ MOTOSSERRA ↔ ${this.player.weapon.name} [E]`, 1300);
+          for(let k=0;k<9;k++) this.particles.push(new Particle(this.player.x, this.player.y, randRange(-1.4,1.4), randRange(-1.4,0.6), 280, '#ff3b30', 2));
+        }
+      } else {
+        this.showToast('Ash: sem segunda arma! Pegue uma com [Q] perto do chão', 1300);
+      }
+      return;
+    }
+    const didInteraction=this.trySpecialSwapOrPickup();
+    if(didInteraction) return;
+    const nearbySpecial=this.findNearbySpecialPickup();
+    if(nearbySpecial) return;
+    const res = this.player.tryUseSpecial(this);
+    if(res.ok){
+      const sp = this.player.equippedSpecial;
+      let abilityName='';
+      if(sp.id==='flecha_stand' && sp.currentAbility) abilityName=` → ${sp.currentAbility.name}`;
+      this.showToast(`✦ ${sp.name}${abilityName} ativada!`, 1600);
+      return;
+    }
+    if(res.reason==='no_item'){ this.showToast('Sem item especial equipado [E]', 1100); }
+    else if(res.reason==='cooldown'){ const secs=Math.ceil(res.remaining/1000); const spName=this.player.equippedSpecial.id==='flecha_stand' && this.player.equippedSpecial.currentAbility ? `${this.player.equippedSpecial.name} (${this.player.equippedSpecial.currentAbility.name})` : this.player.equippedSpecial.name; this.showToast(`${spName} em recarga: ${secs}s`, 1000); }
+    else if(res.reason==='active'){ this.showToast(`${this.player.equippedSpecial.name} já está ativo!`, 1000); }
+  }
+  // ===== PAINEL CENTRAL - interação com [E] =====
+  // Só abre o terminal se o jogador estiver perto do console. Se estiver longe,
+  // mostra um hint e devolve false (o E continua caindo no fluxo normal).
+  tryPainelInteraction(){
+    const room=this.currentRoom;
+    if(!room || !room.isPainelCentral) return false;
+    if(!room.isNearPainel(this.player)){
+      this.showToast('▣ Aproxime-se do Painel Central e aperte [E]', 1200);
+      return false;
+    }
+    if(this.painelTerminalOpen) return true;
+    room.painel.used = 700; // feedback visual de "terminal aberto"
+    this.openPainelTerminal();
+    return this.painelTerminalOpen;
+  }
+
+
   trySetchChoice(index){
     if(!this.isInSetchRoom()) return false;
     const room=this.currentRoom;
@@ -21805,6 +22510,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
         // coloca antiga secundária no chão
         nearby.weaponType = oldSecName.toLowerCase();
         nearby.type = oldSecName.toLowerCase();
+        nearby.isNpcGift = false; // objeto reaproveitado: já não é mais o presente do NPC
         nearby.isRaio = oldSecName==='RAIO';
         nearby.isRayMatematico = oldSecName==='RAIO_MATEMATICO';
             nearby.isMini = oldSecName==='METRALHADORA';
@@ -21879,6 +22585,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
     // reutiliza o mesmo objeto 'nearby' (evita criação infinita), apenas troca seu tipo
     nearby.weaponType = oldName.toLowerCase();
     nearby.type = oldName.toLowerCase(); // mantém tipo consistente para checagens futuras
+    nearby.isNpcGift = false;           // objeto reaproveitado: já não é mais o presente do NPC
     // atualiza todas as flags para refletir a nova arma no chão (evita estado inconsistente)
     nearby.isRaio = oldName==='RAIO';
     nearby.isRayMatematico = oldName==='RAIO_MATEMATICO';
@@ -21919,6 +22626,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
     if(this.state==='PAUSED') return; // congelado quando pausado (ver itens, reset)
     if(this.state!=='PLAYING') return;
     if(this.bossDialogActive) return; // pausa total enquanto diálogo do boss está aberto
+    if(this.painelTerminalOpen) return; // terminal do painel aberto: pausa igual ao diálogo do boss
     if(!this.currentRoom || !this.player){
       console.warn('Game.update: currentRoom/player ausente');
       return;
@@ -21958,74 +22666,14 @@ this.canvas.addEventListener('mousemove', (e)=>{
     // - consumeJustPressed + validação de distância/spawnDelay evita spam e duplicação.
     // - Validação centralizada em trySpecialSwapOrPickup (simula validação servidor).
     if(this.input.consumeJustPressed('e')){
-      // Prioridade SETCH: se estiver na Sala Setch, E interage com NPC / copos primeiro
-      if(this.isInSetchRoom()){
-        const didSetch=this.trySetchInteraction();
-        if(didSetch) {
-          // consumiu E para Setch, não processa Ash/special
-        } else {
-          // fallback raro (trySetch retornou false apesar de estar na sala) -> cai no fluxo normal
-          if(this.player.characterId==='ash'){
-            if(this.player.secondaryWeapon){
-              const ok=this.player.swapWeapon();
-              if(ok){
-                this.showToast(`↔ MOTOSSERRA ↔ ${this.player.weapon.name} [E]`, 1300);
-                for(let k=0;k<9;k++) this.particles.push(new Particle(this.player.x, this.player.y, randRange(-1.4,1.4), randRange(-1.4,0.6), 280, '#ff3b30', 2));
-              }
-            } else {
-              this.showToast('Ash: sem segunda arma! Pegue uma com [Q] perto do chão', 1300);
-            }
-          } else {
-            const didInteraction=this.trySpecialSwapOrPickup();
-            if(!didInteraction){
-              const nearbySpecial=this.findNearbySpecialPickup();
-              if(!nearbySpecial){
-                const res = this.player.tryUseSpecial(this);
-                if(res.ok){
-                  const sp = this.player.equippedSpecial;
-                  let abilityName='';
-                  if(sp.id==='flecha_stand' && sp.currentAbility) abilityName=` → ${sp.currentAbility.name}`;
-                  this.showToast(`✦ ${sp.name}${abilityName} ativada!`, 1600);
-                } else {
-                  if(res.reason==='no_item'){ this.showToast('Sem item especial equipado [E]', 1100); }
-                  else if(res.reason==='cooldown'){ const secs=Math.ceil(res.remaining/1000); const spName=this.player.equippedSpecial.id==='flecha_stand' && this.player.equippedSpecial.currentAbility ? `${this.player.equippedSpecial.name} (${this.player.equippedSpecial.currentAbility.name})` : this.player.equippedSpecial.name; this.showToast(`${spName} em recarga: ${secs}s`, 1000); }
-                  else if(res.reason==='active'){ this.showToast(`${this.player.equippedSpecial.name} já está ativo!`, 1000); }
-                }
-              }
-            }
-          }
-        }
+      // Prioridade 1: Painel Central (terminal de códigos) - só abre perto do console
+      if(this.isInPainelRoom() && this.tryPainelInteraction()){
+        // E consumido pelo painel
+      } else if(this.isInSetchRoom() && this.trySetchInteraction()){
+        // Prioridade 2: Sala Setch - NPC / copos
       } else {
-        // Fluxo normal fora da Sala Setch
-        if(this.player.characterId==='ash'){
-          if(this.player.secondaryWeapon){
-            const ok=this.player.swapWeapon();
-            if(ok){
-              this.showToast(`↔ MOTOSSERRA ↔ ${this.player.weapon.name} [E]`, 1300);
-              for(let k=0;k<9;k++) this.particles.push(new Particle(this.player.x, this.player.y, randRange(-1.4,1.4), randRange(-1.4,0.6), 280, '#ff3b30', 2));
-            }
-          } else {
-            this.showToast('Ash: sem segunda arma! Pegue uma com [Q] perto do chão', 1300);
-          }
-        } else {
-          const didInteraction=this.trySpecialSwapOrPickup();
-          if(!didInteraction){
-            const nearbySpecial=this.findNearbySpecialPickup();
-            if(!nearbySpecial){
-              const res = this.player.tryUseSpecial(this);
-              if(res.ok){
-                const sp = this.player.equippedSpecial;
-                let abilityName='';
-                if(sp.id==='flecha_stand' && sp.currentAbility) abilityName=` → ${sp.currentAbility.name}`;
-                this.showToast(`✦ ${sp.name}${abilityName} ativada!`, 1600);
-              } else {
-                if(res.reason==='no_item'){ this.showToast('Sem item especial equipado [E]', 1100); }
-                else if(res.reason==='cooldown'){ const secs=Math.ceil(res.remaining/1000); const spName=this.player.equippedSpecial.id==='flecha_stand' && this.player.equippedSpecial.currentAbility ? `${this.player.equippedSpecial.name} (${this.player.equippedSpecial.currentAbility.name})` : this.player.equippedSpecial.name; this.showToast(`${spName} em recarga: ${secs}s`, 1000); }
-                else if(res.reason==='active'){ this.showToast(`${this.player.equippedSpecial.name} já está ativo!`, 1000); }
-              }
-            }
-          }
-        }
+        // Prioridade 3: fluxo normal (troca/pega de especial ou ativação)
+        this.handleSpecialKeyE();
       }
     }
 
@@ -22724,7 +23372,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
                 if(diedH) for(let k=0;k<8;k++){ const ang=Math.random()*Math.PI*2; this.particles.push(new Particle(hand.x, hand.y, Math.cos(ang)*randRange(1.2,3), Math.sin(ang)*randRange(1.2,3), 260, '#ff3b30', 2)); }
               }
             }
-            if(rectCollide(this.motosserraZone.x, this.motosserraZone.y, this.motosserraZone.w, this.motosserraZone.h, e.x-e.w/2, e.y-e.h/2, e.w, e.h) && !e.isHeadInvulnerable()){
+            if(rectCollide(this.motosserraZone.x, this.motosserraZone.y, this.motosserraZone.w, this.motosserraZone.h, e.x-e.w/2, e.y-e.h/2, e.w, e.h) && e.canDamageHead()){
               const isCenterB = Math.abs(e.x - cx) < areaW*0.22 && Math.abs(e.y - cy) < areaH*0.28;
               const dmgB = isCenterB ? w2.damage*1.28 : w2.damage;
               const died=e.takeDamage(dmgB);
@@ -22786,7 +23434,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
                     if(diedH) for(let k=0;k<8;k++){ const ang=Math.random()*Math.PI*2; this.particles.push(new Particle(hand.x, hand.y, Math.cos(ang)*randRange(1.2,3), Math.sin(ang)*randRange(1.2,3), 260, '#ff8c42', 2)); }
                   }
                 }
-                if(!e.isHeadInvulnerable() && rectCollide(z.x, z.y, z.w, z.h, e.x-e.w/2, e.y-e.h/2, e.w, e.h)){
+                if(e.canDamageHead() && rectCollide(z.x, z.y, z.w, z.h, e.x-e.w/2, e.y-e.h/2, e.w, e.h)){
                   const died=e.takeDamage(sideDmg);
                   e.hitFlash=160; sideHit=true; hitCount++;
                   for(let k=0;k<4;k++) this.particles.push(new Particle(e.x, e.y, randRange(-1.4,1.4), randRange(-1.4,0.6), 180, '#ffcc66', 2));
@@ -22832,10 +23480,12 @@ this.canvas.addEventListener('mousemove', (e)=>{
       if(this.player) { this.player.motosserraActive=false; this.player.motosserraTick=0; this.player.motosserraVibrate=0; }
     }
 
-    // bullets update (player + enemy)
+// bullets update (player + enemy)
     const enemyNewBullets=[];
-    // Nota: enemy bullets serão adicionados via Room.update -> enemyBulletsOut, mas também precisamos tratar bullets já existentes como enemy
-    for(const b of this.bullets) b.update(dt, walls);
+    // Nota: enemy bullets serão adicionadas via Room.update -> enemyBulletsOut, mas também precisamos tratar bullets já existentes como enemy
+    for(const b of this.bullets){
+      b.update(dt, walls);
+    }
     // CHICOTE - chicotes ativos (grapple parede + vento)
     for(let i=this.chicoteWhips.length-1;i>=0;i--){
       const whip=this.chicoteWhips[i];
@@ -22891,7 +23541,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
               }
             }
           }
-          if(!e.isHeadInvulnerable() && dist(shieldPos.x, shieldPos.y, e.x, e.y) < DILLIAN_SHIELD_SIZE/2 + e.w*0.42){
+          if(e.canDamageHead() && dist(shieldPos.x, shieldPos.y, e.x, e.y) < DILLIAN_SHIELD_SIZE/2 + e.w*0.42){
             const t=this.player.dillianShieldHitTimers.get(e)||0;
             if(t<=0){
               const died=e.takeDamage(DILLIAN_SHIELD_DAMAGE);
@@ -22976,7 +23626,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
             }
           }
           if(hitBoss) continue;
-          if(!e.isHeadInvulnerable() && beam.hits(e)){
+          if(e.canDamageHead() && beam.hits(e)){
             const died=e.takeDamage(beam.damage);
             beam.registerHit(e);
             for(let k=0;k<6;k++) this.particles.push(new Particle(e.x, e.y, randRange(-1.6,1.6), randRange(-1.4,0.6), 220, '#ffd700', 2.2));
@@ -23071,8 +23721,8 @@ this.canvas.addEventListener('mousemove', (e)=>{
             if(m.pierce===0) break;
           }
           if(handled && m.pierce===0) continue;
-          // tenta cabeça se vulnerável
-          if(!e.isHeadInvulnerable() && m.hits(e)){
+          // tenta cabeça se vulnerável (fase 3 com escudo = chip damage via takeDamage)
+          if(e.canDamageHead() && m.hits(e)){
             if(m.hasHit.has(e) && m.pierce===0) continue;
             const died=e.takeDamage(m.damage);
             if(m.stun>0 && e.stunTimer!==undefined) e.stunTimer=Math.max(e.stunTimer||0, m.stun);
@@ -23209,7 +23859,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
             hit=true; target=e.leftHand;
           } else if(!e.rightHand.dead && !e.rightHand.invulnerable && circleRectCollide(f.x,f.y,f.size, e.rightHand.x-e.rightHand.w/2, e.rightHand.y-e.rightHand.h/2, e.rightHand.w, e.rightHand.h)){
             hit=true; target=e.rightHand;
-          } else if(!e.isHeadInvulnerable() && circleRectCollide(f.x,f.y,f.size, e.x-e.w/2, e.y-e.h/2, e.w, e.h)){
+          } else if(e.canDamageHead() && circleRectCollide(f.x,f.y,f.size, e.x-e.w/2, e.y-e.h/2, e.w, e.h)){
             hit=true; target=e;
           }
         } else {
@@ -23256,7 +23906,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
           if(e.type==='stair_boss'){
             if(!e.leftHand.dead && !e.leftHand.invulnerable && circleRectCollide(b.x,b.y,b.size, e.leftHand.x-e.leftHand.w/2, e.leftHand.y-e.leftHand.h/2, e.leftHand.w, e.leftHand.h)){ hit=true; target=e.leftHand; }
             else if(!e.rightHand.dead && !e.rightHand.invulnerable && circleRectCollide(b.x,b.y,b.size, e.rightHand.x-e.rightHand.w/2, e.rightHand.y-e.rightHand.h/2, e.rightHand.w, e.rightHand.h)){ hit=true; target=e.rightHand; }
-            else if(!e.isHeadInvulnerable() && circleRectCollide(b.x,b.y,b.size, e.x-e.w/2, e.y-e.h/2, e.w, e.h)){ hit=true; target=e; }
+            else if(e.canDamageHead() && circleRectCollide(b.x,b.y,b.size, e.x-e.w/2, e.y-e.h/2, e.w, e.h)){ hit=true; target=e; }
           } else {
             if(circleRectCollide(b.x,b.y,b.size+2, e.x-e.w/2, e.y-e.h/2, e.w, e.h)){ hit=true; target=e; }
           }
@@ -23300,7 +23950,9 @@ this.canvas.addEventListener('mousemove', (e)=>{
           // retornou ao jogador
           if(this.player.characterId==='jg'){
             this.player.returnBastao();
-            this.showToast('🏏 Bastão retornou!', 900);
+            // onda de energia no retorno: empurra e paralisa inimigos por 1.5s
+            const waveHits = spawnBastaoReturnWave(this, b.x, b.y);
+            this.showToast(waveHits>0 ? `🌊 Onda do Bastão! ${waveHits} inimigo(s) paralisado(s) 1.5s` : '🏏 Bastão retornou!', 1100);
             for(let k=0;k<10;k++) this.particles.push(new Particle(this.player.x,this.player.y, randRange(-1.2,1.2), randRange(-1.2,0.4), 220, '#facc15', 2));
             this.shake=Math.max(this.shake, 35);
           }
