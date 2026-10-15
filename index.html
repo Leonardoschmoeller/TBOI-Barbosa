@@ -7,6 +7,21 @@
   <link rel="stylesheet" href="style.css">
   <!-- Fonte pixel art via Google Fonts (opcional, fallback para monospace) -->
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <!-- Acessibilidade: aplica a escala salva ANTES da primeira pintura para não
+       piscar. O game.js (Settings) assume o controle assim que carrega. -->
+  <script>
+    (function () {
+      try {
+        var raw = JSON.parse(localStorage.getItem('cyberrequiem.settings.v1') || 'null');
+        var legacy = parseFloat(localStorage.getItem('cr_text_scale'));
+        var LEVELS = { 'minus':0.90, 'normal':1.05, 'plus':1.18, 'plus2':1.40 };
+        var v = (raw && raw.textLevel && LEVELS[raw.textLevel] != null)
+          ? LEVELS[raw.textLevel]
+          : (isFinite(legacy) && legacy > 0 ? legacy : 1.18);
+        document.documentElement.style.setProperty('--a11y-scale', String(v));
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
   <div id="app">
@@ -20,8 +35,14 @@
         </h1>
         <p class="menu-desc">Entre no mundo cibernético. Hackeie sistemas, neutralize vírus e sobreviva às salas corrompidas.</p>
         <div class="menu-buttons">
-          <button id="btnPlay" class="btn btn-primary">▶ JOGAR</button>
-          <button id="btnControls" class="btn btn-secondary">⌨ CONTROLES</button>
+          <button id="btnPlay" class="btn btn-primary" aria-label="Jogar">
+            <span class="btn-play-label"><i class="btn-play-arrow" aria-hidden="true">▶</i>JOGAR</span>
+            <img src="img/download__2_-removebg-preview.png" alt="" class="icone-btn">
+          </button>
+          <div class="menu-buttons-row">
+            <button id="btnControls" class="btn btn-secondary">⌨ CONTROLES</button>
+            <button id="btnSettings" class="btn btn-secondary">⚙ CONFIGURAÇÕES</button>
+          </div>
         </div>
         <p class="menu-footer">Cyber Requiem v6.1 • Programadores👤 + Boss Hacker • 6 Fases • Mineradora de Coins • HTML5 Canvas</p>
         <p class="menu-footer">FEITO POR LEONARDO <strong>SCHMOELLER</strong></p>
@@ -81,6 +102,65 @@
       <div class="bg-decoration"></div>
     </div>
 
+    <!-- CONFIGURAÇÕES / ACESSIBILIDADE -->
+    <div id="settingsScreen" class="screen">
+      <div class="panel settings-panel">
+        <div class="settings-head">
+          <h2>⚙ CONFIGURAÇÕES</h2>
+          <p class="settings-sub">Ajustes de leitura e acessibilidade. Salvos automaticamente neste navegador.</p>
+        </div>
+
+        <div class="settings-body">
+          <!-- Tamanho da letra: um único controle move menus, diálogos, HUD e pontuação -->
+          <section class="settings-group">
+            <div class="settings-group-head">
+              <span class="settings-group-icon" aria-hidden="true">🔠</span>
+              <div>
+                <h3 class="settings-group-title">TAMANHO DA LETRA</h3>
+                <p class="settings-group-desc">Aplica-se a todo o jogo de uma vez: menus, instruções, diálogos, HUD, pontuação e telas de vitória e derrota. A mudança é imediata.</p>
+              </div>
+            </div>
+            <div class="settings-size-row" role="group" aria-label="Tamanho da letra">
+              <button class="btn btn-size" data-size-level="0" type="button">A−</button>
+              <button class="btn btn-size" data-size-level="1" type="button">A</button>
+              <button class="btn btn-size" data-size-level="2" type="button">A+</button>
+              <button class="btn btn-size" data-size-level="3" type="button">A++</button>
+            </div>
+            <p class="settings-current">
+              Atual: <strong id="settingsSizeName">Grande</strong>
+            </p>
+            <p class="settings-preview" aria-hidden="true">
+              <span class="settings-preview-title">Prévia:</span>
+              Fase 2 • Sala 3,4 • 12 inimigos • Tempo 04:37
+            </p>
+            <button id="btnResetSize" class="btn btn-secondary settings-reset" type="button">↺ RESTAURAR TAMANHO PADRÃO</button>
+          </section>
+
+          <!-- Atalhos de teclado: mudar a letra sem largar o teclado -->
+          <section class="settings-group">
+            <div class="settings-group-head">
+              <span class="settings-group-icon" aria-hidden="true">⌨</span>
+              <div>
+                <h3 class="settings-group-title">ATALHOS RÁPIDOS</h3>
+                <p class="settings-group-desc">Funcionam em qualquer tela, inclusive durante a partida (com o jogo pausado).</p>
+              </div>
+            </div>
+            <ul class="settings-shortcuts">
+              <li><span class="settings-keys"><span class="key">CTRL</span><span class="key">+</span></span><span>Aumenta a letra</span></li>
+              <li><span class="settings-keys"><span class="key">CTRL</span><span class="key">−</span></span><span>Diminui a letra</span></li>
+              <li><span class="settings-keys"><span class="key">CTRL</span><span class="key">0</span></span><span>Restaura o tamanho padrão</span></li>
+            </ul>
+            <p class="settings-note">A preferência fica salva neste navegador: ela continua igual depois de fechar e abrir o jogo.</p>
+          </section>
+        </div>
+
+        <div class="settings-foot">
+          <span class="sr-only" role="status" aria-live="polite" id="settingsStatus"></span>
+          <button id="btnSettingsBack" class="btn btn-secondary" type="button">↩ VOLTAR AO MENU</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Tela de Seleção de Personagem - Menu Próprio -->
     <div id="characterScreen" class="screen">
       <div class="panel character-panel">
@@ -95,7 +175,7 @@
           <div class="char-card" data-char="jg" tabindex="0" role="button" aria-label="Selecionar JG">
             <div class="char-icon" style="color:#facc15">🏏</div>
             <div class="char-name">JG</div>
-            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥</span> <span style="color:#8a8198;font-size:10px">2 corações</span></div>
+            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥</span> <span style="color:#8a8198;font-size:0.8125rem">2 corações</span></div>
             <div class="char-weapon">🏏 Bastão • Casaco cinza</div>
             <p class="char-desc">2 ♥ • <b style="color:#facc15">Bastão exclusivo</b> — casaco cinza, camisa amarela que muda de cor ao arremessar, calça azul-escuro, sem boné. Rápido com bastão, lento sem. Arremesso giratório com dano na ida e na volta e reflete tiros inimigos.</p>
             <span class="char-badge jg">JG • ÁGIL • REFLETE</span>
@@ -103,63 +183,63 @@
           <div class="char-card" data-char="kinight" tabindex="0" role="button" aria-label="Selecionar Kinight">
             <div class="char-icon" style="color:#60a5fa">🛡️</div>
             <div class="char-name">Kinight</div>
-            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥</span> <span style="color:#8ecae6">♥</span> <span style="color:#8a8198;font-size:10px">3 + 1 cibernético</span></div>
+            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥</span> <span style="color:#8ecae6">♥</span> <span style="color:#8a8198;font-size:0.8125rem">3 + 1 cibernético</span></div>
             <div class="char-weapon">⚔️ Espada</div>
             <p class="char-desc">3 ♥ +1 ⚙ • <b style="color:#60a5fa">Só Espada</b> — armadura completa, não equipa outras armas.</p>
             <span class="char-badge kinight">KINIGHT • TANQUE</span>
           </div>
           <div class="char-card jl-card" data-char="jl" tabindex="0" role="button" aria-label="Selecionar JL">
             <div class="char-icon jl-icon" style="color:#ff6b9d"><span class="jl-67">67</span></div>
-            <div class="char-name">JL <span style="font-size:7px; letter-spacing:0.8px; color:#ff8fbc; background:rgba(255,107,157,0.16); border:1px solid rgba(255,107,157,0.28); padding:2px 5px; border-radius:999px; vertical-align:middle; margin-left:4px;">FARMAR</span></div>
-            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥</span> <span style="color:#8a8198;font-size:10px">3 corações</span> <span style="font-size:9px; color:#ff6b9d; background:rgba(255,107,157,0.12); border:1px solid rgba(255,107,157,0.22); padding:2px 6px; border-radius:999px;">EXCLUSIVO 67</span></div>
+            <div class="char-name">JL <span style="font-size:0.75rem; letter-spacing:0.8px; color:#ff8fbc; background:rgba(255,107,157,0.16); border:1px solid rgba(255,107,157,0.28); padding:2px 5px; border-radius:999px; vertical-align:middle; margin-left:4px;">FARMAR</span></div>
+            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥</span> <span style="color:#8a8198;font-size:0.8125rem">3 corações</span> <span style="font-size:0.8125rem; color:#ff6b9d; background:rgba(255,107,157,0.12); border:1px solid rgba(255,107,157,0.22); padding:2px 6px; border-radius:999px;">EXCLUSIVO 67</span></div>
             <div class="char-weapon"><span style="color:#ff6b9d; text-shadow:0 0 6px rgba(255,107,157,0.55)">◉ 67</span> Farmar Aura • Pistola</div>
             <p class="char-desc"><b style="color:#ff6b9d">Farmar Aura [E] 12s</b> cria <b>área 3.8s</b> que <b style="color:#ff8fbc">causa dano 1 a cada 420ms + empurra</b> inimigos. Aura segue você — 67 pulsante + setas de repulsão.</p>
             <div style="display:flex; gap:4px; flex-wrap:wrap; margin-top:6px;">
-              <span style="font-family:system-ui,sans-serif; font-size:9px; font-weight:800; color:#ff6b9d; background:rgba(255,107,157,0.14); border:1px solid rgba(255,107,157,0.24); padding:3px 6px; border-radius:999px;">155 RAIO</span>
-              <span style="font-family:system-ui,sans-serif; font-size:9px; font-weight:800; color:#ff8fbc; background:rgba(255,107,157,0.10); border:1px solid rgba(255,107,157,0.18); padding:3px 6px; border-radius:999px;">12s COOLDOWN</span>
-              <span style="font-family:system-ui,sans-serif; font-size:9px; font-weight:800; color:#fff; background:rgba(255,107,157,0.16); border:1px solid rgba(255,107,157,0.22); padding:3px 6px; border-radius:999px;">DANO EM ÁREA</span>
+              <span style="font-family:system-ui,sans-serif; font-size:0.8125rem; font-weight:800; color:#ff6b9d; background:rgba(255,107,157,0.14); border:1px solid rgba(255,107,157,0.24); padding:3px 6px; border-radius:999px;">155 RAIO</span>
+              <span style="font-family:system-ui,sans-serif; font-size:0.8125rem; font-weight:800; color:#ff8fbc; background:rgba(255,107,157,0.10); border:1px solid rgba(255,107,157,0.18); padding:3px 6px; border-radius:999px;">12s COOLDOWN</span>
+              <span style="font-family:system-ui,sans-serif; font-size:0.8125rem; font-weight:800; color:#fff; background:rgba(255,107,157,0.16); border:1px solid rgba(255,107,157,0.22); padding:3px 6px; border-radius:999px;">DANO EM ÁREA</span>
             </div>
             <span class="char-badge jl">JL • AURA 67 • NEON</span>
           </div>
           <div class="char-card" data-char="neutro" tabindex="0" role="button" aria-label="Selecionar Neutro">
             <div class="char-icon" style="color:#d1d5db">👤</div>
             <div class="char-name">Neutro</div>
-            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥</span> <span style="color:#8a8198;font-size:10px">3 corações</span></div>
+            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥</span> <span style="color:#8a8198;font-size:0.8125rem">3 corações</span></div>
             <div class="char-weapon"> Pistola</div>
             <p class="char-desc">3 ♥ • <b>Pistola padrão</b> — sem exclusivos, equilíbrio puro. Ideal para iniciantes, pode usar qualquer arma/upgrade.</p>
             <span class="char-badge neutro">NEUTRO • EQUILÍBRIO</span>
           </div>
           <div class="char-card oli-card" data-char="oli" tabindex="0" role="button" aria-label="Selecionar Oli">
             <div class="char-icon oli-icon" style="color:#a78bfa"><span class="oli-chess">♞</span></div>
-            <div class="char-name">Oli <span style="font-size:7px; letter-spacing:0.8px; color:#c4b5fd; background:rgba(167,139,250,0.16); border:1px solid rgba(167,139,250,0.28); padding:2px 5px; border-radius:999px; vertical-align:middle; margin-left:4px;">XADREZ</span></div>
-            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥</span> <span style="color:#8a8198;font-size:10px">3 corações</span> <span style="font-size:9px; color:#a78bfa; background:rgba(167,139,250,0.12); border:1px solid rgba(167,139,250,0.22); padding:2px 6px; border-radius:999px;">INVOCADOR</span></div>
+            <div class="char-name">Oli <span style="font-size:0.75rem; letter-spacing:0.8px; color:#c4b5fd; background:rgba(167,139,250,0.16); border:1px solid rgba(167,139,250,0.28); padding:2px 5px; border-radius:999px; vertical-align:middle; margin-left:4px;">XADREZ</span></div>
+            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥</span> <span style="color:#8a8198;font-size:0.8125rem">3 corações</span> <span style="font-size:0.8125rem; color:#a78bfa; background:rgba(167,139,250,0.12); border:1px solid rgba(167,139,250,0.22); padding:2px 6px; border-radius:999px;">INVOCADOR</span></div>
             <div class="char-weapon"><span style="color:#a78bfa; text-shadow:0 0 6px rgba(167,139,250,0.55)">♞</span> Xadrez • Pistola</div>
             <p class="char-desc"><b style="color:#a78bfa">Xadrez [E] 10s</b> ciclo <b>♜ Torre</b> cruz+investida, <b>♝ Bispo</b> diagonal ricochete, <b>♛ Rainha</b> atiradora, <b>♚ Rei</b> invoca 3×<b>♟ Peão</b> • Peão promove ♛ após 2 abates.</p>
             <div style="display:flex; gap:4px; flex-wrap:wrap; margin-top:6px;">
-              <span style="font-family:system-ui,sans-serif; font-size:9px; font-weight:800; color:#a78bfa; background:rgba(167,139,250,0.14); border:1px solid rgba(167,139,250,0.24); padding:3px 6px; border-radius:999px;">4 PEÇAS</span>
-              <span style="font-family:system-ui,sans-serif; font-size:9px; font-weight:800; color:#c4b5fd; background:rgba(167,139,250,0.10); border:1px solid rgba(167,139,250,0.18); padding:3px 6px; border-radius:999px;">10s COOLDOWN</span>
-              <span style="font-family:system-ui,sans-serif; font-size:9px; font-weight:800; color:#fff; background:rgba(167,139,250,0.16); border:1px solid rgba(167,139,250,0.22); padding:3px 6px; border-radius:999px;">INVOCAÇÃO</span>
+              <span style="font-family:system-ui,sans-serif; font-size:0.8125rem; font-weight:800; color:#a78bfa; background:rgba(167,139,250,0.14); border:1px solid rgba(167,139,250,0.24); padding:3px 6px; border-radius:999px;">4 PEÇAS</span>
+              <span style="font-family:system-ui,sans-serif; font-size:0.8125rem; font-weight:800; color:#c4b5fd; background:rgba(167,139,250,0.10); border:1px solid rgba(167,139,250,0.18); padding:3px 6px; border-radius:999px;">10s COOLDOWN</span>
+              <span style="font-family:system-ui,sans-serif; font-size:0.8125rem; font-weight:800; color:#fff; background:rgba(167,139,250,0.16); border:1px solid rgba(167,139,250,0.22); padding:3px 6px; border-radius:999px;">INVOCAÇÃO</span>
             </div>
             <span class="char-badge oli">OLI • ♜♝♛♚ • TÁTICO</span>
           </div>
           <div class="char-card" data-char="ash" tabindex="0" role="button" aria-label="Selecionar Ash">
             <div class="char-icon" style="color:#ff3b30">🪚</div>
             <div class="char-name">Ash</div>
-            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥</span> <span style="color:#8a8198;font-size:10px">3 corações</span></div>
+            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥</span> <span style="color:#8a8198;font-size:0.8125rem">3 corações</span></div>
             <div class="char-weapon">🪚 Motosserra</div>
             <p class="char-desc">3 ♥ • <b style="color:#ff3b30">Motosserra fixa</b> curto reto + cura • <b>Sem especiais</b> • <b>[E] troca arma</b> • Pode carregar +1 arma.</p>
             <span class="char-badge ash">ASH • SERRA</span>
           </div>
           <div class="char-card dev-card" data-char="dev" tabindex="0" role="button" aria-label="Selecionar Dev">
             <div class="char-icon dev-icon" style="color:#7af2ff">👓</div>
-            <div class="char-name">Dev <span style="font-size:7px; letter-spacing:0.8px; color:#b8d0ff; background:rgba(122,242,255,0.16); border:1px solid rgba(122,242,255,0.28); padding:2px 5px; border-radius:999px; vertical-align:middle; margin-left:4px;">CIENTISTA</span></div>
-            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥</span> <span style="color:#8a8198;font-size:10px">3 corações</span> <span style="font-size:9px; color:#7af2ff; background:rgba(122,242,255,0.12); border:1px solid rgba(122,242,255,0.22); padding:2px 6px; border-radius:999px;">LAZER COD.</span></div>
+            <div class="char-name">Dev <span style="font-size:0.75rem; letter-spacing:0.8px; color:#b8d0ff; background:rgba(122,242,255,0.16); border:1px solid rgba(122,242,255,0.28); padding:2px 5px; border-radius:999px; vertical-align:middle; margin-left:4px;">CIENTISTA</span></div>
+            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥</span> <span style="color:#8a8198;font-size:0.8125rem">3 corações</span> <span style="font-size:0.8125rem; color:#7af2ff; background:rgba(122,242,255,0.12); border:1px solid rgba(122,242,255,0.22); padding:2px 6px; border-radius:999px;">LAZER COD.</span></div>
             <div class="char-weapon"><span style="color:#7af2ff; text-shadow:0 0 6px rgba(122,242,255,0.55)">✦</span> Lazer Codificado • Jaleco branco</div>
             <p class="char-desc"><b style="color:#7af2ff">Lazer Codificado [Segure]</b> carrega até <b>100%</b> para disparar <b>retângulo Brimstone reto</b> com <b>ondulações</b> • Dano moderado • Alcance longo • <b style="color:#ffd8a8">Sobremesa</b> mini raios a cada <b>10%</b>.</p>
             <div style="display:flex; gap:4px; flex-wrap:wrap; margin-top:6px;">
-              <span style="font-family:system-ui,sans-serif; font-size:9px; font-weight:800; color:#7af2ff; background:rgba(122,242,255,0.14); border:1px solid rgba(122,242,255,0.24); padding:3px 6px; border-radius:999px;">CARGA 100%</span>
-              <span style="font-family:system-ui,sans-serif; font-size:9px; font-weight:800; color:#b8d0ff; background:rgba(122,242,255,0.10); border:1px solid rgba(122,242,255,0.18); padding:3px 6px; border-radius:999px;">MÉDIA DISTÂNCIA</span>
-              <span style="font-family:system-ui,sans-serif; font-size:9px; font-weight:800; color:#ffd8a8; background:rgba(255,216,168,0.14); border:1px solid rgba(255,216,168,0.22); padding:3px 6px; border-radius:999px;"></span>
+              <span style="font-family:system-ui,sans-serif; font-size:0.8125rem; font-weight:800; color:#7af2ff; background:rgba(122,242,255,0.14); border:1px solid rgba(122,242,255,0.24); padding:3px 6px; border-radius:999px;">CARGA 100%</span>
+              <span style="font-family:system-ui,sans-serif; font-size:0.8125rem; font-weight:800; color:#b8d0ff; background:rgba(122,242,255,0.10); border:1px solid rgba(122,242,255,0.18); padding:3px 6px; border-radius:999px;">MÉDIA DISTÂNCIA</span>
+              <span style="font-family:system-ui,sans-serif; font-size:0.8125rem; font-weight:800; color:#ffd8a8; background:rgba(255,216,168,0.14); border:1px solid rgba(255,216,168,0.22); padding:3px 6px; border-radius:999px;"></span>
             </div>
             <span class="char-badge dev">DEV • ÓCULOS • LAZER</span>
           </div>
@@ -170,7 +250,7 @@
             <input id="playerNameInput" class="player-name-input" type="text" maxlength="12" autocomplete="off" spellcheck="false" placeholder="ANÔNIMO">
           </label>
           <button id="btnCharBack" class="btn btn-secondary">↩ VOLTAR</button>
-          <button id="btnPlayChar" class="btn btn-primary" disabled>▶ JOGAR</button>
+          <button id="btnPlayChar" class="btn btn-primary" disabled>▶ JOGAR ></button>
           <span id="characterHint" class="character-hint">Selecione um personagem para começar</span>
         </div>
       </div>
@@ -294,7 +374,7 @@
               <span class="section-title">Personagens</span>
               <span class="section-badge">7 personagens</span>
             </summary>
-            <div class="characters-guide" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px;">
+            <div class="characters-guide">
               <div class="arsenal-card" style="border-color:rgba(250,204,21,0.22)">
                 <div class="arsenal-head"><span class="arsenal-name" style="color:#facc15">JG 🏏</span><span class="rarity-badge comum">2 ♥</span></div>
                 <div class="arsenal-stats"><span>4.45 vel</span><span>2.05 sem</span><span>BASTÃO</span></div>
@@ -416,7 +496,7 @@
               </div>
               <div class="enemy-card" style="border-color: rgba(255,183,0,0.22); background: linear-gradient(135deg, rgba(255,183,0,0.10), rgba(168,85,247,0.08));">
                 <span class="enemy-icon" style="background: linear-gradient(135deg, #ff6b9d, #ffcc00, #3b82f6, #ff3b30); border:1px solid #ffd700;">🐒</span>
-                <div><b>Bored Ape</b> <span style="font-size:8px; color:#ffd700; background:rgba(255,215,0,0.14); border:1px solid rgba(255,215,0,0.28); padding:1px 4px; border-radius:999px;">NFT • BAYC</span><span> Novo • 3 HP • Pulo ágil BAYC • 8 cores: rosa, amarelo, vermelho, azul, verde, roxo, laranja, ciano • Variações Tank/Brutal/Elite • Ref. Bored Ape Yacht Club</span></div>
+                <div><b>Bored Ape</b> <span style="font-size:0.75rem; color:#ffd700; background:rgba(255,215,0,0.14); border:1px solid rgba(255,215,0,0.28); padding:1px 4px; border-radius:999px;">NFT • BAYC</span><span> Novo • 3 HP • Pulo ágil BAYC • 8 cores: rosa, amarelo, vermelho, azul, verde, roxo, laranja, ciano • Variações Tank/Brutal/Elite • Ref. Bored Ape Yacht Club</span></div>
               </div>
               <div class="enemy-card" style="border-color: rgba(168,85,247,0.18); background: rgba(168,85,247,0.06);">
                 <span class="enemy-icon" style="background:#a78bfa">🎲</span>
@@ -467,7 +547,7 @@
               </div>
               <div class="phase-card p6 gold" style="border-color: rgba(255,183,0,0.32); background: linear-gradient(90deg, rgba(255,183,0,0.08), rgba(0,0,0,0.18));">
                 <span class="phase-num" style="color:#ffb700; background:#1a1500; border-color: rgba(255,183,0,0.32);">6</span>
-                <div><b>MINERADORA DE COINS</b><span>13-16 salas • Boss Hacker (Dark Vírus) • Bored Ape 🐒 <span style="font-size:8px; color:#ffd700; background:rgba(255,215,0,0.12); border:1px solid rgba(255,215,0,0.22); padding:1px 4px; border-radius:999px;">BAYC NFT</span> • Sala Setch 2× • Coins 💰</span></div>
+                <div><b>MINERADORA DE COINS</b><span>13-16 salas • Boss Hacker (Dark Vírus) • Bored Ape 🐒 <span style="font-size:0.75rem; color:#ffd700; background:rgba(255,215,0,0.12); border:1px solid rgba(255,215,0,0.22); padding:1px 4px; border-radius:999px;">BAYC NFT</span> • Sala Setch 2× • Coins 💰</span></div>
               </div>
             </div>
             <div class="phase-notes">
@@ -493,7 +573,7 @@
               <li><span class="tip-icon">◉</span> <span>Boss Fase 5: 1ª fase só cabeça toma dano. Em 50% cabeça fica <b>BLOQUEADA</b> — destrua as <b>2 mãos (16 HP cada)</b> para liberar.</span></li>
               <li><span class="tip-icon">⚡</span> <span>Boss avisa raio 950ms (linha amarela até o centro). Saia do centro! Mãos batem → 8 projéteis radiais.</span></li>
               <li><span class="tip-icon">⬆</span> <span>Upgrades por arma: colete no chão, aplica na hora e fica vinculado. Q troca mantém. Até 3 níveis.</span></li>
-              <li><span class="tip-icon">🐒</span> <span><span style="color:#ffd700">Bored Ape</span> <span style="font-size:8px; color:#ffd700; background:rgba(255,215,0,0.12); border:1px solid rgba(255,215,0,0.22); padding:1px 4px; border-radius:999px;">NFT • BAYC</span> — referência Bored Ape Yacht Club • 8 cores: rosa, amarelo, vermelho, azul, verde, roxo, laranja, ciano — pulo ágil, 3 HP, aparece em várias fases.</span></li>
+              <li><span class="tip-icon">🐒</span> <span><span style="color:#ffd700">Bored Ape</span> <span style="font-size:0.75rem; color:#ffd700; background:rgba(255,215,0,0.12); border:1px solid rgba(255,215,0,0.22); padding:1px 4px; border-radius:999px;">NFT • BAYC</span> — referência Bored Ape Yacht Club • 8 cores: rosa, amarelo, vermelho, azul, verde, roxo, laranja, ciano — pulo ágil, 3 HP, aparece em várias fases.</span></li>
               <li><span class="tip-icon">🎲</span> <span><span style="color:#a78bfa">Sala Setch</span> 2× tamanho — Fase 5/6 • <b>portas sempre abertas</b> (dá para entrar, ignorar tudo e sair) • 4 NPCs: Setch (copinhos), Indiana (Chicote 100%), JL (passivo IO-IO) e Oli (Xadrez). <span style="color:#ffd700">Os presentes ficam largados no CHÃO</span>: <b>Chicote</b> e <b>Xadrez</b> você pega com <b>[Q]</b>/<b>[E]</b> perto, e o <b>IO-IO</b> é automático ao encostar — nada é equipado na hora. Copinhos em <b>3 rodadas</b> (5 → 8 → 12 trocas, cada uma mais rápida, com trocas em par nas últimas): memorize a bolinha, escolha 1/2/3, clique ou [E] perto do copo, dentro do anel de contagem (ele congela se você sair da mesa). Resposta rápida cura 1 coração e acertos seguidos aumentam o prêmio final (upgrade, Vida Cibernética ou 💾 <span style="color:#4ade80">Disquete da Vida</span>).</span></li>
               <li><span class="tip-icon">🤠</span> <span><span style="color:#d2a679">Chicote do Indiana</span> — <b>Toque</b> abre um golpe médio (124px, arco de 88°) que para na parede. <b>Segure</b> para o carregado: a ponta voa até a parede, puxa você e explode (atordoa 1.5s). <span style="color:#4ade80">Durante o puxão você fica invencível</span> (voo + trajeto + impacto), porque o movimento fica travado e não dava para reagir. Errar o chicote no ar dá só uma proteção curta.</span></li>
               <li><span class="tip-icon">💰</span> <span><span style="color:#ffb700">Mineradora Fase 6</span> 13-16 salas • Boss Hacker final (Dark Vírus) com 4 fases • Coins douradas no chão • Variações Tank/Brutal.</span></li>
@@ -558,11 +638,23 @@
           <span class="pause-stat"><span class="pause-stat-label">Arma</span><span id="pauseWeapon" class="pause-stat-value">NORMAL</span></span>
           <span class="pause-stat"><span class="pause-stat-label">Inimigos</span><span id="pauseEnemies" class="pause-stat-value">0</span></span>
         </div>
+        <!-- Acessibilidade dentro da partida: mesmo controle de letra das configurações -->
+        <div class="pause-a11y">
+          <span class="pause-a11y-label" id="pauseSizeLabel">TAMANHO DA LETRA</span>
+          <div class="settings-size-row pause-size-row" role="group" aria-labelledby="pauseSizeLabel">
+            <button class="btn btn-size" data-size-level="0" type="button">A−</button>
+            <button class="btn btn-size" data-size-level="1" type="button">A</button>
+            <button class="btn btn-size" data-size-level="2" type="button">A+</button>
+            <button class="btn btn-size" data-size-level="3" type="button">A++</button>
+          </div>
+          <span class="pause-a11y-value">Atual: <strong id="pauseSizeName">A+ — Grande</strong></span>
+        </div>
         <div class="pause-buttons">
           <button id="btnResume" class="btn btn-primary">▶ CONTINUAR (ESC)</button>
           <button id="btnRestartFloor" class="btn btn-secondary">⟳ REINICIAR FASE (mantém itens)</button>
           <button id="btnRestartRun" class="btn btn-secondary">↻ REINICIAR PARTIDA</button>
           <button id="btnPauseControls" class="btn btn-secondary">⌨ CONTROLES</button>
+          <button id="btnPauseSettings" class="btn btn-secondary">⚙ CONFIGURAÇÕES</button>
           <button id="btnPauseMenu" class="btn btn-secondary">☰ MENU PRINCIPAL</button>
         </div>
         <details class="controls-section pause-collected-section" open>
@@ -581,6 +673,7 @@
     </div>
   </div> 
   
+
   <script src="game.js"></script>
 </body>
 </html>

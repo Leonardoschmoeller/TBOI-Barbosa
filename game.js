@@ -26,6 +26,38 @@ const HUD_DOOR_PAD = 14;                                  // margem livre ao red
 const HUD_LEFT_MAX = CANVAS_W/2 - DOOR_W/2 - HUD_DOOR_PAD; // x máximo do painel esquerdo (não invade a porta)
 const HUD_RIGHT_MIN = CANVAS_W/2 + DOOR_W/2 + HUD_DOOR_PAD; // x mínimo do painel direito
 const HUD_BTN = { x: CANVAS_W-34, y: 3, w: 26, h: 18 };  // botão de pausa (clique) + rótulo ESC
+// ===== ESCALA TIPOGRÁFICA DO HUD (acessibilidade) =====
+// O HUD é desenhado no canvas, então não responde ao --a11y-scale do CSS.
+// HUD_FS é o mesmo multiplicador que as telas DOM usam: 1 = tamanho original.
+// Todo font/medida do HUD passa por hudFont()/hudFitText() e pelas constantes
+// `k` das funções de desenho, então A-/A/A+/A++ vale no HUD como no resto.
+let HUD_FS = 1;
+function setHudFontScale(v){
+  const n = parseFloat(v);
+  HUD_FS = (isFinite(n) && n > 0) ? Math.min(2, Math.max(0.75, n)) : 1;
+}
+function hudFont(size, family){
+  return (size*HUD_FS).toFixed(2) + 'px ' + (family || '"Press Start 2P"');
+}
+// fitText() com a escala do HUD já aplicada (ele trabalha em px crus).
+function hudFitText(ctx, text, maxW, size, family, minFont){
+  const min = (minFont == null ? 3.5 : minFont) * HUD_FS;
+  return fitText(ctx, text, maxW, size*HUD_FS, family, min);
+}
+// Escolhe o MAIOR corpo de dois candidatos em que o texto cabe em maxW.
+// Usado quando dois rótulos dividem a mesma linha: sem o piso `small`, o primeiro
+// que não cabia encolhia 0,5px por vez e ficava MENOR que o vizinho — medido no
+// painel do especial [E], o nome saía com 6,5px e o status com 7,0px.
+// Se nem no menor corpo couber, corta com reticências em vez de encolher mais.
+function hudFitPick(ctx, text, maxW, big, small, family){
+  ctx.font = hudFont(big, family);
+  if(ctx.measureText(text).width <= maxW) return { size:big, text };
+  ctx.font = hudFont(small, family);
+  if(ctx.measureText(text).width <= maxW) return { size:small, text };
+  let t = String(text);
+  while(t.length > 1 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1);
+  return { size:small, text: t + '…' };
+}
 const PLAYER_SIZE = 24;
 const PLAYER_SPEED = 3.0;
 const JL_SPEED_FACTOR = 0.89;       // JL ~11% mais lento que base (um pouco mais lento conforme pedido)
@@ -2017,7 +2049,7 @@ const UPGRADE_DEFS = [
   }},
   // Especial incomum: Circuito Ágil - reduz recarga de itens especiais
   { id:'especial_incomum_recarga', weapon:'ALL', compatible:['ALL'], rarity:'INCOMUM', name:'Circuito Ágil', desc:'-10% recarga itens especiais', maxLevel:3, levelValues:[0.10,0.20,0.30], apply:(w, level)=>{ /* efeito via Player.addUpgrade: reduz cooldown de E */ }},
-  // ===== DEV - LAZER CODIFICADO (Brimstone) - Sistema modular de upgrades =====
+  // ===== DEV -  CODIFICADO (Brimstone) - Sistema modular de upgrades =====
   // Cada upgrade altera características distintas do Lazer Codificado. Modular: basta add novo objeto aqui.
   { id:'raio_mat_comum_carga', weapon:'RAIO_MATEMATICO', rarity:'COMUM', name:'Cálculo Acelerado', desc:'-15% tempo de carregamento', apply:(w)=>{
       const base=RAIO_MATEMATICO_CHARGE_TIME;
@@ -4484,6 +4516,79 @@ const Records = {
     try{ localStorage.setItem(PLAYER_NAME_KEY, n); }catch(e){}
     return n;
   },
+};
+
+// ===================== CONFIGURAÇÕES / ACESSIBILIDADE =====================
+// Um único controle de tamanho de letra move o jogo inteiro de uma vez:
+//   - telas DOM (menus, diálogos, instruções, vitória/derrota) via --a11y-scale no <html>
+//   - HUD desenhado no canvas via HUD_FS (mesmo multiplicador)
+// Grava em localStorage, então a preferência sobrevive a reiniciar/fechar o jogo.
+// As chaves antigas (cr_text_scale) ainda são lidas para não perder quem já tinha usado.
+const SETTINGS_KEY = 'cyberrequiem.settings.v1';
+const LEGACY_TEXT_SCALE_KEY = 'cr_text_scale';
+const Settings = {
+  LEVELS: [
+    { id:'minus', rotulo:'A−',  escala:0.90, desc:'Menor'   },
+    { id:'normal',rotulo:'A',   escala:1.05, desc:'Padrão'  },
+    { id:'plus',  rotulo:'A+',  escala:1.18, desc:'Grande'  },
+    { id:'plus2', rotulo:'A++', escala:1.40, desc:'Enorme'  },
+  ],
+  DEFAULT: 2,                 // o projeto já nasce em "Grande" (1.18)
+  level: 2,
+  _subs: [],
+
+  onChange(fn){ this._subs.push(fn); return this; },
+  _emit(){ for(const f of this._subs){ try{ f(this.level, this.current()); }catch(e){ console.error('Settings.onChange', e); } } },
+  current(){ return this.LEVELS[this.level]; },
+
+  // Aceita tanto o id ("plus") quanto o número do nível, para chamadas simples.
+  setById(id){
+    const i = this.LEVELS.findIndex(l => l.id === id);
+    if(i >= 0) this.set(i);
+  },
+
+  load(){
+    let id = null;
+    try{
+      const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
+      if(raw && typeof raw === 'object' && typeof raw.textLevel === 'string') id = raw.textLevel;
+    }catch(e){}
+    if(!id){
+      // Migração: quem usava o controle antigo (escala numérica) mantém a faixa.
+      try{
+        const legacy = parseFloat(localStorage.getItem(LEGACY_TEXT_SCALE_KEY));
+        if(isFinite(legacy) && legacy > 0){
+          const i = this.LEVELS.findIndex(l => Math.abs(l.escala - legacy) < 0.01);
+          id = i >= 0 ? this.LEVELS[i].id
+             : (legacy > 1.3 ? 'plus2' : legacy > 1.1 ? 'plus' : legacy < 0.95 ? 'minus' : 'normal');
+        }
+      }catch(e){}
+    }
+    const i = this.LEVELS.findIndex(l => l.id === id);
+    this.level = i >= 0 ? i : this.DEFAULT;
+    this.apply();
+    return this;
+  },
+
+  apply(){
+    const l = this.current();
+    if(typeof document !== 'undefined' && document.documentElement){
+      document.documentElement.style.setProperty('--a11y-scale', String(l.escala));
+    }
+    setHudFontScale(l.escala);
+    this._emit();
+  },
+
+  set(i){
+    i = Math.max(0, Math.min(this.LEVELS.length - 1, i | 0));
+    if(i === this.level) return this.level;
+    this.level = i;
+    this.apply();
+    try{ localStorage.setItem(SETTINGS_KEY, JSON.stringify({ textLevel: this.LEVELS[i].id })); }catch(e){}
+    return this.level;
+  },
+  bump(d){ return this.set(this.level + d); },
+  reset(){ return this.set(this.DEFAULT); },
 };
 
 // ===================== INPUT HANDLER =====================
@@ -17931,16 +18036,7 @@ class Room {
         tryPlace(it);
       }
     }
-     // ===== LASER - nova arma carregável com timing (média-rara) =====
-    // Spawn balanceado: 3.8% normal, 7.5% treasure - média-rara para testar mecânica sem flood
-    const laserChance = this.type==='treasure' ? 0.075 : 0.038;
-    if(rng() < laserChance && !this.isRare && !this.isMiniboss && !this.isBossStair && !this.isHacker && !this.isPartyHorde && this.items.length < 4){
-      if(!this.items.some(it=> it.weaponType && it.weaponType.toLowerCase()==='laser')){
-        const it=new WeaponItem(randRange(140, CANVAS_W-140), randRange(100, CANVAS_H-100), 'laser');
-        it.spawnDelay=200;
-        tryPlace(it);
-      }
-    }
+     // LASER REMOVIDA - spawn retirado, mecânica vive no LAZER CODIFICADO
      // ===== CHICOTE DO INDIANA - RARO mas aparece em todas fases (requisito) =====
      // Pode aparecer em qualquer fase (1-6), mas raro: 2.5% normal / 5.5% tesouro (balanceado)
      // Na Sala Setch é garantido 100% via Indiana NPC, então este spawn é para o resto do mapa
@@ -21332,6 +21428,7 @@ class Game {
     this.characterScreen = document.getElementById('characterScreen');
     this.gameOverScreen = document.getElementById('gameOverScreen');
     this.pauseScreen = document.getElementById('pauseScreen');
+    this.settingsScreen = document.getElementById('settingsScreen');
     this.gameContainer = document.getElementById('gameContainer');
     this.toast = document.getElementById('toast');
     this.swapHint = document.getElementById('swapHint');
@@ -21424,6 +21521,7 @@ class Game {
     document.getElementById('btnGoMenu').addEventListener('click', ()=> this.goMenu());
     document.getElementById('btnControls').addEventListener('click', ()=> this.showControls());
     document.getElementById('btnBackMenu').addEventListener('click', ()=> this.hideControls());
+    this.bindSettingsUI();
     // Nome do jogador (vai para as tabelas de recordes)
     if(this.nameInput){
       const commitName = ()=>{
@@ -21462,6 +21560,13 @@ class Game {
       this.showControls();
     });
     document.getElementById('btnPauseMenu').addEventListener('click', ()=> { this.hidePause(); this.goMenu(); });
+    // CONFIGURAÇÕES a partir da pausa: permite mudar a letra (e demais ajustes)
+    // no meio da partida. showSettings('pause') guarda a origem para o VOLTAR.
+    const btnPauseSettings=document.getElementById('btnPauseSettings');
+    if(btnPauseSettings) btnPauseSettings.addEventListener('click', ()=>{
+      if(this.state==='PAUSED') this.pauseScreen.classList.remove('active');
+      this.showSettings('pause');
+    });
     window.addEventListener('keydown', (e)=>{
       // PAINEL CENTRAL: com o terminal aberto, ESC fecha o terminal e P não pausa
       if(this.painelTerminalOpen){
@@ -21531,6 +21636,82 @@ this.canvas.addEventListener('mousemove', (e)=>{
       this.menuScreen.classList.add('active');
     }
   }
+  // ===== CONFIGURAÇÕES =====
+  // Liga os botões A-/A/A+/A++ ao Settings e mantém o painel em dia a cada mudança.
+  bindSettingsUI(){
+    const self = this;
+    const btn = document.getElementById('btnSettings');
+    if(btn) btn.addEventListener('click', ()=> self.showSettings());
+    const back = document.getElementById('btnSettingsBack');
+    if(back) back.addEventListener('click', ()=> self.hideSettings());
+    const reset = document.getElementById('btnResetSize');
+    if(reset) reset.addEventListener('click', ()=> Settings.reset());
+    // Um único listener para os 4 botões: o nível vem do data-size-level.
+    this._sizeButtons = [...document.querySelectorAll('[data-size-level]')];
+    for(const b of this._sizeButtons){
+      b.addEventListener('click', ()=>{
+        const lv = parseInt(b.getAttribute('data-size-level'), 10);
+        if(!isNaN(lv)) Settings.set(lv);
+      });
+    }
+    // Enquanto o painel está aberto, qualquer mudança reflete aqui na hora.
+    Settings.onChange((lv, nivel)=> self.renderSettings(lv, nivel));
+    // Atalhos: CTRL/CMD + (+ | - | 0) mudam o tamanho da letra em qualquer tela,
+    // inclusive no meio da partida — que é quando mais importa quem tem baixa visão.
+    window.addEventListener('keydown', (e)=>{
+      if(!(e.ctrlKey || e.metaKey)) return;
+      const tag = (e.target && e.target.tagName) || '';
+      if(tag==='INPUT' || tag==='TEXTAREA') return;     // não mexe em quem está digitando
+      const k = e.key;
+      if(k==='+' || k==='='){ Settings.bump(1);  e.preventDefault(); }
+      else if(k==='-' || k==='_'){ Settings.bump(-1); e.preventDefault(); }
+      else if(k==='0'){ Settings.reset();     e.preventDefault(); }
+    });
+    this.renderSettings(Settings.level, Settings.current());
+  }
+  renderSettings(level, nivel){
+    if(this._sizeButtons){
+      for(const b of this._sizeButtons){
+        const on = parseInt(b.getAttribute('data-size-level'), 10) === level;
+        b.classList.toggle('is-active', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      }
+    }
+    const name = document.getElementById('settingsSizeName');
+    if(name) name.textContent = `${nivel.rotulo} — ${nivel.desc}`;
+    // O menu de pausa mostra o mesmo rótulo: os dois precisam concordar.
+    const pauseName = document.getElementById('pauseSizeName');
+    if(pauseName) pauseName.textContent = `${nivel.rotulo} — ${nivel.desc}`;
+    const st = document.getElementById('settingsStatus');
+    if(st) st.textContent = `Tamanho da letra: ${nivel.rotulo}, ${nivel.desc}.`;
+  }
+  // Configurações pode vir do menu ou da pausa: guardamos de onde veio para o
+  // botão VOLTAR devolver o jogador para a tela certa (antes voltava ao menu
+  // principal mesmo quando o painel tinha sido aberto no meio da partida).
+  showSettings(from){
+    if(!this.settingsScreen) return;
+    this._settingsReturn = (from === 'pause') ? 'pause' : 'menu';
+    for(const s of [this.pauseScreen, this.controlsScreen, this.characterScreen, this.gameOverScreen]){
+      if(s && s !== this.settingsScreen) s.classList.remove('active');
+    }
+    this.settingsScreen.classList.add('active');
+    const back = document.getElementById('btnSettingsBack');
+    if(back) back.textContent = this._settingsReturn === 'pause' ? '↩ VOLTAR AO PAUSA' : '↩ VOLTAR AO MENU';
+    this.renderSettings(Settings.level, Settings.current());
+    const first = this.settingsScreen.querySelector('.btn-size.is-active') || this.settingsScreen.querySelector('.btn-size');
+    if(first && first.focus) first.focus();
+  }
+  hideSettings(){
+    if(!this.settingsScreen) return;
+    this.settingsScreen.classList.remove('active');
+    if(this._settingsReturn === 'pause' && this.pauseScreen){
+      this.pauseScreen.classList.add('active');
+    } else {
+      this.menuScreen.classList.add('active');
+    }
+    this._settingsReturn = 'menu';
+  }
+
   showControls(){
     // Atualiza loadout dinâmico antes de mostrar
     this.updateControlsLoadout();
@@ -21894,6 +22075,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
     this.menuScreen.classList.add('active');
     if(this.characterScreen) this.characterScreen.classList.remove('active');
     if(this.controlsScreen) this.controlsScreen.classList.remove('active');
+    if(this.settingsScreen) this.settingsScreen.classList.remove('active');
     this.gameContainer.classList.remove('phase2');
     this.gameContainer.classList.remove('phase3');
     this.gameContainer.classList.remove('phase4');
@@ -23011,7 +23193,6 @@ this.canvas.addEventListener('mousemove', (e)=>{
     else if(nl==='luva' || nl==='luva_foguete') wKey='LUVA';
     else if(nl==='bastao') wKey='BASTAO';
     else if(nl==='motosserra') wKey='MOTOSSERRA';
-    else if(nl==='laser') wKey='LASER';
     else if(nl==='chicote' || nl==='chicote_do_indiana') wKey='CHICOTE';
     else if(nl==='raio_matematico') wKey='RAIO_MATEMATICO';
     else wKey='NORMAL';
@@ -23161,7 +23342,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
 
     // partículas e toast
     this.showToast(`↔ ${oldName} → ${newWeapon.name} [Q]`, 1300);
-    const col = newWeapon.name==='RAIO'?'#00e5ff': newWeapon.name==='RAIO_MATEMATICO'?'#7af2ff': newWeapon.name==='LASER'?'#ff1a2e': newWeapon.name==='METRALHADORA'?'#ff3b30': newWeapon.name==='CARREGADA'?'#a78bfa': newWeapon.name==='SHOTGUN'?'#ff8c42': newWeapon.name==='ESPADA'?'#e8e8e8': newWeapon.name==='LUVA'?'#ff3b30': newWeapon.name==='MOTOSSERRA'?'#ff3b30': newWeapon.name==='BASTAO'?'#facc15': newWeapon.name==='CHICOTE'?'#8b4513':'#ffeb3b';
+    const col = newWeapon.name==='RAIO'?'#00e5ff': newWeapon.name==='RAIO_MATEMATICO'?'#7af2ff': newWeapon.name==='METRALHADORA'?'#ff3b30': newWeapon.name==='CARREGADA'?'#a78bfa': newWeapon.name==='SHOTGUN'?'#ff8c42': newWeapon.name==='ESPADA'?'#e8e8e8': newWeapon.name==='LUVA'?'#ff3b30': newWeapon.name==='MOTOSSERRA'?'#ff3b30': newWeapon.name==='BASTAO'?'#facc15': newWeapon.name==='CHICOTE'?'#8b4513':'#ffeb3b';
     for(let k=0;k<10;k++) this.particles.push(new Particle(this.player.x, this.player.y, randRange(-1.9,1.9), randRange(-1.9,0.7), 300, col, 2));
     for(let k=0;k<8;k++) this.particles.push(new Particle(nearby.x, nearby.y, randRange(-1.5,1.5), randRange(-1.5,0.8), 320, '#ffffff', 2));
     return true;
@@ -24858,15 +25039,27 @@ this.canvas.addEventListener('mousemove', (e)=>{
       this.drawMinimap(ctx);
       ctx.restore();
       
-      if(this.currentRoom.isRare){
-        ctx.fillStyle='rgba(255,215,0,0.95)'; ctx.font='7px "Press Start 2P"'; ctx.textAlign='center';
-        ctx.fillText('★ SALA RARA ★', CANVAS_W/2, CANVAS_H - 14); ctx.textAlign='left';
-      } else if(!this.currentRoom.isCleared()){
-        ctx.fillStyle='rgba(255,59,48,0.9)'; ctx.font='8px "Press Start 2P"'; ctx.textAlign='center'; ctx.fillText('DERROTE OS INIMIGOS PARA ABRIR', CANVAS_W/2, CANVAS_H - 14); ctx.textAlign='left';
-      } else if(this.currentRoom.exitPortal && this.currentRoom.exitPortal.active){
-        ctx.fillStyle='rgba(255,204,0,0.92)'; ctx.font='7px "Press Start 2P"'; ctx.textAlign='center';
-        const txt = this.floor===1 ? '⬇ ESCADA PARA FASE 2' : this.floor===2 ? '⬇ ESCADA PARA FASE 3' : '⬇ SAÍDA LIBERADA! FUJA!';
-        ctx.fillText(txt, CANVAS_W/2, CANVAS_H - 14); ctx.textAlign='left';
+      // Faixa de aviso do rodapé: acompanha a escala do HUD e ganha placa de fundo,
+      // senão o texto flutuava direto no mapa e sumia sobre chão claro.
+      if(this.currentRoom.isRare || !this.currentRoom.isCleared() ||
+         (this.currentRoom.exitPortal && this.currentRoom.exitPortal.active)){
+        const bTxt = this.currentRoom.isRare ? '★ SALA RARA ★'
+          : !this.currentRoom.isCleared() ? 'DERROTE OS INIMIGOS PARA ABRIR'
+          : (this.floor===1 ? '⬇ ESCADA PARA FASE 2' : this.floor===2 ? '⬇ ESCADA PARA FASE 3' : '⬇ SAÍDA LIBERADA! FUJA!');
+        const bCol = this.currentRoom.isRare ? 'rgba(255,215,0,0.98)'
+          : !this.currentRoom.isCleared() ? 'rgba(255,110,100,0.98)'
+          : 'rgba(255,214,80,0.98)';
+        ctx.font = hudFont(8);
+        ctx.textAlign='center';
+        const bw = ctx.measureText(bTxt).width + 20*HUD_FS;
+        const bh = 8*HUD_FS + 8;
+        const bx = CANVAS_W/2 - bw/2, by = CANVAS_H - 14 - bh;
+        roundRectPath(ctx, bx, by, bw, bh, 6);
+        ctx.fillStyle='rgba(8,8,16,0.80)'; ctx.fill();
+        ctx.strokeStyle='rgba(255,255,255,0.14)'; ctx.lineWidth=1; ctx.stroke();
+        ctx.fillStyle=bCol;
+        ctx.fillText(bTxt, CANVAS_W/2, CANVAS_H - 14);
+        ctx.textAlign='left';
       }
       const grad=ctx.createRadialGradient(CANVAS_W/2,CANVAS_H/2, CANVAS_W*0.4, CANVAS_W/2,CANVAS_H/2, CANVAS_W*0.9);
       grad.addColorStop(0,'rgba(0,0,0,0)'); grad.addColorStop(1, theme.vignette); ctx.fillStyle=grad; ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
@@ -24954,28 +25147,32 @@ this.canvas.addEventListener('mousemove', (e)=>{
   drawHudTopBar(ctx){
     const p = this.player;
     if(!p) return;
-    const top = 2, ph = HUD_BAR_H - 4;              // painel cabe inteiro dentro da parede
-    const zoneR = HUD_LEFT_MAX - 6;                // nunca cruza a janela livre da porta
+    const k = HUD_FS;                         // escala de acessibilidade do HUD
+    const top = 2, ph = HUD_BAR_H - 4;        // painel cabe inteiro dentro da parede
+    const zoneR = HUD_LEFT_MAX - 6;            // nunca cruza a janela livre da porta
     const n = Math.max(1, Math.ceil(p.maxHp/2));
-    const hSize = 15, hGap = 20, hX = 10, hY = 4;
+    // corações e slots crescem junto com a letra: são indicador, não decoração.
+    // Teto em ph-4: acima disso a moldura de vida baixa (hY-1 .. hY+hSize+2)
+    // invadia o chão — medido, com A++ o quadro vermelho sangrava 2,5px na parede.
+    const hSize = Math.min(15*k, ph - 4), hGap = Math.min(20*k, hSize + 5*k), hX = 10, hY = top + (ph - hSize)/2;
     const heartsW = (n-1)*hGap + hSize;
     const hpPct = p.maxHp>0 ? p.hp/p.maxHp : 0;
     // --- layout (medido antes de pintar, para o painel sair do tamanho certo) ---
     const conts = p.continues|0;
-    const badgeW = conts > 0 ? 17 + String(conts).length*7 : 0;
+    const badgeW = conts > 0 ? (17 + String(conts).length*7)*k : 0;
     const state = this.getWeaponHudState();
-    const slotW = state ? 62 : 0;
+    const slotW = state ? 62*k : 0;
     const slotX = zoneR - slotW;
     // Leitura numérica da vida: sem ela é preciso contar meios-corações no olho.
     const hpTxt = `${Math.ceil(p.hp)}/${p.maxHp}`;
-    ctx.font = '5px "Press Start 2P"';
-    const hpTxtW = Math.ceil(ctx.measureText(hpTxt).width) + 8;
-    const hpX = hX + heartsW + 5;
-    const badgeX = hpX + hpTxtW + 5;
-    const labelX = badgeX + (badgeW ? badgeW + 6 : 0);
-    const labelMax = Math.max(16, (state ? slotX - 8 : zoneR) - labelX);
+    ctx.font = hudFont(6);
+    const hpTxtW = Math.ceil(ctx.measureText(hpTxt).width) + 8*k;
+    const hpX = hX + heartsW + 5*k;
+    const badgeX = hpX + hpTxtW + 5*k;
+    const labelX = badgeX + (badgeW ? badgeW + 6*k : 0);
+    const labelMax = Math.max(16, (state ? slotX - 8*k : zoneR) - labelX);
     const wn = p.weapon ? p.weapon.name : 'NORMAL';
-    const wBase = wn==='SHOTGUN' ? 'SHOTGUN [5x]' : wn==='RAIO' ? 'RAIO ⚡ [pierce]' : wn==='RAIO_MATEMATICO' ? 'LAZER COD. [brimstone]' : wn==='LASER' ? 'LASER ◉ [carga]' : wn==='CARREGADA' ? 'CARREGADA [carga]' : wn==='BAZUCA' ? 'BAZUCA 💥 [área]' : wn==='METRALHADORA' ? 'METRALHADORA [temp]' : wn==='ESPADA' ? 'ESPADA ⚔️ [combo]' : wn==='LUVA' ? 'LUVA 🥊 x2 [dual]' : wn==='MOTOSSERRA' ? 'MOTOSSERRA 🪚 [carga]' : wn==='BASTAO' ? 'BASTÃO 🏏 [gira]' : wn==='CHICOTE' ? 'CHICOTE [carga]' : 'NORMAL';
+    const wBase = wn==='SHOTGUN' ? 'SHOTGUN [5x]' : wn==='RAIO' ? 'RAIO ⚡ [pierce]' : wn==='RAIO_MATEMATICO' ? 'LAZER COD. [brimstone]' : wn==='CARREGADA' ? 'CARREGADA [carga]' : wn==='BAZUCA' ? 'BAZUCA 💥 [área]' : wn==='METRALHADORA' ? 'METRALHADORA [temp]' : wn==='ESPADA' ? 'ESPADA ⚔️ [combo]' : wn==='LUVA' ? 'LUVA 🥊 x2 [dual]' : wn==='MOTOSSERRA' ? 'MOTOSSERRA 🪚 [carga]' : wn==='BASTAO' ? 'BASTÃO 🏏 [gira]' : wn==='CHICOTE' ? 'CHICOTE [carga]' : 'NORMAL';
     const extras = [];
     if(p.hasFlameTrail) extras.push('🔥');
     if(p._hasSwiftBoots) extras.push('💨');
@@ -24986,17 +25183,19 @@ this.canvas.addEventListener('mousemove', (e)=>{
     if(p.hasJoestarTechnique) extras.push('✴');
     let sec = null;
     if(p.secondaryWeapon) sec = (p.weapon === p.primaryWeapon ? p.secondaryWeapon.name : p.primaryWeapon.name);
-    const wColor = wn==='SHOTGUN' ? 'rgba(255,140,66,0.95)' : wn==='RAIO' ? 'rgba(0,229,255,0.95)' : wn==='RAIO_MATEMATICO' ? 'rgba(184,255,251,0.96)' : wn==='LASER' ? 'rgba(255,26,46,0.96)' : wn==='CARREGADA' ? 'rgba(167,139,250,0.95)' : wn==='BAZUCA' ? 'rgba(255,59,48,0.95)' : wn==='METRALHADORA' ? 'rgba(255,59,48,0.95)' : wn==='ESPADA' ? 'rgba(220,220,230,0.95)' : wn==='LUVA' ? 'rgba(255,60,60,0.95)' : wn==='MOTOSSERRA' ? 'rgba(255,42,26,0.96)' : wn==='BASTAO' ? 'rgba(250,204,21,0.95)' : wn==='CHICOTE' ? 'rgba(194,138,82,0.95)' : 'rgba(255,235,59,0.9)';
+    const wColor = wn==='SHOTGUN' ? 'rgba(255,140,66,0.95)' : wn==='RAIO' ? 'rgba(0,229,255,0.95)' : wn==='RAIO_MATEMATICO' ? 'rgba(184,255,251,0.96)' : wn==='CARREGADA' ? 'rgba(167,139,250,0.95)' : wn==='BAZUCA' ? 'rgba(255,59,48,0.95)' : wn==='METRALHADORA' ? 'rgba(255,59,48,0.95)' : wn==='ESPADA' ? 'rgba(220,220,230,0.95)' : wn==='LUVA' ? 'rgba(255,60,60,0.95)' : wn==='MOTOSSERRA' ? 'rgba(255,42,26,0.96)' : wn==='BASTAO' ? 'rgba(250,204,21,0.95)' : wn==='CHICOTE' ? 'rgba(194,138,82,0.95)' : 'rgba(255,235,59,0.9)';
     const fam = '"Press Start 2P"';
     const wFont = wn==='LUVA' ? 'sans-serif' : fam;
     let label = wBase, lw = 0;
-    ctx.font = `5px ${wFont}`;
+    ctx.font = hudFont(6, wFont);
     const tryAdd = txt=>{
       const cand = `${label} ${txt}`;
       if(ctx.measureText(cand).width <= labelMax){ label = cand; return true; }
       return false;
     };
-    if(sec) tryAdd(`⇄ ${sec}`);
+    // "<>" e não "⇄": a Press Start 2P não tem o glifo e ele saía como caixinha
+    // (tofu) no meio da leitura da arma.
+    if(sec) tryAdd(`<> ${sec}`);
     // Passivos que não couberam viram o contador "+N" em vez de sumirem em silêncio:
     // antes o `break` descartava todos os restantes e o jogador nunca sabia que os tinha.
     let hidden = 0;
@@ -25008,12 +25207,12 @@ this.canvas.addEventListener('mousemove', (e)=>{
         label = `${wBase} +${hidden}`;
       }
     }
-    ctx.font = `5px ${wFont}`;
+    ctx.font = hudFont(6, wFont);
     lw = ctx.measureText(label).width;
-    if(lw > labelMax) label = fitText(ctx, label, labelMax, 5, wFont, 3.5);
-    ctx.font = `5px ${wFont}`;
+    if(lw > labelMax) label = hudFitText(ctx, label, labelMax, 6, wFont, 4);
+    ctx.font = hudFont(6, wFont);
     lw = ctx.measureText(label).width;
-    const panelR = Math.min(zoneR, Math.max(labelX + lw + 8, state ? slotX + slotW + 6 : 0, badgeX + badgeW + 8));
+    const panelR = Math.min(zoneR, Math.max(labelX + lw + 8*k, state ? slotX + slotW + 6*k : 0, badgeX + badgeW + 8*k));
     // --- fundo do painel ---
     roundRectPath(ctx, 4, top, panelR - 4, ph, 7);
     ctx.fillStyle = 'rgba(8,8,16,0.74)'; ctx.fill();
@@ -25049,8 +25248,13 @@ this.canvas.addEventListener('mousemove', (e)=>{
         roundRectPath(ctx, hpX + 3, top + ph - 6, bw0 * clamp(hpPct, 0, 1), 2.5, 1.25);
         ctx.fillStyle = col; ctx.fill();
       }
-      ctx.font = '5px "Press Start 2P"'; ctx.textAlign = 'center';
-      ctx.fillStyle = hpPct > 0.5 ? '#e8f5e9' : hpPct > 0.25 ? '#ffe9a8' : '#ffb3ad';
+      ctx.font = hudFont(6); ctx.textAlign = 'center';
+      // fundo do número reforçado: é a leitura mais consultado do HUD
+      ctx.fillStyle = hpPct > 0.5 ? '#0d1a10' : hpPct > 0.25 ? '#1f1a05' : '#1d0808';
+      const tw = ctx.measureText(hpTxt).width;
+      roundRectPath(ctx, hpX + hpTxtW/2 - tw/2 - 3, top + 2, tw + 6, 9, 2);
+      ctx.fill();
+      ctx.fillStyle = hpPct > 0.5 ? '#c9ffd6' : hpPct > 0.25 ? '#fff0b8' : '#ffc4bf';
       ctx.fillText(hpTxt, hpX + hpTxtW/2, top + 9);
       ctx.textAlign = 'left';
     }
@@ -25061,18 +25265,18 @@ this.canvas.addEventListener('mousemove', (e)=>{
       ctx.fillRect(badgeX, top + 2, badgeW, ph - 4);
       ctx.strokeStyle = `rgba(74,222,128,${0.45 + pulse*0.35})`; ctx.lineWidth = 1;
       ctx.strokeRect(badgeX + .5, top + 2.5, badgeW - 1, ph - 5);
-      ctx.fillStyle = '#1f2a24'; ctx.fillRect(badgeX + 4, top + 5, 9, 8);
-      ctx.fillStyle = DISQUETE_VIDA_COLOR; ctx.fillRect(badgeX + 5, top + 6, 7, 3);
-      ctx.fillStyle = '#c3cec8'; ctx.fillRect(badgeX + 5, top + 10, 3, 1.4);
-      ctx.fillStyle = '#fff'; ctx.font = '6px "Press Start 2P"'; ctx.textAlign = 'left';
-      ctx.fillText(`x${conts}`, badgeX + 15, top + 12);
+      ctx.fillStyle = '#1f2a24'; ctx.fillRect(badgeX + 4*k, top + 5, 9, 8);
+      ctx.fillStyle = DISQUETE_VIDA_COLOR; ctx.fillRect(badgeX + 5*k, top + 6, 7, 3);
+      ctx.fillStyle = '#c3cec8'; ctx.fillRect(badgeX + 5*k, top + 10, 3, 1.4);
+      ctx.fillStyle = '#fff'; ctx.font = hudFont(7); ctx.textAlign = 'left';
+      ctx.fillText(`x${conts}`, badgeX + 15*k, top + 13);
     }
     // --- arma ---
-    ctx.fillStyle = wColor; ctx.font = `5px ${wFont}`;
+    ctx.fillStyle = wColor; ctx.font = hudFont(6, wFont);
     ctx.fillText(label, labelX, top + 13);
     // --- slot de estado (barra + rótulo) ---
     if(state){
-      const bw = 56, bx = slotX + 6, by = top + 4;
+      const bw = 56*k, bx = slotX + 6*k, by = top + 4;
       roundRectPath(ctx, slotX, top, slotW, ph, 6);
       ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fill();
       roundRectPath(ctx, bx, by, bw, 5, 2.5);
@@ -25086,8 +25290,8 @@ this.canvas.addEventListener('mousemove', (e)=>{
         ctx.fillStyle = 'rgba(0,0,0,0.35)';
         for(let i=1;i<4;i++) ctx.fillRect(bx + bw*(i/4), by, 1, 5);
       }
-      ctx.font = '4px "Press Start 2P"'; ctx.textAlign = 'right';
-      ctx.fillStyle = state.strong ? (state.strongColor || '#ffffff') : 'rgba(255,255,255,0.72)';
+      ctx.font = hudFont(5); ctx.textAlign = 'right';
+      ctx.fillStyle = state.strong ? (state.strongColor || '#ffffff') : 'rgba(255,255,255,0.88)';
       ctx.fillText(state.label, slotX + slotW - 4, top + 18);
       ctx.textAlign = 'left';
     }
@@ -25099,19 +25303,20 @@ this.canvas.addEventListener('mousemove', (e)=>{
   drawHudRightBar(ctx){
     const p = this.player;
     if(!p) return;
+    const k = HUD_FS;
     const top = 2, ph = HUD_BAR_H - 4;
     let x = HUD_RIGHT_MIN + HUD_PAD;
     // ===== DASH =====
     // Antes: barra de 58px dentro de um painel de 112px (metade morta) e rótulo em 4px.
     // Agora a barra ocupa a largura toda e o rótulo é 5px com um dígito decimal no final.
-    const dw = 116;
+    const dw = 116*k;
     const dashReady = p.dashCooldown <= 0;
     const dashPct = dashReady ? 1 : 1 - (p.dashCooldown / DASH_COOLDOWN);
     const dashing = p.isDashing();
     roundRectPath(ctx, x, top, dw, ph, 7);
     ctx.fillStyle = dashReady ? 'rgba(0,217,255,0.12)' : 'rgba(8,8,16,0.74)'; ctx.fill();
     ctx.strokeStyle = dashReady ? 'rgba(0,217,255,0.40)' : 'rgba(255,255,255,0.09)'; ctx.lineWidth = 1; ctx.stroke();
-    const dBarX = x + 6, dBarW = dw - 12, dBarY = top + 13, dBarH = 5;
+    const dBarX = x + 6*k, dBarW = dw - 12*k, dBarY = top + 13, dBarH = 5;
     roundRectPath(ctx, dBarX, dBarY, dBarW, dBarH, 2.5);
     ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fill();
     if(dashReady){
@@ -25125,18 +25330,26 @@ this.canvas.addEventListener('mousemove', (e)=>{
       roundRectPath(ctx, dBarX, dBarY, dBarW * dashPct, dBarH, 2.5); ctx.fillStyle = '#5b6478'; ctx.fill();
     }
     // rótulo: tecla + estado. "0.4s" no fim dá o instante exato em que dá pra usar.
+    // A forma longa ("DASH [SHIFT] PRONTO") mede 159px em A++ e o painel tem
+    // 116*k=162px: sobrava 3px e o texto era cortado. Agora, quando a forma longa
+    // não cabe, entra a curta ("DASH PRONTO") — mesma informação, sem reticências.
     const secsLeft = p.dashCooldown / 1000;
-    const dashLabel = dashReady ? 'DASH [SHIFT] PRONTO' : `DASH [SHIFT] ${secsLeft < 1 ? secsLeft.toFixed(1) : Math.ceil(secsLeft)}s`;
-    ctx.font = '5px "Press Start 2P"';
-    ctx.fillStyle = dashing ? '#ffffff' : dashReady ? '#7af2ff' : 'rgba(255,255,255,0.62)';
-    ctx.fillText(fitText(ctx, dashLabel, dw - 12, 5, '"Press Start 2P"', 4), x + 6, top + 9);
+    const secsTxt = secsLeft < 1 ? secsLeft.toFixed(1) : Math.ceil(secsLeft);
+    const dashLong = dashReady ? 'DASH [SHIFT] PRONTO' : `DASH [SHIFT] ${secsTxt}s`;
+    const dashShort = dashReady ? 'DASH PRONTO' : `DASH ${secsTxt}s`;
+    ctx.font = hudFont(6);
+    const dashLabel = ctx.measureText(dashShort).width <= dw - 12*k
+      ? dashShort : hudFitText(ctx, dashLong, dw - 12*k, 6);
+    ctx.font = hudFont(6);
+    ctx.fillStyle = dashing ? '#ffffff' : dashReady ? '#8aefff' : 'rgba(255,255,255,0.78)';
+    ctx.fillText(dashLabel, x + 6*k, top + 9);
     ctx.textAlign = 'left';
-    x += dw + 6;
+    x += dw + 6*k;
     // ===== ESPECIAL [E] =====
     // Largura dinâmica: o painel ocupa o vão que sobrava entre o dash e a dica ESC
     // (antes eram ~100px mortos e os nomes longos saíam truncados/reticências).
     const sp = p.equippedSpecial;
-    const sw = clamp(HUD_BTN.x - 34 - x, 130, 240);
+    const sw = clamp(HUD_BTN.x - 34 - x, 130*k, 240*k);
     roundRectPath(ctx, x, top, sw, ph, 7);
     ctx.fillStyle = 'rgba(8,8,16,0.74)'; ctx.fill();
     ctx.strokeStyle = sp && sp.isActive ? 'rgba(0,217,255,0.38)' : 'rgba(255,255,255,0.09)'; ctx.lineWidth = 1; ctx.stroke();
@@ -25151,50 +25364,70 @@ this.canvas.addEventListener('mousemove', (e)=>{
       const active = !!sp.isActive, cooling = !!sp.isOnCooldown();
       ctx.fillStyle = active ? 'rgba(0,217,255,0.10)' : cooling ? 'rgba(255,255,255,0.04)' : 'rgba(255,204,0,0.07)';
       ctx.fillRect(x+2, top+2, sw-4, ph-4);
-      // nome do especial em 5px (era 4px e ainda competia com o status pelo mesmo espaço)
-      ctx.font = '5px "Press Start 2P"'; ctx.textAlign = 'left';
-      ctx.fillStyle = active ? '#7af2ff' : cooling ? 'rgba(255,255,255,0.6)' : (sp.color || '#ffcc00');
-      ctx.font = '4px "Press Start 2P"';
-      const stW = clamp(ctx.measureText(st).width, 26, 104);
-      // o NOME é prioridade: dá até o mínimo do status antes de encolher o nome
-      ctx.font = '5px "Press Start 2P"';
+      // Nome e status dividem a linha 1; a barra e a tecla [E] dividem a linha 2.
+      // Dois defeitos medidos e corrigidos aqui:
+      //  1) o nome era espremido por hudFitText (0,5px por vez) e chegava a 6,5px
+      //     com o status em 7,0px — a hierarquia se invertia. hudFitPick só aceita
+      //     o corpo MAIOR (6) ou o MENOR (5);
+      //  2) o status encostava na tecla [E] e o nome era truncado ("67 FARMAR A…")
+      //     porque não tinha cota garantida. Agora cada um tem teto PRÓPRIO:
+      //     45% para o status e no mínimo 45% da faixa útil para o nome.
+      const keyW = 11*k;
+      const innerL = x + 6*k, innerR = x + sw - 5*k;
+      const badgeL = innerR - keyW;
+      const rowBase = top + 11;                  // baseline comum dos dois rótulos
       const nameFull = `${sp.icon} ${sp.name}`;
-      const nameRoom = sw - 10 - stW;
-      if(ctx.measureText(nameFull).width <= nameRoom){
-        ctx.fillText(nameFull, x+6, top+9);
-      } else {
-        ctx.font = '4px "Press Start 2P"';
-        ctx.fillText(fitText(ctx, nameFull, nameRoom, 4, '"Press Start 2P"', 3.5), x+6, top+8);
+      //Prioridade da linha 1: o NOME identifica o item e nunca é sacrificado;
+      // o status é redundante com a barra, então ele é que cede espaço.
+      // Em A++ o painel tem ~177px úteis e "67 FARMAR AURA" + "Ativo: 4s" somam
+      // 201px: o nome fica inteiro a 7px e o status vira a forma curta ("4s").
+      const rowRoom = Math.max(30*k, innerR - keyW - 3*k - innerL);
+      const nameFit = hudFitPick(ctx, nameFull, rowRoom*0.72, 6, 5);
+      ctx.font = hudFont(nameFit.size);
+      const nameW = ctx.measureText(nameFit.text).width;
+      const stRoom = Math.max(14*k, rowRoom - nameW - 4*k);
+      // forma curta: o tempo no fim do status ("Ativo: 4s" -> "4s")
+      const stShort = (String(st).match(/[\d.,]+\s*s\s*$/) || [null])[0];
+      let stFit = hudFitPick(ctx, st, stRoom, 5, 5);
+      if(stFit.text !== st && stShort){
+        const alt = hudFitPick(ctx, stShort, stRoom, 5, 5);
+        if(alt.text === stShort) stFit = alt;
       }
+      ctx.textAlign = 'left';
+      ctx.font = hudFont(nameFit.size);
+      ctx.fillStyle = active ? '#7af2ff' : cooling ? 'rgba(255,255,255,0.78)' : (sp.color || '#ffcc00');
+      ctx.fillText(nameFit.text, innerL, rowBase);
+      ctx.font = hudFont(stFit.size);
+      ctx.fillStyle = active ? 'rgba(0,217,255,0.92)' : 'rgba(255,255,255,0.68)';
       ctx.textAlign = 'right';
-      ctx.fillText(fitText(ctx, st, stW, 4), x+sw-5, top+8);
+      ctx.fillText(stFit.text, badgeL - 3*k, rowBase);   // encosta no [E], nunca em cima
       ctx.textAlign = 'left';
       const spct = active ? sp.getDurationPercent()*100 : cooling ? sp.getCooldownPercent()*100 : 100;
       // barra deixa espaço para a tecla [E], que antes só aparecia colada no nome
       // (e sumia inteira quando o nome era longo).
-      const keyW = 11, spBarW = sw - 12 - keyW - 3;
-      roundRectPath(ctx, x+6, top+13, spBarW, 3, 1.5);
+      const spBarW = Math.max(20*k, sw - 12*k - keyW - 3);
+      roundRectPath(ctx, innerL, top+13, spBarW, 3, 1.5);
       ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fill();
-      if(spct > 0){ roundRectPath(ctx, x+6, top+13, spBarW*clamp(spct/100,0,1), 3, 1.5); ctx.fillStyle = sp.color || '#ffcc00'; ctx.fill(); }
-      const kx = x + 6 + spBarW + 3;
+      if(spct > 0){ roundRectPath(ctx, innerL, top+13, spBarW*clamp(spct/100,0,1), 3, 1.5); ctx.fillStyle = sp.color || '#ffcc00'; ctx.fill(); }
+      const kx = badgeL;
       roundRectPath(ctx, kx, top+12.5, keyW, 5, 2);
       ctx.fillStyle = active ? 'rgba(0,217,255,0.22)' : 'rgba(255,255,255,0.10)'; ctx.fill();
       ctx.strokeStyle = active ? 'rgba(0,217,255,0.55)' : 'rgba(255,255,255,0.22)';
       ctx.lineWidth = 1; ctx.stroke();
-      ctx.font = '4px "Press Start 2P"'; ctx.textAlign = 'center';
-      ctx.fillStyle = active ? '#7af2ff' : 'rgba(255,255,255,0.62)';
+      ctx.font = hudFont(5); ctx.textAlign = 'center';
+      ctx.fillStyle = active ? '#7af2ff' : 'rgba(255,255,255,0.78)';
       ctx.fillText('E', kx + keyW/2, top+16.5);
       ctx.textAlign = 'left';
     } else {
-      ctx.font = '4px "Press Start 2P"';
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
-      ctx.fillText('SEM ESPECIAL [E]', x+6, top+12);
+      ctx.font = hudFont(5);
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillText(hudFitText(ctx, 'SEM ESPECIAL [E]', sw - 12*k, 5), x+6*k, top+12);
     }
     // ===== PAUSA + dica ESC =====
     const b = HUD_BTN, isPaused = this.state === 'PAUSED';
     const hover = this.isHudPauseHover();
-    ctx.font = '4px "Press Start 2P"'; ctx.textAlign = 'right';
-    ctx.fillStyle = hover ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.45)';
+    ctx.font = hudFont(5); ctx.textAlign = 'right';
+    ctx.fillStyle = hover ? 'rgba(255,255,255,0.98)' : 'rgba(255,255,255,0.68)';
     ctx.fillText('ESC', b.x - 5, top + 13);
     ctx.textAlign = 'left';
     roundRectPath(ctx, b.x, b.y, b.w, b.h, 6);
@@ -25215,6 +25448,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
 
   // HUD informational desenhado no canvas (substitui o HUD DOM do topo)
   drawHudInfo(ctx){
+    const k = HUD_FS;                         // escala de acessibilidade do HUD
     const p=this.player, room=this.currentRoom;
     const curEnemies = room?room.enemies.length:0;
     const totalEnemies = this.rooms.reduce((a,r)=>a+r.enemies.length,0);
@@ -25262,36 +25496,55 @@ this.canvas.addEventListener('mousemove', (e)=>{
     }
     // ===== painel de informações no RODAPÉ (fora da faixa da parede e do vão da porta) =====
     const infoLine = `SALA ${room?`${room.gx},${room.gy}`:'-'} • ${this.roomsExplored}/${this.rooms.length} salas • INIMIGOS ${curEnemies}${locked?' 🔒':''}/${totalEnemies}`;
-    // CRONÔMETRO: fica no canto direito da linha de cima do painel de rodapé
+    // --- geometria do painel, derivada das métricas reais do texto ---
+    // Antes a altura era 21 + (k-1)*10 e a 2ª linha era desenhada em py+17*k:
+    // com A++ a base caía em 505,8 e o painel terminava em 507 — os descendentes
+    // da linha ("SALA 2,2...") ficavam cortados pelo bordão. Agora a caixa é a
+    // soma de respiro + linha 1 + entrelinha + linha 2 + respiro.
+    const fA = 6*k, fB = 5*k, padY = 5*k, gapY = 3*k;
+    const ph2 = padY + fA + gapY + fB + padY;
+    const pyBottom = CANVAS_H - 54 - (k-1)*10;   // a borda de baixo é fixa (não invade o minimapa)
+    const py = pyBottom - ph2;                    // a caixa cresce para cima junto com a letra
+    const baseA = py + padY + fA;                 // baseline da linha 1 (tag + cronômetro)
+    const baseB = baseA + gapY + fB;              // baseline da linha 2 (salas/inimigos)
+    // --- cronômetro: rótulo e valor medidos como UM bloco ---
+    // O rótulo "TEMPO" (5px) era desenhado a partir de tX-4*k sem que a largura
+    // dele fosse reservada, e o valor usa corpo MAIOR (6px): em "0:01" os dois se
+    // sobrepunham (medido: 20px em A-, 32px em A++). Agora o bloco é reservado
+    // inteiro e o rótulo começa no canto esquerdo dele.
     const timerStr = formatRunTime(this.runTime);
-    ctx.font='4px "Press Start 2P"'; const tLabelW=ctx.measureText('TEMPO').width;
-    ctx.font='5px "Press Start 2P"'; const tValW=ctx.measureText(timerStr).width;
-    const timeW = tLabelW + 4 + tValW;
-    ctx.font='5px "Press Start 2P"'; const tagW=ctx.measureText(tag).width;
-    ctx.font='4px "Press Start 2P"'; const infoW=ctx.measureText(infoLine).width;
-    const pw = Math.min(Math.max(tagW + timeW + 30, infoW) + 26, 560);
-    const px = clamp(CANVAS_W/2 - pw/2, 8, CANVAS_W - pw - 8);
-    const py = CANVAS_H - 54, ph2 = 21;
+    ctx.font=hudFont(5); const tLabelW=ctx.measureText('TEMPO').width;
+    ctx.font=hudFont(6); const tValW=ctx.measureText(timerStr).width;
+    const timeGap = 5*k;
+    const timeW = tLabelW + timeGap + tValW;
+    ctx.font=hudFont(6); const tagW=ctx.measureText(tag).width;
+    ctx.font=hudFont(5); const infoW=ctx.measureText(infoLine).width;
+    // A lista de melhorias ocupa o canto inferior esquerdo. O painel de
+    // informações precisa começar DEPOIS dela: com A++ e uma tag longa o painel
+    // centralizado invadia a lista (px chegava a 88 contra uma lista de 278px).
+    const chipsRight = 4 + 150*k + 10*k;
+    const availRight = CANVAS_W - 8;
+    const pw = Math.min(Math.max(tagW + timeW + 30*k, infoW) + 26*k, 560*k, availRight - chipsRight);
+    const px = clamp(CANVAS_W/2 - pw/2, chipsRight, availRight - pw);
     roundRectPath(ctx, px, py, pw, ph2, 8);
-    ctx.fillStyle='rgba(8,8,16,0.74)'; ctx.fill();
-    ctx.strokeStyle='rgba(255,255,255,0.10)'; ctx.lineWidth=1; ctx.stroke();
-    roundRectPath(ctx, px+5, py+4, 3, ph2-8, 1.5); ctx.fillStyle=tagColor; ctx.fill();
+    ctx.fillStyle='rgba(8,8,16,0.86)'; ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.22)'; ctx.lineWidth=1; ctx.stroke();
+    roundRectPath(ctx, px+5*k, py+4, 3, ph2-8, 1.5); ctx.fillStyle=tagColor; ctx.fill();
     ctx.textAlign='left';
     // tag encolhe para não encostar no cronômetro
-    ctx.font='5px "Press Start 2P"'; ctx.fillStyle=tagColor;
-    ctx.fillText(fitText(ctx, tag, Math.max(12, pw - 22 - timeW - 10), 5), px+13, py+9);
-    // label + valor do cronômetro
-    const tX = px + pw - 8 - tValW;
-    ctx.textAlign='right';
-    ctx.font='5px "Press Start 2P"';
-    ctx.fillStyle = this.runTime>0 ? '#7af2ff' : 'rgba(255,255,255,0.35)';
-    ctx.fillText(timerStr, px+pw-8, py+9);
+    ctx.font=hudFont(6); ctx.fillStyle=tagColor;
+    ctx.fillText(hudFitText(ctx, tag, Math.max(12, pw - 22*k - timeW - 10*k), 6), px+13*k, baseA);
+    // label + valor do cronômetro, bloco único encostado na borda direita
+    const tBlockX = px + pw - 8*k - timeW;
+    ctx.font=hudFont(5); ctx.textAlign='left';
+    ctx.fillStyle='rgba(255,255,255,0.68)';
+    ctx.fillText('TEMPO', tBlockX, baseA);
+    ctx.textAlign='right'; ctx.font=hudFont(6);
+    ctx.fillStyle = this.runTime>0 ? '#8aefff' : 'rgba(255,255,255,0.62)';
+    ctx.fillText(timerStr, px+pw-8*k, baseA);
     ctx.textAlign='left';
-    ctx.font='4px "Press Start 2P"';
-    ctx.fillStyle='rgba(255,255,255,0.42)';
-    ctx.fillText('TEMPO', tX - 4, py+9);
-    ctx.font='4px "Press Start 2P"'; ctx.fillStyle='rgba(255,255,255,0.88)';
-    ctx.fillText(fitText(ctx, infoLine, pw-22, 4), px+13, py+17);
+    ctx.font=hudFont(5); ctx.fillStyle='rgba(255,255,255,0.96)';
+    ctx.fillText(hudFitText(ctx, infoLine, pw-22*k, 5), px+13*k, baseB);
     ctx.textAlign='left';
     // ===== Melhorias (chips) - canto inferior esquerdo =====
     // Antes só apareciam as melhorias da arma ATUAL e em 4px. Agora lista tudo que o
@@ -25312,10 +25565,25 @@ this.canvas.addEventListener('mousemove', (e)=>{
     }
     for(const sid of (p.weaponUpgrades['SPECIAL']||[])) if(!ids.includes(sid)) ids.push(sid);
     ids=[...new Set(ids)];
-    const CHIP_X_MAX = Math.max(196, Math.min(360, px - 12));   // nunca invade o painel de informações
+    // A lista NUNCA invade o painel de informações: o teto real é px - 12*k.
+    // O piso caiu de 196*k para 150*k porque era ele que empurrava a lista para
+    // dentro do painel quando a tag da fase era longa.
+    const CHIP_BOX_W = Math.max(150*k, Math.min(360*k, px - 12*k));
+    const CHIP_PAD = 5;                        // respiro interno da caixa
+    const CHIP_INNER = 4 + CHIP_PAD;           // x do 1º chip dentro da caixa
+    const CHIP_ROOM = CHIP_BOX_W - CHIP_PAD*2; // largura útil dos chips
     const CHIP_MAX_ROWS = 3;
-    const CHIP_FONT = '5px "Press Start 2P"';
-    const CHIP_ROW_H = 13, CHIP_H = 11, CHIP_LBL_W = 46;
+    const CHIP_FONT = hudFont(6);
+    // chips crescem com a letra: sem isto o texto estourava a caixa do chip
+    const CHIP_ROW_H = 13 + (k-1)*8, CHIP_H = 11 + (k-1)*6;
+    // Faixa própria do cabeçalho. Antes "MELHORIAS" era desenhado em boxY+14
+    // enquanto o 1º chip começava em boxY+5: os dois ficavam NA MESMA LINHA
+    // (medido em A++: o rótulo passava por cima do chip "Calibre Leve").
+    // Com o cabeçalho sozinho na primeira faixa os chips já nascem com a caixa
+    // inteira disponível — não existe mais a "coluna do rótulo" sobrando à esquerda.
+    const CHIP_HEAD_H = 11 + (k-1)*3;
+    ctx.font=hudFont(5);
+    const chipLblW = ctx.measureText('MELHORIAS').width;
     ctx.font=CHIP_FONT;
     if(ids.length>0){
       const rows=[[]], rW=[0];
@@ -25325,68 +25593,73 @@ this.canvas.addEventListener('mousemove', (e)=>{
         const r = RARITY[def.rarity];
         const lvl = p.upgradeLevels.get(uid) || 1, maxLv = def.maxLevel || 1;
         const label = `${def.name}${maxLv>1?` ${lvl}/${maxLv}`:''}`;
-        const bw = ctx.measureText(label).width + 10;
+        const bw = ctx.measureText(label).width + 10*k;
         // inativa = vale para outra arma: esmaece mas continua listada
         const compat = def.compatible || [def.weapon];
         const active = !wName ? false
           : (def.weapon==='ALL' || def.weapon==='SPECIAL' || compat.includes('ALL')
              || compat.includes(wName) || def.weapon===wName);
         let ri = rows.length-1;
-        if(rows[ri].length && CHIP_LBL_W + rW[ri] + bw > CHIP_X_MAX){
+        if(rows[ri].length && rW[ri] + bw > CHIP_ROOM){
           if(rows.length >= CHIP_MAX_ROWS){ overflow++; continue; }
           // rW precisa crescer junto com rows: com 2 linhas o array fixo [0,0] nunca
           // denunciou o furo, mas na 3ª linha rW[2] vinha undefined e o x do chip saía NaN.
           ri = rows.push([]) - 1;
           rW[ri] = 0;
         }
-        rows[ri].push({x: CHIP_LBL_W + rW[ri], w: bw, label, r, active});
+        rows[ri].push({x: CHIP_INNER + rW[ri], w: bw, label, r, active});
         rW[ri] += bw + 3;
       }
       if(overflow>0){
         const label = `+${overflow}`;
-        const bw = ctx.measureText(label).width + 10;
+        const bw = ctx.measureText(label).width + 10*k;
         const ri = rows.length-1;
         // Descarta chips do fim da última linha até o "+N" caber. O pop único de antes
         // só cobria o caso de 1 chip; com "+NN" largo e linha cheia ainda passava da caixa.
-        while(CHIP_LBL_W + rW[ri] + bw > CHIP_X_MAX && rows[ri].length){
+        while(rW[ri] + bw > CHIP_ROOM && rows[ri].length){
           const last = rows[ri].pop();
           rW[ri] -= last.w + 3;
         }
-        rows[ri].push({x: CHIP_LBL_W + rW[ri], w: bw, label, r: RARITY.COMUM, active: false, isMore: true});
+        rows[ri].push({x: CHIP_INNER + rW[ri], w: bw, label, r: RARITY.COMUM, active: false, isMore: true});
         rW[ri] += bw + 3;
       }
-      const rowH = CHIP_ROW_H, boxH = rows.length * rowH + 6;
+      const rowH = CHIP_ROW_H, boxH = CHIP_HEAD_H + rows.length * rowH + 6;
       const boxY = CANVAS_H - 12 - boxH;
-      const boxW = Math.min(CHIP_X_MAX, Math.max(Math.max(...rW) + CHIP_LBL_W, 52) + 2);
+      const boxW = Math.min(CHIP_BOX_W, Math.max(Math.max(...rW) + CHIP_PAD*2, 52) );
       // Alfa do bloco inteiro: some na luta, volta quando a sala limpa / melhoria nova.
       // A lista fica legível quando importa, e some quando atrapalharia a mira.
       const boxA = this._chipsFade !== undefined ? this._chipsFade : 1;
       ctx.save();
       ctx.globalAlpha = boxA;
       roundRectPath(ctx, 4, boxY, boxW, boxH, 7);
-      ctx.fillStyle='rgba(10,10,18,0.72)'; ctx.fill();
-      ctx.strokeStyle='rgba(255,255,255,0.09)'; ctx.lineWidth=1; ctx.stroke();
-      // cabeçalho: rótulo + contador real (antes só dizia "MELHORIAS", sem quantidade)
-      ctx.font='4px "Press Start 2P"';
-      ctx.fillStyle='rgba(255,255,255,0.62)';
-      ctx.fillText('MELHORIAS', 9, boxY + 11);
-      ctx.font='4px monospace'; ctx.textAlign='right';
-      ctx.fillStyle='rgba(255,255,255,0.45)';
-      ctx.fillText(`${ids.length}`, boxW, boxY + 11);
+      ctx.fillStyle='rgba(10,10,18,0.86)'; ctx.fill();
+      ctx.strokeStyle='rgba(255,255,255,0.18)'; ctx.lineWidth=1; ctx.stroke();
+      // cabeçalho: rótulo + contador real (antes só dizia "MELHORIAS", sem quantidade).
+      // O contador fica colado no rótulo com folga real, não na borda da caixa:
+      // com a caixa estreita ele invadia o texto (medido: 5px em A++).
+      const chY = boxY + CHIP_HEAD_H - 3;
+      const cntTxt = `${ids.length}`;
+      ctx.font=hudFont(5);
+      const cntRight = CHIP_INNER + chipLblW + 9*k;
+      ctx.fillStyle='rgba(255,255,255,0.85)';
+      ctx.fillText('MELHORIAS', CHIP_INNER, chY);
+      ctx.font=hudFont(5,'monospace'); ctx.textAlign='right';
+      ctx.fillStyle='rgba(255,255,255,0.7)';
+      ctx.fillText(cntTxt, cntRight, chY);
       ctx.textAlign='left';
       rows.forEach((chips, ri)=>{
-        const cy = boxY + 4 + ri*rowH + 1;
+        const cy = boxY + CHIP_HEAD_H + ri*rowH;
         for(const c of chips){
           roundRectPath(ctx, c.x, cy, c.w, CHIP_H, 5.5);
           ctx.globalAlpha = boxA * (c.active || c.isMore ? 1 : 0.45);
           ctx.fillStyle=c.r.bg; ctx.fill();
           ctx.strokeStyle=c.r.border; ctx.lineWidth=1; ctx.stroke();
           ctx.font=CHIP_FONT;
-          ctx.fillStyle=c.r.color; ctx.fillText(c.label, c.x+5, cy + 8);
+          ctx.fillStyle=c.r.color; ctx.fillText(c.label, c.x+5*k, cy + CHIP_H*0.78);
           // marca de inativa: ponto vazado, para não depender só da transparência
           if(!c.active && !c.isMore){
             ctx.fillStyle='rgba(0,0,0,0.55)';
-            ctx.fillRect(c.x + c.w - 5, cy + 3, 2, 2);
+            ctx.fillRect(c.x + c.w - 5*k, cy + 3, 2, 2);
           }
           ctx.globalAlpha = boxA;
         }
@@ -25397,16 +25670,23 @@ this.canvas.addEventListener('mousemove', (e)=>{
       const totalIds = p.obtainedUpgrades ? p.obtainedUpgrades.size : 0;
       const displayTotal = totalLevels || totalIds;
       if(displayTotal>0){
-        roundRectPath(ctx, 4, CANVAS_H-26, 236, 14, 7);
-        ctx.fillStyle='rgba(10,10,18,0.62)'; ctx.fill();
-        ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.lineWidth=1; ctx.stroke();
-        ctx.fillStyle='rgba(160,152,180,0.9)';
-        ctx.fillText(fitText(ctx, `${displayTotal} níveis • troque arma [Q] p/ ver`, 226, 4, 'monospace'), 9, CANVAS_H-16);
+        const bh = 14 + (k-1)*6;
+        // Mesmo teto da lista de chips: este aviso também fica à esquerda do painel.
+        const bx2 = Math.max(120*k, Math.min(236*k, px - 12*k));
+        roundRectPath(ctx, 4, CANVAS_H-12-bh, bx2, bh, 7);
+        ctx.fillStyle='rgba(10,10,18,0.80)'; ctx.fill();
+        ctx.strokeStyle='rgba(255,255,255,0.16)'; ctx.lineWidth=1; ctx.stroke();
+        ctx.font=hudFont(5,'monospace');
+        ctx.fillStyle='rgba(232,226,250,0.98)';
+        ctx.fillText(hudFitText(ctx, `${displayTotal} níveis • troque arma [Q] p/ ver`, bx2-18*k, 5, 'monospace'), 9*k, CANVAS_H-12-bh+bh*0.68);
       }
     }
-    ctx.fillStyle='rgba(255,255,255,0.28)';
+    // SEED: estava em 4px com alfa 0.28 (praticamente invisível). É a informação
+    // que o jogador precisa para reproduzir a run, então ganhou corpo e contraste.
+    ctx.font = hudFont(5);
+    ctx.fillStyle='rgba(255,255,255,0.6)';
     ctx.textAlign='right';
-    ctx.fillText(`SEED ${this.seed}`, CANVAS_W - 8, CANVAS_H - 7);
+    ctx.fillText(hudFitText(ctx, `SEED ${this.seed}`, 220*k, 5), CANVAS_W - 8, CANVAS_H - 7);
     ctx.textAlign='left';
   }
 
@@ -25527,6 +25807,9 @@ this.canvas.addEventListener('mousemove', (e)=>{
 }
 
 window.addEventListener('DOMContentLoaded', ()=>{
+  // Acessibilidade: recupera a preferência salva e aplica nas telas DOM (--a11y-scale)
+  // e no HUD do canvas (HUD_FS) antes do primeiro quadro.
+  Settings.load();
   const game=new Game(); window.game=game;
   console.log('%cCyber Requiem v6.0 carregado!','color:#8ecae6;font-size:14px;font-weight:bold');
   console.log('Cyber Requiem • 5 Atos • Bone Heart (Coração Cinza) • Corações de cura + Shotgun | Fugitivo foge e atira');
