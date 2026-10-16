@@ -2267,3 +2267,135 @@ details > summary { cursor: pointer; min-height: 2.75em; display: flex; align-it
   font-family: system-ui, sans-serif; font-size: 0.75rem; color: #b3aac6;
   margin: 0; line-height: 1.55;
 }
+
+/* ---------------------------------------------------------------------------
+   F) SELEÇÃO DE PERSONAGEM — brilho em todos os cartões, painel mais largo
+      e botão JOGAR menor (só nesta tela)
+   Três pedidos numa tela só, então tudo é escopado em #characterScreen para
+   não encostar no menu principal nem no game over.
+
+   Brilho: cada cartão ganha uma cor própria (--pc) e um halobox-shadow suave
+   no estado normal, que cresce no hover e explode no selecionado. Animação de
+   pulso é desligada em prefers-reduced-motion.
+   ------------------------------------------------------------------------ */
+#characterScreen .character-panel {
+  max-width: min(1240px, 100%);
+  width: 100%;
+}
+/* mais colunas aproveitando a largura extra: 3 em telas grandes, 2 no meio */
+#characterScreen .character-select.large {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 1080px) {
+  #characterScreen .character-select.large { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  #characterScreen .character-select.large { grid-template-columns: 1fr; }
+}
+
+/* Halo no estado normal. A "cor do personagem" precisa de dois tons: --pc
+   chapado (borda/anel) e --pcg translúcido (halo). Sem color-mix para não
+   depender do suporte a essa função — o próprio arquivo é todo rgba/hex. */
+#characterScreen .char-card[data-char="jg"]     { --pc: #facc15; --pcg: rgba(250,204,21,0.50); }
+#characterScreen .char-card[data-char="kinight"]{ --pc: #60a5fa; --pcg: rgba(96,165,250,0.50); }
+#characterScreen .char-card[data-char="jl"]     { --pc: #ff6b9d; --pcg: rgba(255,107,157,0.50); }
+#characterScreen .char-card[data-char="neutro"] { --pc: #d1d5db; --pcg: rgba(209,213,219,0.44); }
+#characterScreen .char-card[data-char="oli"]    { --pc: #a78bfa; --pcg: rgba(167,139,250,0.50); }
+#characterScreen .char-card[data-char="ash"]    { --pc: #ff3b30; --pcg: rgba(255,59,48,0.50); }
+#characterScreen .char-card[data-char="dev"]    { --pc: #7af2ff; --pcg: rgba(122,242,255,0.50); }
+
+/* Brilho que "respira" no estado normal.
+   O pulso vai em `filter`, não em `box-shadow`: animação tem prioridade sobre
+   declaração normal no CSS, então animar box-shadow aqui venceria as regras
+   de :hover/.selected abaixo e elas nunca apareceriam. */
+#characterScreen .char-card {
+  border-color: var(--pc);
+  box-shadow:
+    0 0 0 1px var(--pcg),
+    0 0 20px -2px var(--pcg),
+    0 10px 26px rgba(0,0,0,0.42),
+    inset 0 1px 0 rgba(255,255,255,0.10);
+  animation: cardIn 0.5s ease both, charCardGlow 3.2s ease-in-out infinite;
+}
+/* deslocamento do stagger por filho (o cardIn de cada um) */
+#characterScreen .char-card:nth-child(1){ animation-delay: 0.04s, 0s; }
+#characterScreen .char-card:nth-child(2){ animation-delay: 0.08s, 0s; }
+#characterScreen .char-card:nth-child(3){ animation-delay: 0.12s, 0s; }
+#characterScreen .char-card:nth-child(4){ animation-delay: 0.16s, 0s; }
+#characterScreen .char-card:nth-child(5){ animation-delay: 0.20s, 0s; }
+#characterScreen .char-card:nth-child(6){ animation-delay: 0.24s, 0s; }
+#characterScreen .char-card:nth-child(7){ animation-delay: 0.28s, 0s; }
+
+@keyframes charCardGlow {
+  0%, 100% { filter: drop-shadow(0 0 5px var(--pcg)); }
+  50%      { filter: drop-shadow(0 0 13px var(--pcg)); }
+}
+
+/* hover: brilho mais forte e mais alto */
+#characterScreen .char-card:hover {
+  border-color: var(--pc);
+  box-shadow:
+    0 0 0 2px var(--pcg),
+    0 0 36px -2px var(--pcg),
+    0 16px 34px rgba(0,0,0,0.5),
+    inset 0 1px 0 rgba(255,255,255,0.2);
+  transform: translateY(-4px) scale(1.015);
+}
+
+/* selecionado: explosão de luz + anel na cor do personagem */
+#characterScreen .char-card.selected {
+  border-color: var(--pc);
+  box-shadow:
+    0 0 0 3px var(--pc),
+    0 0 50px -2px var(--pcg),
+    0 18px 40px rgba(0,0,0,0.52),
+    inset 0 1px 0 rgba(255,255,255,0.24);
+  transform: translateY(-2px) scale(1.02);
+}
+/* o ✓ do selecionado herda a cor do cartão */
+#characterScreen .char-card.selected::after {
+  background: var(--pc, #ffcc00);
+  box-shadow: 0 0 14px var(--pcg);
+}
+/* foco por teclado continua legível por cima do brilho */
+#characterScreen .char-card:focus-visible {
+  outline: 4px solid #ffcc00;
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #characterScreen .char-card { animation: cardIn 0.001s ease both; }
+}
+
+/* Botão JOGAR menor — só dentro da seleção de personagem.
+   O painel mais largo deixava o botão gigante esticando por 16rem; aqui ele
+   volta para o tamanho de um botão de menu comum. */
+#characterScreen #btnPlayChar {
+  flex: 0 1 auto;
+  font-size: clamp(0.75rem, 1.5vw, 0.9375rem);
+  letter-spacing: 0.05em;
+  min-height: 2.5em;
+  padding: 0.7em 1.15em;
+  border-width: 2px;
+  -webkit-text-stroke: 0;
+  text-shadow: 0 2px 0 rgba(255,255,255,0.35);
+  box-shadow:
+    0 5px 0 #7a5a00,
+    0 12px 24px rgba(255,215,0,0.32),
+    0 0 0 2px rgba(0,0,0,0.45);
+}
+#characterScreen #btnPlayChar:hover {
+  box-shadow:
+    0 6px 0 #7a5a00,
+    0 16px 32px rgba(255,215,0,0.42),
+    0 0 0 2px rgba(0,0,0,0.45);
+}
+#characterScreen #btnPlayChar:disabled {
+  box-shadow: 0 4px 0 #111;
+}
+#characterScreen #btnCharBack {
+  flex: 0 1 auto;
+  font-size: clamp(0.6875rem, 1.4vw, 0.8125rem);
+  min-height: 2.5em;
+  padding: 0.7em 1em;
+}
