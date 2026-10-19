@@ -2,7 +2,14 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- viewport-fit=cover usa a tela toda (notch); maximum-scale/user-scalable
+       travam o zoom por duplo toque, que no canvas vira "puxar a página" e
+       dispara um clique fantasma no meio do tiro. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0f0e17">
   <title>Cyber Requiem - Roguelike</title>
   <link rel="stylesheet" href="style.css">
   <!-- Fonte pixel art via Google Fonts (opcional, fallback para monospace) -->
@@ -42,6 +49,9 @@
           <div class="menu-buttons-row">
             <button id="btnControls" class="btn btn-secondary">⌨ CONTROLES</button>
             <button id="btnSettings" class="btn btn-secondary">⚙ CONFIGURAÇÕES</button>
+          </div>
+          <div class="menu-buttons-row">
+            <button id="btnExit" class="btn btn-secondary btn-exit" aria-label="Sair do jogo e fechar a página">⏻ SAIR</button>
           </div>
         </div>
         <p class="menu-footer">Cyber Requiem v6.1 • Programadores👤 + Boss Hacker • 6 Fases • Mineradora de Coins • HTML5 Canvas</p>
@@ -266,6 +276,13 @@
             <span class="controls-version">Cyber Requiem v6.1 • 6 Atos • Power Star ⭐ + Setch</span>
           </div>
           <p class="controls-subtitle">Domine os comandos, armas e segredos. Tudo que você precisa para sobreviver ao mundo cibernético até a Sala da Escada.</p>
+          <!-- Só aparece quando o jogo detecta toque de verdade (ver TouchControls) -->
+          <p class="touch-note" id="touchNote">
+            📱 <strong>No celular:</strong> arraste na <strong>metade esquerda</strong> para andar e na
+            <strong>metade direita</strong> para mirar e atirar. Use os botões <strong>TROCAR</strong>,
+            <strong>DASH</strong> e <strong>ESPECIAL</strong> na parte de baixo, e pause com ❚❚.
+            Jogue com o celular na horizontal.
+          </p>
           <div class="controls-quickstats">
             <span class="qstat"><i>🎯</i> 6 Fases</span>
             <span class="qstat"><i>⭐</i> Power Star</span>
@@ -620,6 +637,43 @@
       <div id="hud">
         <div id="swapHint" class="swap-hint hidden">Pressione Q para trocar</div>
       </div>
+
+      <!-- ===== CONTROLES DE TOQUE (celular) =====
+           Twin-stick flutuante: metade esquerda da tela move, metade direita
+           mira/atira (o dedo nasce onde você toca). Os botões de ação injetam
+           exatamente os mesmos comandos que o teclado, então nenhuma lógica
+           do jogo muda. Tudo é escondido quando o jogo roda no desktop. -->
+      <div id="touchUI" class="touch-ui">
+        <div class="tc-sticks" aria-hidden="true">
+          <div class="tc-stick" id="tcMove">
+            <div class="tc-base"></div>
+            <div class="tc-knob" id="tcMoveKnob"></div>
+            <span class="tc-stick-label">MOVER</span>
+          </div>
+          <div class="tc-stick" id="tcAim">
+            <div class="tc-base"></div>
+            <div class="tc-knob" id="tcAimKnob"></div>
+            <span class="tc-stick-label">MIRAR / ATIRAR</span>
+          </div>
+        </div>
+        <div class="tc-actions" role="group" aria-label="Ações de combate">
+          <button class="tc-btn tc-btn-swap" data-tc-key="q" type="button">Q<small>TROCAR</small></button>
+          <button class="tc-btn tc-btn-dash" data-tc-key="Shift" type="button">💨<small>DASH</small></button>
+          <button class="tc-btn tc-btn-special" data-tc-key="e" type="button">E<small>ESPECIAL</small></button>
+        </div>
+        <div class="tc-sys" role="group" aria-label="Sistema">
+          <button class="tc-btn tc-btn-icon" id="tcPause" type="button" aria-label="Pausar">❚❚</button>
+          <button class="tc-btn tc-btn-icon" id="tcFullscreen" type="button" aria-label="Tela cheia">⛶</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Aviso "gire o celular": banner não-bloqueante, fora do container para
+         não depender de overflow:hidden (só aparece em retrato, no celular) -->
+    <div id="rotateHint" class="rotate-hint" role="status">
+      <span class="rotate-icon" aria-hidden="true">📱</span>
+      <span class="rotate-text"><strong>GIRE O CELULAR</strong> — o jogo fica melhor na horizontal.</span>
+      <button id="rotateClose" class="rotate-close" type="button" aria-label="Fechar aviso">×</button>
     </div>
 
     <!-- Dica flutuante -->

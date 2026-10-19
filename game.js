@@ -58,6 +58,16 @@ function hudFitPick(ctx, text, maxW, big, small, family){
   while(t.length > 1 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1);
   return { size:small, text: t + '…' };
 }
+// ===== RÓTULOS DE TECLA ADAPTADOS AO CELULAR =====
+// No celular não existe teclado: os prompts do jogo não podem dizer "[E]"
+// para algo que o jogador não tem como apertar. Com os controles de toque
+// ligados, vira "ESPECIAL"/"TROCAR"/"DASH" (o mesmo rótulo dos botões).
+let TOUCH_MODE = false;
+function keyTag(key){
+  if(!TOUCH_MODE) return '[' + key.toUpperCase() + ']';
+  const map = { e:'ESPECIAL', q:'TROCAR', shift:'DASH', enter:'CONFIRMAR' };
+  return map[key.toLowerCase()] || key.toUpperCase();
+}
 const PLAYER_SIZE = 24;
 const PLAYER_SPEED = 3.0;
 const JL_SPEED_FACTOR = 0.89;       // JL ~11% mais lento que base (um pouco mais lento conforme pedido)
@@ -1155,7 +1165,7 @@ class GatoAntivirusItem extends SpecialItem {
       }
     }catch(e){}
     if(this.isOnCooldown()) return `Chamar: ${this.getRemainingSeconds()}s`;
-    return 'Pronto! [E] chamar';
+    return 'Pronto! '+keyTag('e')+' chamar';
   }
 }
 
@@ -4592,10 +4602,17 @@ const Settings = {
 };
 
 // ===================== INPUT HANDLER =====================
+// Teclado + entrada "virtual" (controles de toque). O resto do jogo só
+// conhece isDown/consumeJustPressed/getMoveVector/getShootVector, então o
+// TouchControls injeta o mesmo contrato e nada mais precisa mudar.
 class InputHandler {
   constructor() {
     this.keys = new Set();
     this.justPressed = new Set();
+    this.virtualKeys = new Set();   // teclasEquivalententes do toque
+    this.touchMove = { x:0, y:0 }; // analógico esquerdo
+    this.touchShoot = { x:0, y:0 };// analógico direito (mira + tiro)
+    this.touchActive = false;       // true depois do primeiro toque real
     window.addEventListener('keydown', (e) => {
       const k = e.key.toLowerCase();
       if (!this.keys.has(k)) this.justPressed.add(k);
@@ -4607,9 +4624,19 @@ class InputHandler {
       this.keys.delete(e.key.toLowerCase());
       this.keys.delete(e.key);
     });
-    window.addEventListener('blur', () => { this.keys.clear(); });
+    window.addEventListener('blur', () => { this.keys.clear(); this.virtualKeys.clear(); this.clearTouchSticks(); });
   }
-  isDown(k) { return this.keys.has(k) || this.keys.has(k.toLowerCase()); }
+  // --- entrada virtual (usada pelo TouchControls) ---
+  virtualDown(key){ const k=String(key).toLowerCase(); this.virtualKeys.add(k); }
+  virtualUp(key){ this.virtualKeys.delete(String(key).toLowerCase()); }
+  virtualPress(key){
+    const k=String(key).toLowerCase();
+    if(!this.virtualKeys.has(k)) this.justPressed.add(k);  // dispara o consumeJustPressed do frame
+    this.virtualKeys.add(k);
+  }
+  clearTouchSticks(){ this.touchMove.x=0; this.touchMove.y=0; this.touchShoot.x=0; this.touchShoot.y=0; }
+
+  isDown(k) { return this.keys.has(k) || this.keys.has(k.toLowerCase()) || this.virtualKeys.has(k.toLowerCase()); }
   consumeJustPressed(k) {
     const low = k.toLowerCase();
     if (this.justPressed.has(low) || this.justPressed.has(k)) {
@@ -4624,6 +4651,7 @@ class InputHandler {
     if (this.isDown('s')) y += 1;
     if (this.isDown('a')) x -= 1;
     if (this.isDown('d')) x += 1;
+    if (x === 0 && y === 0) return { x: this.touchMove.x, y: this.touchMove.y };
     if (x !== 0 && y !== 0) { const inv = 1 / Math.sqrt(2); x *= inv; y *= inv; }
     return { x, y };
   }
@@ -4633,12 +4661,216 @@ class InputHandler {
     if (this.isDown('ArrowRight')) x += 1;
     if (this.isDown('ArrowUp')) y -= 1;
     if (this.isDown('ArrowDown')) y += 1;
-    if (x === 0 && y === 0) return null;
+    // Sem seta apertada, o analógico direito assume: puxar = mirar e atirar
+    if (x === 0 && y === 0) {
+      if (this.touchShoot.x === 0 && this.touchShoot.y === 0) return null;
+      return { x: this.touchShoot.x, y: this.touchShoot.y };
+    }
     if (x !== 0 && y !== 0) { const inv = 1 / Math.sqrt(2); x *= inv; y *= inv; }
     return { x, y };
   }
   isDashPressed() { return this.isDown('Shift') || this.isDown('shift'); }
   update() { this.justPressed.clear(); }
+}
+
+// ===================== CONTROLES DE TOQUE =====================
+// Twin-stick flutuante: metade esquerda da tela move, metade direita
+// mira/atira — o analógico nasce exatamente onde o dedo encosta, que é o que
+// funciona bem em celular (o polegar cobre a tela). Os botões de ação
+// injetam o mesmo contrato do teclado (virtualPress/virtualDown), então
+// nenhuma lógica do jogo muda; só quem escreve no InputHandler muda.
+//
+// Só liga quando o jogo detecta toque de verdade (pointer:coarse ou o
+// primeiro touchstart), para não aparecer nada no desktop.
+class TouchControls {
+  constructor(game){
+    this.game = game;
+    this.input = game.input;
+    this.container = document.getElementById('gameContainer');
+    this.root = document.getElementById('touchUI');
+    this.enabled = false;
+    this.rotateDismissed = false;
+    this.RADIUS = 46;   // deslocamento do dedo (px de tela) que vale 100%
+    this.DEAD = 0.16;    // zona morta: dedo parado não faz o personagem tremular
+    this.sticks = {
+      move: this._makeStick('tcMove', 'tcMoveKnob'),
+      aim:  this._makeStick('tcAim',  'tcAimKnob'),
+    };
+    this._bindSticks();
+    this._bindButtons();
+    this._bindOrientation();
+    this._bindAudioUnlock();
+    // Híbridos (notebook com touchscreen) só reveals no primeiro toque real.
+    const firstTouch = ()=> this.enable();
+    window.addEventListener('touchstart', firstTouch, { once:true, passive:true });
+    if(TouchControls.hasCoarsePointer()) this.enable();
+  }
+
+  static hasCoarsePointer(){
+    try{ return typeof window.matchMedia==='function' && window.matchMedia('(pointer: coarse)').matches; }
+    catch(_){ return false; }
+  }
+
+  enable(){
+    if(this.enabled) return;
+    this.enabled = true;
+    this.input.touchActive = true;
+    TOUCH_MODE = true;
+    if(this.root) this.root.classList.add('touch-on');
+    if(document.body) document.body.classList.add('is-touch');
+    this.checkOrientation();
+    this.game.resizeCanvas();
+  }
+
+  _makeStick(elId, knobId){
+    return {
+      el: document.getElementById(elId),
+      knob: document.getElementById(knobId),
+      pointerId: null, baseX: 0, baseY: 0,
+    };
+  }
+
+  // ---------- analógicos ----------
+  _bindSticks(){
+    const c = this.container;
+    if(!c) return;
+    const stickFor = (clientX)=>{
+      const r = c.getBoundingClientRect();
+      return (clientX - r.left < r.width/2) ? this.sticks.move : this.sticks.aim;
+    };
+    const onDown = (e)=>{
+      if(!this.enabled) return;
+      // botões de ação cuidam do próprio toque
+      if(e.target && e.target.closest && e.target.closest('.tc-btn, .rotate-close')) return;
+      const s = stickFor(e.clientX);
+      if(!s || !s.el || s.pointerId !== null) return;  // já ocupado (dois dedos na mesma metade)
+      s.pointerId = e.pointerId;
+      const r = c.getBoundingClientRect();
+      s.baseX = e.clientX - r.left;
+      s.baseY = e.clientY - r.top;
+      this._place(s, 0, 0);
+      s.el.classList.add('on');
+      try{ c.setPointerCapture(e.pointerId); }catch(_){}
+      // sem preventDefault aqui de propósito: o container já tem
+      // touch-action:none, e o click sintetizado é o que faz o canvas
+      // receber pausa e a escolha dos copinhos.
+    };
+    const onMove = (e)=>{
+      if(!this.enabled) return;
+      for(const name of ['move','aim']){
+        const s = this.sticks[name];
+        if(s.pointerId !== e.pointerId) continue;
+        const r = c.getBoundingClientRect();
+        let dx = (e.clientX - r.left) - s.baseX;
+        let dy = (e.clientY - r.top)  - s.baseY;
+        const len = Math.hypot(dx, dy);
+        if(len > this.RADIUS){ dx = dx/len*this.RADIUS; dy = dy/len*this.RADIUS; }
+        this._place(s, dx, dy);
+        // normaliza e remapeia a partir da zona morta, para o resto do
+        // alcance virar 0..1 inteiro (senão o dedo nunca chega na velocidade máx.)
+        let nx = dx/this.RADIUS, ny = dy/this.RADIUS;
+        const m = Math.hypot(nx, ny);
+        let ox = 0, oy = 0;
+        if(m >= this.DEAD){
+          const k = Math.min(1, (m - this.DEAD)/(1 - this.DEAD))/m;
+          ox = nx*k; oy = ny*k;
+        }
+        const out = (name==='move') ? this.input.touchMove : this.input.touchShoot;
+        out.x = ox; out.y = oy;
+        e.preventDefault();
+      }
+    };
+    const onUp = (e)=>{
+      for(const name of ['move','aim']){
+        const s = this.sticks[name];
+        if(s.pointerId !== e.pointerId) continue;
+        this._release(name);
+        try{ c.releasePointerCapture(e.pointerId); }catch(_){}
+      }
+    };
+    c.addEventListener('pointerdown', onDown, { passive:false });
+    c.addEventListener('pointermove', onMove, { passive:false });
+    c.addEventListener('pointerup', onUp);
+    c.addEventListener('pointercancel', onUp);
+    // abrir a barra do navegador / trocar de aba trava o dedo no canvas
+    window.addEventListener('blur', ()=> this.releaseAll());
+    document.addEventListener('visibilitychange', ()=>{ if(document.hidden) this.releaseAll(); });
+  }
+  _place(s, dx, dy){
+    s.el.style.left = s.baseX + 'px';
+    s.el.style.top  = s.baseY + 'px';
+    if(s.knob) s.knob.style.transform = `translate(-50%,-50%) translate(${dx}px,${dy}px)`;
+  }
+  _release(name){
+    const s = this.sticks[name];
+    if(!s) return;
+    s.pointerId = null;
+    if(s.el) s.el.classList.remove('on');
+    if(s.knob) s.knob.style.transform = 'translate(-50%,-50%) translate(0px,0px)';
+    const out = (name==='move') ? this.input.touchMove : this.input.touchShoot;
+    out.x = 0; out.y = 0;
+  }
+  releaseAll(){ this._release('move'); this._release('aim'); }
+
+  // ---------- botões de ação ----------
+  _bindButtons(){
+    if(!this.root) return;
+    const btns = this.root.querySelectorAll('.tc-btn[data-tc-key]');
+    for(const b of btns){
+      const key = b.getAttribute('data-tc-key');
+      const press = (e)=>{
+        e.preventDefault(); e.stopPropagation();
+        this.input.virtualPress(key);
+        b.classList.add('held');
+        try{ b.setPointerCapture(e.pointerId); }catch(_){}
+      };
+      const release = (e)=>{
+        this.input.virtualUp(key);
+        b.classList.remove('held');
+      };
+      b.addEventListener('pointerdown', press, { passive:false });
+      b.addEventListener('pointerup', release);
+      b.addEventListener('pointercancel', release);
+      b.addEventListener('contextmenu', (e)=> e.preventDefault());
+    }
+    const pause = document.getElementById('tcPause');
+    if(pause) pause.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); this.game.togglePause(); });
+    const fs = document.getElementById('tcFullscreen');
+    if(fs) fs.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); this.toggleFullscreen(); });
+  }
+  async toggleFullscreen(){
+    try{
+      if(document.fullscreenElement) await document.exitFullscreen();
+      else if(document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
+      else if(this.container && this.container.requestFullscreen) await this.container.requestFullscreen();
+    }catch(_){}
+    if(this.game.resizeCanvas) this.game.resizeCanvas();
+  }
+
+  // ---------- aviso de girar o celular ----------
+  _bindOrientation(){
+    const close = document.getElementById('rotateClose');
+    if(close) close.addEventListener('click', ()=>{ this.rotateDismissed = true; this.checkOrientation(); });
+    window.addEventListener('resize', ()=> this.checkOrientation());
+    window.addEventListener('orientationchange', ()=> setTimeout(()=> this.checkOrientation(), 120));
+  }
+  checkOrientation(){
+    if(!document.body) return;
+    // só incomoda durante a partida (container visível) e em retrato
+    const playing = this.container && !this.container.classList.contains('hidden');
+    const portrait = window.innerHeight > window.innerWidth;
+    const show = this.enabled && !this.rotateDismissed && portrait && playing;
+    document.body.classList.toggle('show-rotate', show);
+  }
+  onGameVisible(){ this.checkOrientation(); }
+
+  // ---------- áudio ----------
+  // Navegador mobile só libera som depois de um gesto real do usuário.
+  _bindAudioUnlock(){
+    const go = ()=> this.game.unlockAudio();
+    window.addEventListener('touchstart', go, { once:true, passive:true });
+    window.addEventListener('pointerdown', go, { once:true, passive:true });
+  }
 }
 
 // ===================== PARTICLE =====================
@@ -11036,7 +11268,7 @@ class SpecialItemPickup extends Item {
     ctx.fillStyle='#fff';
     ctx.font='4px "Press Start 2P"';
     ctx.textAlign='center';
-    ctx.fillText('[E]', x, y+ s/2 +9);
+    ctx.fillText(keyTag('e'), x, y+ s/2 +9);
     ctx.textAlign='left';
     // partícula periódica
     if(Math.random()<0.10){
@@ -16627,7 +16859,7 @@ class SetchCupGame {
     ctx.fillStyle='#fff'; ctx.font='6px "Press Start 2P"'; ctx.textAlign='center';
     if(this.state==='idle'){
       ctx.fillStyle='#ffd700';
-      ctx.fillText(this.tableX && this.nearTable ? 'PRESSIONE [E] PERTO DO SETCH' : 'ACHE O SETCH NESSA SALA', TX, CANVAS_H/2 + 94);
+      ctx.fillText(this.tableX && this.nearTable ? `PRESSIONE ${keyTag('e')} PERTO DO SETCH` : 'ACHE O SETCH NESSA SALA', TX, CANVAS_H/2 + 94);
     } else if(this.state==='showing'){
       ctx.fillText('MEMORIZE ONDE ESTÁ A BOLINHA...', TX, CANVAS_H/2 + 94);
     } else if(this.state==='shuffling'){
@@ -16635,7 +16867,7 @@ class SetchCupGame {
       ctx.fillText(`EMBARALHANDO ${this.shuffleMoveIndex}/${this.shuffleMoves}${extra}`, TX, CANVAS_H/2 + 94);
     } else if(this.state==='waiting'){
       ctx.fillStyle= this.nearTable ? '#ffd700' : '#ffb300';
-      ctx.fillText(this.nearTable ? 'ESCOLHA: 1 / 2 / 3  OU [E] PERTO' : 'VOLTE PARA A MESA PARA ESCOLHER', TX, CANVAS_H/2 + 94);
+      ctx.fillText(this.nearTable ? (TOUCH_MODE ? `TOQUE NO COPO OU EM ${keyTag('e')}` : 'ESCOLHA: 1 / 2 / 3  OU [E] PERTO') : 'VOLTE PARA A MESA PARA ESCOLHER', TX, CANVAS_H/2 + 94);
     } else if(this.state==='revealing'){
       if(this.result==='win') { ctx.fillStyle='#4ade80'; ctx.fillText('✓ ACERTOU! RECOMPENSA!', TX, CANVAS_H/2 + 94); }
       else { ctx.fillStyle='#ff6b6b'; ctx.fillText('✗ ERROU!', TX, CANVAS_H/2 + 94); }
@@ -16644,7 +16876,7 @@ class SetchCupGame {
     } else if(this.state==='finishedWin'){
       ctx.fillStyle='#4ade80'; ctx.fillText('★ RECOMPENSA ENTREGUE ★', TX, CANVAS_H/2 + 94);
     } else if(this.state==='finishedLose'){
-      ctx.fillText('TENTE NOVAMENTE! [E] PARA REJOGAR', TX, CANVAS_H/2 + 94);
+      ctx.fillText(`TENTE NOVAMENTE! ${keyTag('e')} PARA REJOGAR`, TX, CANVAS_H/2 + 94);
     }
     ctx.textAlign='left';
     // ==== Banner de resultado (ACERTOU / ERROU / SALA LIBERADA) ====
@@ -17191,7 +17423,7 @@ class SetchNPC extends SetchVendor {
     this.drawBubble(ctx, this.x, y-13+bob, showPromptSetch ? -16 : 0);
     if(showPromptSetch){
       this.drawAlert(ctx, this.x, y-13+bob);
-      const label = (st==='idle') ? '[E] JOGAR' : '[E] REJOGAR';
+      const label = (st==='idle') ? keyTag('e')+' JOGAR' : keyTag('e')+' REJOGAR';
       this.drawPrompt(ctx, this.x, y-22+bob, label, '#ffd700');
     }
     // Dica: enquanto a partida está rolando, o Setch mostra o número do copo mais próximo
@@ -17202,7 +17434,7 @@ class SetchNPC extends SetchVendor {
       ctx.strokeStyle='rgba(255,215,0,0.8)'; ctx.lineWidth=0.8;
       ctx.strokeRect(this.x-26.5, y-33.5+bob, 53, 12);
       ctx.fillStyle='#ffd700'; ctx.font='6px "Press Start 2P"'; ctx.textAlign='center';
-      ctx.fillText(`[E] COPO ${near+1}`, this.x, y-25+bob); ctx.textAlign='left';
+      ctx.fillText(`${keyTag('e')} COPO ${near+1}`, this.x, y-25+bob); ctx.textAlign='left';
     }
   }
 }
@@ -17360,10 +17592,10 @@ class IndianaJonesNPC extends SetchVendor {
     if(!this.giftGiven){
       if(nearInd){
         this.drawAlert(ctx, this.x, y-13+bob);
-        this.drawPrompt(ctx, this.x, y-21+bob, '[E] CHICOTE 100%', '#d2a679');
+        this.drawPrompt(ctx, this.x, y-21+bob, keyTag('e')+' CHICOTE 100%', '#d2a679');
       } else {
         ctx.fillStyle='rgba(210,166,121,0.96)'; ctx.font='5px monospace'; ctx.textAlign='center';
-        ctx.fillText('[E] CHICOTE 100%', this.x, y-17+bob); ctx.textAlign='left';
+        ctx.fillText(keyTag('e')+' CHICOTE 100%', this.x, y-17+bob); ctx.textAlign='left';
         // brilho gift aguardando
         ctx.strokeStyle=`rgba(210,166,121,${0.38+pulse*0.18})`; ctx.lineWidth=1.4; ctx.setLineDash([3,3]);
         ctx.strokeRect(x-2, y-4+bob, W+4, H+6); ctx.setLineDash([]);
@@ -17507,10 +17739,10 @@ class JLNPC extends SetchVendor {
     if(!this.giftGiven){
       if(nearJL){
         this.drawAlert(ctx, this.x, y-13+bob);
-        this.drawPrompt(ctx, this.x, y-21+bob, '[E] PASSIVO IO-IO', '#ff8a80');
+        this.drawPrompt(ctx, this.x, y-21+bob, keyTag('e')+' PASSIVO IO-IO', '#ff8a80');
       } else {
         ctx.fillStyle='rgba(255,138,128,0.96)'; ctx.font='5px monospace'; ctx.textAlign='center';
-        ctx.fillText('[E] PASSIVO IO-IO', this.x, y-17+bob); ctx.textAlign='left';
+        ctx.fillText(keyTag('e')+' PASSIVO IO-IO', this.x, y-17+bob); ctx.textAlign='left';
         ctx.strokeStyle=`rgba(255,138,128,${0.38+pulse*0.18})`; ctx.lineWidth=1.4; ctx.setLineDash([3,3]);
         ctx.strokeRect(x-2, y-4+bob, W+4, H+6); ctx.setLineDash([]);
       }
@@ -17668,10 +17900,10 @@ class OliNPC extends SetchVendor {
     if(!this.giftGiven){
       if(nearOli){
         this.drawAlert(ctx, this.x, y-13+bob);
-        this.drawPrompt(ctx, this.x, y-21+bob, '[E] XADREZ ♞', '#c084fc');
+        this.drawPrompt(ctx, this.x, y-21+bob, keyTag('e')+' XADREZ ♞', '#c084fc');
       } else {
         ctx.fillStyle='rgba(192,132,252,0.96)'; ctx.font='5px monospace'; ctx.textAlign='center';
-        ctx.fillText('[E] XADREZ ♞', this.x, y-17+bob); ctx.textAlign='left';
+        ctx.fillText(keyTag('e')+' XADREZ ♞', this.x, y-17+bob); ctx.textAlign='left';
         ctx.strokeStyle=`rgba(192,132,252,${0.38+pulse*0.18})`; ctx.lineWidth=1.4; ctx.setLineDash([3,3]);
         ctx.strokeRect(x-2, y-4+bob, W+4, H+6); ctx.setLineDash([]);
       }
@@ -17723,6 +17955,10 @@ class Room {
     this.partyWavesRemaining = 0;
     this.partyWaveTimer = 0;
     this.partyConfetti = []; // decoração flutuante
+    // TUTORIAL pintado no chão — só na sala em que o jogador nasce.
+    // moved/shot travam em true quando o jogador executa a ação; os fades
+    // (0..1) fazem o bloco correspondente sumir sozinho depois disso.
+    this.tutorial = isStart ? { moved:false, shot:false, moveFade:0, shootFade:0 } : null;
     this.anim = 0;       // relógio da sala (pulsos de decoração/placar). Antes o
                        // desenho usava this.anim sem existir, então os pisca-pisca
                        // da Sala Setch ficavam sempre apagados (NaN % 2 === 0).
@@ -18485,7 +18721,7 @@ const it = items[i];
         ? `RODADA ${cg.round}/${SETCH_ROUNDS} • ${Math.max(0,Math.ceil(cg.chooseTimer/1000))}s`
         : (cg.state==='shuffling' ? `RODADA ${cg.round}/${SETCH_ROUNDS} • EMBARALHANDO`
         : (cg.state==='showing'   ? `RODADA ${cg.round}/${SETCH_ROUNDS} • MEMORIZE`
-        : `RODADA ${cg.round}/${SETCH_ROUNDS} • PRONTO [E]`));
+        : `RODADA ${cg.round}/${SETCH_ROUNDS} • PRONTO ${keyTag('e')}`));
       ctx.fillStyle= (cg.state==='waiting') ? '#4ade80' : 'rgba(255,215,0,0.9)';
       ctx.fillText(st, bx+5, by + h + 8);
     }
@@ -18607,7 +18843,7 @@ const it = items[i];
       const blink = Math.floor(Date.now()/420)%2===0;
       ctx.font='6px "Press Start 2P"';
       ctx.fillStyle=`rgba(34,211,238,${blink?0.95:0.45})`;
-      ctx.fillText('[E] ABRIR TERMINAL', p.x, y+H+22);
+      ctx.fillText(keyTag('e')+' ABRIR TERMINAL', p.x, y+H+22);
       ctx.font='5px monospace';
       ctx.fillStyle='rgba(255,255,255,0.60)';
       ctx.fillText('F1-F6 mudam de fase • BORZUK libera tudo', p.x, y+H+34);
@@ -19935,7 +20171,160 @@ if(e.canDamageHead()){
     ctx.textAlign = 'left';
   }
 
-  draw(ctx, isCurrent) {
+  // ==========================================================================
+  //  TUTORIAL PINTADO NO CHÃO (só na sala em que o jogador aparece)
+  // ==========================================================================
+  //  Sem popup: o básico é escrito direto no piso da sala inicial — dois
+  //  blocos com o desenho das teclas e o texto do que fazer. Cada tecla
+  //  acende sozinha quando apertada e o bloco inteiro desbota com ✓ assim
+  //  que o passo é concluído. `game` é opcional (o Room também é desenhado
+  //  em contexts sem input).
+  drawFloorTutorial(ctx, game){
+    const t = this.tutorial;
+    if(!t) return;
+    const theme = this.theme || FLOOR_THEMES[this.floor] || FLOOR_THEMES[1];
+    const accent = theme.accent || '#8a6cff';
+    const input = (game && game.input) ? game.input : null;
+    const k = HUD_FS;               // respeita a escala de fonte do HUD
+    const done = '#4ade80';
+    const tick = Math.sin(this.anim * 0.005) > 0;   // pisca-pisca dos blocos pendentes
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+
+    // ---------- título ----------
+    const allFade = (t.moveFade + t.shootFade) / 2;
+    ctx.globalAlpha = 1 - 0.55 * allFade;
+    ctx.font = hudFont(13);
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillText('COMO JOGAR', CANVAS_W/2 + 2, 80 + 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.90)';
+    ctx.fillText('COMO JOGAR', CANVAS_W/2, 80);
+    ctx.font = hudFont(6);
+    ctx.fillStyle = 'rgba(255,255,255,0.50)';
+    ctx.fillText('ANDE E ATIRE PARA LIBERAR AS PORTAS', CANVAS_W/2, 102);
+    ctx.fillStyle = accent;
+    ctx.globalAlpha = 0.6 - 0.35 * allFade;
+    ctx.fillRect(CANVAS_W/2 - 62 * k, 88, 124 * k, 2);
+
+    // ---------- placa com teclas no piso ----------
+    // caps = [[rótulo, deslocamentoX, deslocamentoY, tecla do InputHandler]]
+    // No celular não há teclado: caps vem null e a placa desenha um
+    // "arraste aqui" no lugar das teclas.
+    const capSize = 26 * k, pitch = 30 * k;
+    const block = (cx, cy, heading, hint, caps, color, isDone, fade) => {
+      const headY = cy - pitch/2 - capSize/2 - 26*k;
+      const legY  = cy + pitch/2 + capSize/2 + 28*k;
+      // painel de fundo: a placa se estica para caber o texto, não o contrário
+      ctx.font = hudFont(6); const hintW = ctx.measureText(hint).width;
+      ctx.font = hudFont(9); const headW = ctx.measureText(heading).width;
+      const capsW = caps ? (pitch*2 + capSize + 30*k) : 0;
+      const pw = Math.max(capsW, hintW + 26*k, headW + 30*k);
+      const py = headY - 20*k, ph = (legY + 14*k) - py;
+      const px = cx - pw/2;
+      ctx.globalAlpha = 0.72 - 0.5 * fade;
+      roundRectPath(ctx, px, py, pw, ph, 10);
+      ctx.fillStyle = 'rgba(6,6,14,0.55)';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = fade > 0.5 ? 'rgba(74,222,128,0.55)' : (tick ? color : 'rgba(255,255,255,0.18)');
+      ctx.stroke();
+
+      // título do bloco
+      ctx.globalAlpha = 0.95 - 0.6 * fade;
+      ctx.font = hudFont(9);
+      ctx.fillStyle = isDone ? done : 'rgba(255,255,255,0.92)';
+      ctx.fillText(heading, cx, headY);
+      if(isDone){
+        ctx.font = hudFont(10);
+        ctx.fillStyle = done;
+        ctx.fillText('✓', cx + ctx.measureText(heading).width/2 + 12, headY);
+      }
+
+      // teclas (desktop) OU gesto de arrastar (celular)
+      if(caps){
+        for(const c of caps){
+          const label = c[0], dx = c[1], dy = c[2], key = c[3];
+          const held = !!(input && input.isDown(key));
+          const s = capSize, x = cx + dx, y = cy + dy;
+          const x0 = Math.round(x - s/2), y0 = Math.round(y - s/2 + (held ? 2 : 0));
+          // sombra da tecla (calha pintada no chão)
+          ctx.globalAlpha = 0.85 - 0.55 * fade;
+          roundRectPath(ctx, x0, y0, s, s, 5);
+          ctx.fillStyle = held ? 'rgba(255,255,255,0.26)' : 'rgba(0,0,0,0.40)';
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = isDone ? 'rgba(74,222,128,0.85)' : (held ? '#ffffff' : color);
+          ctx.stroke();
+          // face da tecla
+          roundRectPath(ctx, x0 + 2, y0 + 2, s - 4, s - 7, 4);
+          ctx.fillStyle = held ? 'rgba(255,255,255,0.34)' : 'rgba(255,255,255,0.07)';
+          ctx.fill();
+          ctx.font = hudFont(9);
+          ctx.fillStyle = isDone ? done : (held ? '#ffffff' : 'rgba(255,255,255,0.85)');
+          ctx.fillText(label, x0 + s/2, y0 + s/2 + 3);
+        }
+      } else {
+        // gesto: analógico desenhado no chão, com o botão do dedo arrastando
+        const R = 17 * k;
+        const wob = isDone ? 0 : Math.sin(this.anim * 0.012) * R * 0.45;
+        ctx.globalAlpha = 0.80 - 0.5 * fade;
+        ctx.beginPath(); ctx.arc(cx, cy - pitch/2, R, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(0,0,0,0.40)'; ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = isDone ? 'rgba(74,222,128,0.85)' : color; ctx.stroke();
+        const kx = cx + wob, ky = cy - pitch/2;
+        ctx.beginPath(); ctx.arc(kx, ky, R*0.46, 0, Math.PI*2);
+        ctx.fillStyle = isDone ? 'rgba(74,222,128,0.55)' : 'rgba(255,255,255,0.30)'; ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = isDone ? done : '#ffffff'; ctx.stroke();
+        // setinha apontando para a metade da tela correspondente
+        const dirX = (cx < CANVAS_W/2) ? -1 : 1;
+        ctx.beginPath();
+        ctx.moveTo(cx + dirX*R*1.5, cy - pitch/2);
+        ctx.lineTo(cx + dirX*R*2.3, cy - pitch/2);
+        ctx.strokeStyle = isDone ? 'rgba(74,222,128,0.8)' : 'rgba(255,255,255,0.55)';
+        ctx.lineWidth = 2; ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(cx + dirX*R*2.6, cy - pitch/2);
+        ctx.lineTo(cx + dirX*R*1.8, cy - pitch/2 - R*0.32);
+        ctx.lineTo(cx + dirX*R*1.8, cy - pitch/2 + R*0.32);
+        ctx.closePath(); ctx.fill();
+      }
+
+      // legenda
+      ctx.globalAlpha = 0.90 - 0.62 * fade;
+      ctx.font = hudFont(6);
+      ctx.fillStyle = 'rgba(255,255,255,0.88)';
+      ctx.fillText(hint, cx, legY);
+    };
+
+    const cy = 296;
+    if(TOUCH_MODE){
+      // celular: nada de teclas, só o gesto de arrastar
+      block(232, cy, 'ANDAR', 'ARRASTE NA METADE ESQUERDA', null, '#00e5ff', t.moved, t.moveFade);
+      block(728, cy, 'MIRAR E ATIRAR', 'ARRASTE NA METADE DIREITA', null, '#ff6a00', t.shot, t.shootFade);
+    } else {
+      block(232, cy, 'MOVER', 'ANDE PELO CHÃO',
+        [['W', 0, -pitch/2, 'w'], ['A', -pitch/2, 0, 'a'], ['S', 0, 0, 's'], ['D', pitch/2, 0, 'd']],
+        '#00e5ff', t.moved, t.moveFade);
+      block(728, cy, 'MIRA E ATIRA', 'SEGURE A SETA PARA MIRAR',
+        [['↑', 0, -pitch/2, 'ArrowUp'], ['←', -pitch/2, 0, 'ArrowLeft'], ['↓', 0, 0, 'ArrowDown'], ['→', pitch/2, 0, 'ArrowRight']],
+        '#ff6a00', t.shot, t.shootFade);
+    }
+
+    // setinha apontando para as portas quando o jogador já aprendeu tudo
+    if(allFade > 0.9){
+      ctx.globalAlpha = 0.35 + 0.25 * Math.sin(this.anim * 0.006);
+      ctx.font = hudFont(6);
+      ctx.fillStyle = done;
+      ctx.fillText('✓ MOVIMENTO E TIRO LIBERADOS — SIGA PELAS PORTAS', CANVAS_W/2, 128);
+    }
+
+    ctx.restore();
+    ctx.textAlign = 'left';
+  }
+
+  draw(ctx, isCurrent, game) {
     try{
     const theme = this.theme || FLOOR_THEMES[this.floor] || FLOOR_THEMES[1];
     // Fix chão preto: garante fallback mesmo se theme incompleto (martelo/lança/machado não corrompem tema)
@@ -19983,6 +20372,8 @@ if(e.canDamageHead()){
       ctx.strokeStyle = theme.id===2 ? 'rgba(255,140,66,0.22)' : 'rgba(255,204,0,0.18)';
       ctx.lineWidth = 2;
       ctx.strokeRect(CANVAS_W/2 - 60, CANVAS_H/2 - 60, 120, 120);
+      // tutorial pintado no chão (MOVER / MIRA E ATIRA)
+      this.drawFloorTutorial(ctx, game);
     }
     // paredes com tema (muro com profundidade: bisel, textura, sombra interna e detalhes)
     this.drawWalls(ctx, theme);
@@ -21434,6 +21825,8 @@ class Game {
     this.swapHint = document.getElementById('swapHint');
     this.nameInput = document.getElementById('playerNameInput');
     if(this.nameInput) this.nameInput.value = this.playerName;
+    // Celular: analógicos flutuantes + botões (ficam invisíveis no desktop)
+    this.touch = new TouchControls(this);
     this._hudIdleTimer=0;
     this._hudIdle=false;
     this._chipsRevealT=0;
@@ -21521,6 +21914,7 @@ class Game {
     document.getElementById('btnGoMenu').addEventListener('click', ()=> this.goMenu());
     document.getElementById('btnControls').addEventListener('click', ()=> this.showControls());
     document.getElementById('btnBackMenu').addEventListener('click', ()=> this.hideControls());
+    this.bindExitUI();
     this.bindSettingsUI();
     // Nome do jogador (vai para as tabelas de recordes)
     if(this.nameInput){
@@ -21582,14 +21976,10 @@ class Game {
       if(isPauseKey && this.state==='PLAYING'){ e.preventDefault(); this.pause(); }
       else if(isPauseKey && this.state==='PAUSED'){ e.preventDefault(); this.resume(); }
     });
-    // Setch: clique nos copos para escolher (mouse) + botão de pausa do HUD
+// Setch: clique nos copos para escolher (mouse) + botão de pausa do HUD
     if(this.canvas){
       this.canvas.addEventListener('click', (e)=>{
-        const rect=this.canvas.getBoundingClientRect();
-        const scaleX=CANVAS_W/rect.width;
-        const scaleY=CANVAS_H/rect.height;
-        const x=(e.clientX - rect.left)*scaleX;
-        const y=(e.clientY - rect.top)*scaleY;
+        const { x, y } = this.clientToCanvas(e.clientX, e.clientY);
         if((this.state==='PLAYING' || this.state==='PAUSED') && this.isHudPauseHit(x,y)){
           this.togglePause();
           return;
@@ -21603,10 +21993,9 @@ class Game {
           this.trySetchChoice(idx);
         }
       });
-this.canvas.addEventListener('mousemove', (e)=>{
-          const rect=this.canvas.getBoundingClientRect();
-          this._hudMouse.x=(e.clientX - rect.left)*(CANVAS_W/rect.width);
-          this._hudMouse.y=(e.clientY - rect.top)*(CANVAS_H/rect.height);
+    this.canvas.addEventListener('mousemove', (e)=>{
+          const p=this.clientToCanvas(e.clientX, e.clientY);
+          this._hudMouse.x=p.x; this._hudMouse.y=p.y;
           // mover o mouse também tira a HUD do modo ocioso (antes ela continuava
           // translúcida mesmo com o jogador parado, escondendo vida/arma)
           this._hudIdleTimer=0; this._hudIdle=false;
@@ -21712,6 +22101,65 @@ this.canvas.addEventListener('mousemove', (e)=>{
     this._settingsReturn = 'menu';
   }
 
+  // Converte coordenada da tela para o canvas. Não dá só para dividir pelo
+  // tamanho do elemento: no celular o #gameCanvas usa object-fit:contain e
+  // fica com tarjas pretas, então o desenho real é menor que a caixa e
+  // precisa ser centrado antes de converter.
+  clientToCanvas(clientX, clientY){
+    const r=this.canvas.getBoundingClientRect();
+    if(!r.width || !r.height) return { x:0, y:0 };
+    const scale=Math.min(r.width/CANVAS_W, r.height/CANVAS_H);
+    const ox=r.left + (r.width - CANVAS_W*scale)/2;
+    const oy=r.top  + (r.height - CANVAS_H*scale)/2;
+    return { x:(clientX-ox)/scale, y:(clientY-oy)/scale };
+  }
+
+  // Botão SAIR do menu. O navegador só aceita window.close() em janelas
+  // abertas por script; numa aba normal ele falha em silêncio, então há um
+  // plano B: "desligamento" na tela com opção de voltar (sem prender o
+  // usuário num limbo onde nada acontece).
+  bindExitUI(){
+    const btn = document.getElementById('btnExit');
+    if(btn) btn.addEventListener('click', ()=> this.exitGame());
+  }
+  exitGame(){
+    try{ if(document.fullscreenElement) document.exitFullscreen(); }catch(_){}
+    try{
+      window.close();
+      if(window.closed) return;
+    }catch(_){ return; }   // permitido pelo navegador: a aba já fechou
+    setTimeout(()=>{
+      if(window.closed) return;
+      if(document.visibilityState && document.visibilityState==='hidden') return;
+      this.showExitScreen();
+    }, 150);
+  }
+  showExitScreen(){
+    let dlg=document.getElementById('exitScreen');
+    if(!dlg){
+      const el = (tag, cls, html)=>{
+        const n=document.createElement(tag);
+        n.className=cls||'';
+        if(html!=null) n.innerHTML=html;
+        return n;
+      };
+      dlg = el('div', 'exit-screen');
+      dlg.id = 'exitScreen';
+      const crt = el('div', 'exit-crt');
+      const back = el('button', 'btn btn-secondary', '↩ VOLTAR AO MENU');
+      back.id = 'btnExitBack';
+      back.type = 'button';
+      back.addEventListener('click', ()=>{ dlg.style.display='none'; });
+      crt.appendChild(el('p', 'exit-title', 'SISTEMA ENCERRADO'));
+      crt.appendChild(el('p', 'exit-hint',
+        'O navegador bloqueou o fechamento automático.<br>Feche esta aba para sair de verdade.'));
+      crt.appendChild(back);
+      dlg.appendChild(crt);
+      document.body.appendChild(dlg);
+    }
+    dlg.style.display='flex';
+  }
+
   showControls(){
     // Atualiza loadout dinâmico antes de mostrar
     this.updateControlsLoadout();
@@ -21783,7 +22231,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
       let status='';
       if(sp.isActive) status=`ATIVO: ${Math.ceil(sp.durationRemaining/1000)}s`;
       else if(sp.isOnCooldown()) status=`Recarga: ${sp.getRemainingSeconds()}s`;
-      else status='Pronto [E]';
+      else status='Pronto '+keyTag('e');
       cards.push({
         icon: sp.icon||'★',
         name: `ESPECIAL: ${sp.name}`,
@@ -21941,7 +22389,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
     }
     if(countEl) countEl.textContent=`${items.length} ${items.length===1?'item':'itens'}`;
     if(items.length===0){
-      container.innerHTML='<p class="pause-empty">Nenhum item coletado ainda. Explore as salas!<br><span style="font-size:10px;opacity:0.7">Armas no chão [Q] • Especiais [E] • Melhorias ★</span></p>';
+      container.innerHTML=`<p class="pause-empty">Nenhum item coletado ainda. Explore as salas!<br><span style="font-size:10px;opacity:0.7">Armas no chão ${keyTag('q')} • Especiais ${keyTag('e')} • Melhorias ★</span></p>`;
       return;
     }
     container.innerHTML = items.map(it=>`
@@ -22072,6 +22520,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
     this.hidePause();
     this.gameOverScreen.classList.remove('active');
     this.gameContainer.classList.add('hidden');
+    if(this.touch) this.touch.onGameVisible();
     this.menuScreen.classList.add('active');
     if(this.characterScreen) this.characterScreen.classList.remove('active');
     if(this.controlsScreen) this.controlsScreen.classList.remove('active');
@@ -22209,6 +22658,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
     this.gameOverScreen.classList.remove('active');
     if(this.pauseScreen) this.pauseScreen.classList.remove('active');
     this.gameContainer.classList.remove('hidden');
+    if(this.touch) this.touch.onGameVisible();
     this.state='PLAYING';
     const defStart=getCharacterDef(this.selectedCharacterId);
     const charInfo=defStart ? ` • ${defStart.icon} ${defStart.displayName}` : '';
@@ -22740,6 +23190,36 @@ this.canvas.addEventListener('mousemove', (e)=>{
     return false; // sem continue: mantém o game over
   }
 
+  // Navegador mobile só libera áudio depois de um gesto real do usuário.
+  // Um contexto silencioso destrava os sons que o jogo cria depois daqui.
+  unlockAudio(){
+    if(this._audioPrimed) return;
+    this._audioPrimed = true;
+    try{
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if(!AC) return;
+      const ctx = new AC();
+      if(ctx.state === 'suspended' && ctx.resume) ctx.resume();
+      const buf = ctx.createBuffer(1, 1, 22050);
+      const src = ctx.createBufferSource();
+      src.buffer = buf; src.connect(ctx.destination); src.start(0);
+    }catch(_){}
+  }
+
+  // Marca o tutorial da sala inicial como concluído assim que o jogador
+  // realmente anda/atira, e interpola o fade para o bloco sumir do chão.
+  updateFloorTutorial(dt, shootVec){
+    const room = this.currentRoom;
+    if(!room || !room.tutorial) return;
+    const t = room.tutorial;
+    const mv = this.input.getMoveVector();
+    if(!t.moved && (mv.x!==0 || mv.y!==0)) t.moved = true;
+    if(!t.shot && (shootVec || (this.player && this.player.shootCooldown>0))) t.shot = true;
+    const step = dt/420;
+    t.moveFade  += ((t.moved  ? 1 : 0) - t.moveFade)  * step;
+    t.shootFade += ((t.shot ? 1 : 0) - t.shootFade) * step;
+  }
+
   checkRoomTransition(){
     if(this.transitionCooldown>0) return;
     if(!this.currentRoom || !this.player) return;
@@ -22909,16 +23389,16 @@ this.canvas.addEventListener('mousemove', (e)=>{
       // JL e Oli continuam acessíveis mesmo sem o minigame do Setch
       if(room.jlNPC && !room.jlGiftGiven && !this.player.hasIoiPassive){
         const nearJL2 = dist(this.player.x, this.player.y, room.jlNPC.x, room.jlNPC.y) < JL_INTERACT_RANGE + 18;
-        if(nearJL2){ this.showToast('JL: Aproxime-se e pressione [E] - ele deixa o IO-IO no chão!', 1400); return true; }
+        if(nearJL2){ this.showToast(`JL: Aproxime-se e ${TOUCH_MODE?'toque em ESPECIAL':'pressione [E]'} - ele deixa o IO-IO no chão!`, 1400); return true; }
       }
       if(room.oliNPC && !room.oliGiftGiven){
         const nearOli2 = dist(this.player.x, this.player.y, room.oliNPC.x, room.oliNPC.y) < OLI_NPC_INTERACT_RANGE + 18;
-        if(nearOli2){ this.showToast('Oli: Aproxime-se e pressione [E] - o XADREZ fica no chão ([E] para equipar)!', 1400); return true; }
+        if(nearOli2){ this.showToast(`Oli: Aproxime-se e ${TOUCH_MODE?'toque em ESPECIAL':'pressione [E]'} - o XADREZ fica no chão (${keyTag('e')} para equipar)!`, 1400); return true; }
       }
       if(room.indianaNPC && !room.indianaGiftGiven){
         const nearInd2 = dist(this.player.x, this.player.y, room.indianaNPC.x, room.indianaNPC.y) < CHICOTE_INTERACT_RANGE + 18;
-        if(nearInd2) this.showToast('Indiana: Aproxime-se e pressione [E] - o CHICOTE fica no chão ([Q] para pegar)! 100%', 1400);
-        else this.showToast('Aproxime-se de Indiana [E] CHICOTE 100% ou Setch [E] COPINHOS', 1400);
+        if(nearInd2) this.showToast(`Indiana: Aproxime-se e ${TOUCH_MODE?'toque em ESPECIAL':'pressione [E]'} - o CHICOTE fica no chão (${keyTag('q')} para pegar)! 100%`, 1400);
+        else this.showToast(`Aproxime-se de Indiana ${keyTag('e')} CHICOTE 100% ou Setch ${keyTag('e')} COPINHOS`, 1400);
         return true;
       }
       return false;
@@ -22950,7 +23430,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
     if(cg.state==='idle'){
       if(!nearNPC) {
         if(room.indianaNPC && !room.indianaGiftGiven) this.showToast('Aproxime-se: Setch [E] COPINHOS | JL [E] IO-IO | Oli [E] XADREZ | Indiana [E] CHICOTE', 1300);
-        else this.showToast('Chegue mais perto de Setch para jogar [E]', 1100);
+        else this.showToast(`Chegue mais perto de Setch para jogar ${keyTag('e')}`, 1100);
         return true; // consome E para não ativar especial por engano
       }
       cg.resetToIdle();         // garante mesa limpa antes de começar
@@ -22966,7 +23446,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
       // Se o jogador fugiu da mesa, o [E] serve para chamar ele de volta
       if(!cg.nearTable){
         cg.farCd = 0;
-        this.showToast('Setch: Aqui, na mesa! Aperta [E] aqui ó.', 1400);
+        this.showToast(`Setch: Aqui, na mesa! ${TOUCH_MODE?'Toca em':'Aperta'} ${keyTag('e')} aqui ó.`, 1400);
       } else {
         this.showToast('Setch: Aguarde o embaralhamento...', 900);
       }
@@ -23050,7 +23530,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
     const room=this.currentRoom;
     if(!room || !room.isPainelCentral) return false;
     if(!room.isNearPainel(this.player)){
-      this.showToast('▣ Aproxime-se do Painel Central e aperte [E]', 1200);
+      this.showToast(`▣ Aproxime-se do Painel Central e aperte ${keyTag('e')}`, 1200);
       return false;
     }
     if(this.painelTerminalOpen) return true;
@@ -23223,7 +23703,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
         if(idx!==-1) this.currentRoom.items.splice(idx,1);
         // mantém motosserra equipada, não troca automaticamente (fica com motosserra)
         // feedback
-        this.showToast(`+ ${newWeapon.name} coletada! Pressione [E] para trocar com Motosserra`, 1800);
+        this.showToast(`+ ${newWeapon.name} coletada! ${TOUCH_MODE?'Toque em ESPECIAL':'Pressione [E]'} para trocar com Motosserra`, 1800);
         for(let k=0;k<10;k++) this.particles.push(new Particle(this.player.x, this.player.y, randRange(-1.5,1.5), randRange(-1.5,0.6), 300, '#ff3b30', 2));
         return true;
       } else {
@@ -23264,7 +23744,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
         nearby.spawnDelay = 320;
         // preserva heat reset
         if(newWeapon.name==='METRALHADORA'){ this.player.miniHeat=0; this.player.isOverheated=false; this.player.overheatTimer=0; }
-        this.showToast(`↔ ${oldSecName} → ${newWeapon.name} (secundária) [E] troca`, 1500);
+        this.showToast(`↔ ${oldSecName} → ${newWeapon.name} (secundária) ${keyTag('e')} troca`, 1500);
         for(let k=0;k<9;k++) this.particles.push(new Particle(this.player.x, this.player.y, randRange(-1.5,1.5), randRange(-1.5,0.6), 300, '#ff3b30', 2));
         for(let k=0;k<7;k++) this.particles.push(new Particle(nearby.x, nearby.y, randRange(-1.2,1.2), randRange(-1.2,0.6), 280, '#ffffff', 2));
         return true;
@@ -23430,9 +23910,9 @@ this.canvas.addEventListener('mousemove', (e)=>{
       if(this.player.characterId==='ash'){
         if(nearbyForHint){
           if(!this.player.secondaryWeapon){
-            this.swapHint.textContent = `Pressione Q para pegar ${nearbyForHint.weaponType.toUpperCase()} como secundária (Motosserra fixa)`;
+            this.swapHint.textContent = `${TOUCH_MODE?'Toque em TROCAR':'Pressione Q'} para pegar ${nearbyForHint.weaponType.toUpperCase()} como secundária (Motosserra fixa)`;
           } else {
-            this.swapHint.textContent = `Pressione Q para trocar secundária ${this.player.secondaryWeapon.name} → ${nearbyForHint.weaponType.toUpperCase()} (Motosserra fixa)`;
+            this.swapHint.textContent = `${TOUCH_MODE?'Toque em TROCAR':'Pressione Q'} para trocar secundária ${this.player.secondaryWeapon.name} → ${nearbyForHint.weaponType.toUpperCase()} (Motosserra fixa)`;
           }
           this.swapHint.style.borderColor = 'rgba(255,59,48,0.45)';
           this.swapHint.style.color = '#ff6b35';
@@ -23453,13 +23933,13 @@ this.canvas.addEventListener('mousemove', (e)=>{
           this.swapHint.style.background = 'rgba(0,0,0,0.84)';
           this.swapHint.classList.remove('hidden');
         } else if(this.player.secondaryWeapon){
-          this.swapHint.textContent = `Pressione [E] para trocar MOTOSSERRA ↔ ${this.player.secondaryWeapon.name}`;
+          this.swapHint.textContent = `${TOUCH_MODE?'Toque em ESPECIAL':'Pressione [E]'} para trocar MOTOSSERRA ↔ ${this.player.secondaryWeapon.name}`;
           this.swapHint.style.borderColor = 'rgba(255,59,48,0.35)';
           this.swapHint.style.color = '#ff8c42';
           this.swapHint.style.background = 'rgba(0,0,0,0.84)';
           this.swapHint.classList.remove('hidden');
         } else {
-          this.swapHint.textContent = `Ash: Motosserra fixa • Pegue +1 arma no chão com [Q] • Sem especiais`;
+          this.swapHint.textContent = `Ash: Motosserra fixa • Pegue +1 arma no chão com ${keyTag('q')} • Sem especiais`;
           this.swapHint.style.borderColor = 'rgba(255,59,48,0.22)';
           this.swapHint.style.color = '#ff6b35';
           this.swapHint.style.background = 'rgba(0,0,0,0.72)';
@@ -23468,7 +23948,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
       } else if(nearbySpecialHint){
         const equipped = this.player.equippedSpecial ? this.player.equippedSpecial.name : 'VAZIO';
         const action = this.player.equippedSpecial ? `Trocar ${equipped} → ${nearbySpecialHint.specialName}` : `Pegar ${nearbySpecialHint.specialName}`;
-        this.swapHint.textContent = `${action} [E]`;
+        this.swapHint.textContent = `${action} ${keyTag('e')}`;
         this.swapHint.style.borderColor = nearbySpecialHint.specialColor;
         this.swapHint.style.color = nearbySpecialHint.specialColor;
         this.swapHint.style.background = 'rgba(0,0,0,0.84)';
@@ -23488,7 +23968,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
         this.swapHint.style.background = 'rgba(0,0,0,0.84)';
         this.swapHint.classList.remove('hidden');
       } else if(nearbyForHint){
-        this.swapHint.textContent = `Pressione Q para trocar ${this.player.weapon.name} → ${nearbyForHint.weaponType.toUpperCase()}`;
+        this.swapHint.textContent = `${TOUCH_MODE?'Toque em TROCAR':'Pressione Q'} para trocar ${this.player.weapon.name} → ${nearbyForHint.weaponType.toUpperCase()}`;
         this.swapHint.style.borderColor = 'rgba(255,204,0,0.28)';
         this.swapHint.style.color = '#ffeb3b';
         this.swapHint.style.background = 'rgba(0,0,0,0.84)';
@@ -23624,6 +24104,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
     }
 
     const shootVec=this.input.getShootVector();
+    this.updateFloorTutorial(dt, shootVec);
     const w = this.player.weapon;
     const isRayMatematico = w && w.isRayMatematico;
     const isCarregada = w && w.isCharged && !isRayMatematico;
@@ -24797,7 +25278,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
     if(curSpecialId !== this._lastSpecialId){
       if(curSpecialId){
         const sp = this.player.equippedSpecial;
-        this.showToast(`★ ${sp.name} equipado! Pressione [E] para ativar • Cooldown ${sp.cooldown/1000}s`, 2600);
+        this.showToast(`★ ${sp.name} equipado! ${TOUCH_MODE?'Toque em ESPECIAL':'Pressione [E]'} para ativar • Cooldown ${sp.cooldown/1000}s`, 2600);
         for(let k=0;k<16;k++){ const ang=Math.random()*Math.PI*2; this.particles.push(new Particle(this.player.x,this.player.y, Math.cos(ang)*randRange(1.4,2), Math.sin(ang)*randRange(1.4,2), 420, sp.color, 3)); }
       } else {
         // desequipar? não usado, mas previsto
@@ -24881,7 +25362,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
     const theme = FLOOR_THEMES[this.floor] || FLOOR_THEMES[1];
     try{ ctx.fillStyle=theme.bg; ctx.fillRect(0,0,CANVAS_W,CANVAS_H); }catch(e){}
     if((this.state==='PLAYING' || this.state==='PAUSED') && this.currentRoom && this.player){
-      try{ this.currentRoom.draw(ctx, true); }catch(e){ console.error('Room draw error', e); try{ ctx.fillStyle=theme.bg; ctx.fillRect(0,0,CANVAS_W,CANVAS_H); }catch(_){} }
+      try{ this.currentRoom.draw(ctx, true, this); }catch(e){ console.error('Room draw error', e); try{ ctx.fillStyle=theme.bg; ctx.fillRect(0,0,CANVAS_W,CANVAS_H); }catch(_){} }
       try{ for(const b of this.bullets) b.draw(ctx); }catch(e){ console.error('Bullet draw error', e); }
       try{ for(const whip of this.chicoteWhips) whip.draw(ctx, this.player); }catch(e){ console.error('Chicote draw error', e); }
       try{ for(const lb of (this.lazerBeams||[])) lb.draw(ctx); }catch(e){ console.error('LazerBeam draw error', e); }
@@ -25421,7 +25902,7 @@ this.canvas.addEventListener('mousemove', (e)=>{
     } else {
       ctx.font = hudFont(5);
       ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      ctx.fillText(hudFitText(ctx, 'SEM ESPECIAL [E]', sw - 12*k, 5), x+6*k, top+12);
+      ctx.fillText(hudFitText(ctx, TOUCH_MODE ? 'SEM ESPECIAL' : 'SEM ESPECIAL [E]', sw - 12*k, 5), x+6*k, top+12);
     }
     // ===== PAUSA + dica ESC =====
     const b = HUD_BTN, isPaused = this.state === 'PAUSED';
@@ -25478,13 +25959,13 @@ this.canvas.addEventListener('mousemove', (e)=>{
           const rd = ` R${cg.round}/${SETCH_ROUNDS}`;
           const away = !cg.nearTable;
           if(room.setchCleared) st=' ✓ VENCIDO';
-          else if(cg.state==='idle') st=rd+' [E] JOGAR';
+          else if(cg.state==='idle') st=rd+' '+keyTag('e')+' JOGAR';
           else if(cg.state==='showing') st=rd+' MEMORIZE!';
           else if(cg.state==='shuffling') st=rd+(cg.swapQueue.length?' ★EM PAR!':' EMBARALHANDO...');
           else if(cg.state==='waiting') st=rd+(away?' VOLTA PRA MESA!' : ` ESCOLHA! ${Math.ceil(cg.chooseTimer/1000)}s`);
           else if(cg.state==='nextRound') st=rd+' PRÓXIMA RODADA...';
           else if(cg.state==='revealing') st = rd+(cg.result==='win' ? ' ✓ ACERTOU!' : ' ✗ ERROU!');
-          else if(cg.state==='finishedLose') st=rd+' [E] REJOGAR';
+          else if(cg.state==='finishedLose') st=rd+' '+keyTag('e')+' REJOGAR';
         }
         tag=`◉ SALA SETCH${st}`; tagColor='#ff6b9d';
       } else if(room.isMiniboss){

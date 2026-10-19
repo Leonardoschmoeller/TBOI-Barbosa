@@ -868,7 +868,193 @@ html, body {
 #gameOverStats{ font-family: system-ui, sans-serif; font-size: 0.875rem; color:#ded7ea; margin:12px 0 20px; line-height:1.5; }
 @keyframes fadeUp{ from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);} }
 
-/* ============ RESPONSIVO - MAPA SEMPRE PRIORIDADE ============ */
+/* =========================================================================
+   CONTROLES DE TOQUE (celular)
+   =========================================================================
+   Escondidos por padrão: o JS (TouchControls) só adiciona .touch-on quando
+   detecta toque de verdade, então o desktop não vê nada disso. As medidas
+   usam clamp() para o mesmo layout servir de 320px a 1200px de largura. */
+.touch-note {
+  display: none;
+  margin-top: 0.7rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid rgba(0,217,255,0.32);
+  border-radius: var(--radius-sm);
+  background: rgba(0,217,255,0.07);
+  color: #d9f4ff;
+  font-size: 0.85rem;
+  line-height: var(--a11y-line);
+}
+body.is-touch .touch-note { display: block; }
+
+.touch-ui {
+  position: absolute;
+  inset: 0;
+  display: none;
+  z-index: 12;
+  pointer-events: none;
+  font-family: inherit;
+}
+.touch-ui.touch-on { display: block; }
+/* touch-action:none já vale sempre no container do jogo (não tem rolagem
+   própria): sem isso o arrasto do dedo arrasta a página junto no celular. */
+#gameContainer { touch-action: none; overscroll-behavior: contain; }
+body { overscroll-behavior: none; }
+
+/* --- analógicos flutuantes (a base nasce onde o dedo encosta) --- */
+.tc-sticks { position: absolute; inset: 0; }
+.tc-stick {
+  position: absolute;
+  width: 0; height: 0;              /* só a posição importa: o centro vira a origem */
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+.tc-stick.on { opacity: 1; }
+.tc-base, .tc-knob {
+  position: absolute;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  left: 0; top: 0;
+}
+.tc-base {
+  width: clamp(84px, 15vmin, 132px);
+  height: clamp(84px, 15vmin, 132px);
+  border: 2px solid rgba(255,255,255,0.30);
+  background: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.10) 0%, rgba(0,0,0,0.30) 100%);
+  box-shadow: 0 0 18px rgba(0,0,0,0.35) inset;
+}
+.tc-knob {
+  width: clamp(42px, 7.5vmin, 66px);
+  height: clamp(42px, 7.5vmin, 66px);
+  background: rgba(255,255,255,0.28);
+  border: 2px solid rgba(255,255,255,0.65);
+  box-shadow: 0 0 14px rgba(0,0,0,0.4);
+}
+#tcAim .tc-base { border-color: rgba(255,140,66,0.55); }
+#tcAim .tc-knob { background: rgba(255,140,66,0.30); border-color: rgba(255,170,110,0.8); }
+.tc-stick-label {
+  position: absolute;
+  left: 0; top: clamp(50px, 9vmin, 80px);
+  transform: translateX(-50%);
+  font-size: clamp(8px, 1.5vmin, 11px);
+  letter-spacing: 0.08em;
+  color: rgba(255,255,255,0.55);
+  white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+}
+
+/* --- botões de ação (rodapé, fora das duas metades do analógico) --- */
+.tc-actions {
+  position: absolute;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 0.7rem);
+  transform: translateX(-50%);
+  display: flex;
+  gap: clamp(0.4rem, 1.6vw, 0.9rem);
+  pointer-events: auto;
+}
+.tc-btn {
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: clamp(46px, 8.5vmin, 76px);
+  min-height: clamp(46px, 8.5vmin, 76px);
+  padding: 0.2em 0.35em;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.28);
+  background: radial-gradient(circle at 50% 40%, rgba(255,255,255,0.16) 0%, rgba(8,8,16,0.72) 100%);
+  color: #f6efe3;
+  font-family: "Press Start 2P", monospace;
+  font-size: clamp(9px, 2vmin, 15px);
+  line-height: 1.1;
+  box-shadow: 0 3px 0 rgba(0,0,0,0.45);
+  cursor: pointer;
+  transition: transform 0.06s ease, background 0.06s ease, border-color 0.06s ease;
+}
+.tc-btn small {
+  font-size: clamp(5px, 1.1vmin, 8px);
+  letter-spacing: 0.04em;
+  color: rgba(255,255,255,0.6);
+}
+.tc-btn:active, .tc-btn.held {
+  transform: translateY(3px) scale(0.96);
+  background: radial-gradient(circle at 50% 40%, rgba(255,255,255,0.34) 0%, rgba(8,8,16,0.85) 100%);
+  border-color: rgba(255,255,255,0.75);
+}
+.tc-btn-swap    { border-color: rgba(0,217,255,0.45); }
+.tc-btn-dash    { border-color: rgba(255,204,0,0.45); }
+.tc-btn-special { border-color: rgba(138,108,255,0.55); }
+
+/* --- botões de sistema (canto superior direito, fora do caminho dos dedos) --- */
+.tc-sys {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 0.35rem);
+  right: calc(env(safe-area-inset-right, 0px) + 0.35rem);
+  display: flex;
+  gap: 0.35rem;
+  pointer-events: auto;
+}
+.tc-btn-icon {
+  min-width: clamp(32px, 5.5vmin, 44px);
+  min-height: clamp(32px, 5.5vmin, 44px);
+  font-size: clamp(9px, 1.8vmin, 14px);
+}
+
+/* --- aviso "gire o celular": banner, não bloqueia o jogo --- */
+.rotate-hint {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 0.4rem);
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  align-items: center;
+  gap: 0.5rem;
+  z-index: 40;
+  max-width: min(92vw, 30rem);
+  padding: 0.45rem 0.5rem 0.45rem 0.7rem;
+  border: 1px solid rgba(255,204,0,0.35);
+  border-radius: 999px;
+  background: rgba(12,11,20,0.94);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  font-size: clamp(10px, 1.9vmin, 13px);
+  color: #ffe08a;
+}
+.rotate-icon  { font-size: clamp(14px, 2.8vmin, 20px); animation: rotateNudge 2.6s ease-in-out infinite; }
+.rotate-text  { line-height: 1.35; }
+.rotate-text strong { font-family: "Press Start 2P", monospace; letter-spacing: 0.04em; }
+.rotate-close {
+  flex: 0 0 auto;
+  width: 1.7em; height: 1.7em;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  font-size: 1em;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+}
+@keyframes rotateNudge {
+  0%, 55%, 100% { transform: rotate(0deg); }
+  75%, 90%      { transform: rotate(-90deg); }
+}
+/* retrato + toque de verdade = mostra o aviso */
+body.is-touch.show-rotate .rotate-hint { display: flex; }
+@media (prefers-reduced-motion: reduce) {
+  .rotate-icon { animation: none; }
+}
+
+/* =========================================================================
+   RESPONSIVO - MAPA SEMPRE PRIORIDADE
+   ========================================================================= */
 @media (max-width: 1024px){
   #gameContainer{ width: 96vw; max-height: 84vh; border-radius:12px; }
 }
@@ -1593,6 +1779,67 @@ html, body {
   border-color: #ffcc00;
   color: #fff;
   background: linear-gradient(180deg, rgba(255,204,0,0.30) 0%, rgba(70,54,12,0.95) 100%);
+}
+/* SAIR: mesma pegada da tela de derrota, mas menor — fecha a aba */
+.btn-exit {
+  flex: 0 1 auto;
+  min-height: 2.4em;
+  padding: 0.45em 1.1em;
+  font-size: 0.82rem;
+  color: #ffb3ad;
+  border-color: rgba(255,59,48,0.42);
+  background: linear-gradient(180deg, rgba(255,59,48,0.14) 0%, rgba(48,18,20,0.95) 100%);
+}
+.btn-exit:hover {
+  border-color: #ff3b30;
+  color: #fff;
+  background: linear-gradient(180deg, rgba(255,59,48,0.28) 0%, rgba(66,22,24,0.95) 100%);
+}
+
+/* ---------------------------------------------------------------------------
+   2c-bis. TELA DE SAÍDA (fallback quando o navegador bloqueia window.close)
+   ------------------------------------------------------------------------ */
+.exit-screen {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  background: #05050a;
+  animation: exitBoot 0.5s ease-out both;
+}
+.exit-crt {
+  text-align: center;
+  padding: 2.4rem 2rem;
+  max-width: 34rem;
+  border: 1px solid rgba(255, 59, 48, 0.28);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255, 59, 48, 0.10) 0%, rgba(14, 12, 22, 0.98) 100%);
+  box-shadow: 0 0 60px rgba(255, 59, 48, 0.18), var(--shadow);
+  animation: exitCollapse 0.6s cubic-bezier(0.6, 0, 0.4, 1) both;
+}
+.exit-title {
+  font-size: 1.5rem;
+  letter-spacing: 0.14em;
+  color: #ff8f88;
+  text-shadow: 0 0 18px rgba(255, 59, 48, 0.55);
+  margin-bottom: 0.9rem;
+}
+.exit-hint {
+  font-size: 0.9rem;
+  line-height: var(--a11y-line);
+  color: var(--muted);
+  margin-bottom: 1.6rem;
+}
+@keyframes exitBoot { from { opacity: 0; } to { opacity: 1; } }
+@keyframes exitCollapse {
+  0%   { transform: scaleY(1) scaleX(1); opacity: 1; filter: brightness(1); }
+  55%  { transform: scaleY(0.02) scaleX(1.04); opacity: 1; filter: brightness(2.4); }
+  100% { transform: scaleY(1) scaleX(1); opacity: 1; filter: brightness(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .exit-screen, .exit-crt { animation: none; }
 }
 
 /* ---------------------------------------------------------------------------
