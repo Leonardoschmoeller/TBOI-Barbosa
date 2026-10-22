@@ -1675,6 +1675,15 @@ const UPGRADE_VALUES = {
   RAIO_MAT_INCOMUM_NUCLEO_DANO: 0.28,      // +28% dano
   RAIO_MAT_RARA_PRISMA_RANGE: 0.18,        // +18% range
   RAIO_MAT_MUITO_RARA_BIFURCACAO_EXTRA: 1, // +1 projétil extra / chain
+  // BOLAS DE AÇO (Gyro) - arremesso carregável com ricochete
+  BOLAS_COMUM_CHARGE_REDUC: 0.18,   // -18% tempo de carga
+  BOLAS_INCOMUM_DANO: 0.25,         // +25% dano em todos os tiers
+  BOLAS_INCOMUM_SIZE: 0.10,         // +10% tamanho da bola
+  BOLAS_RARA_RICOCHET: 1,           // +1 quique em parede
+  BOLAS_RARA_SPEED: 0.20,           // +20% velocidade do arremesso
+  BOLAS_MUITO_RARA_DANO: 0.40,      // +40% dano total
+  BOLAS_MUITO_RARA_PIERCE: 1,       // perfura +1 inimigo
+  BOLAS_MUITO_RARA_RICOCHET: 2,     // +2 quiques em parede
 };
 // Caps para evitar infinito/exagerado
 const UPGRADE_CAPS = {
@@ -1877,42 +1886,66 @@ const UPGRADE_DEFS = [
       w._returnBonus = (w._returnBonus||0) + UPGRADE_VALUES.BASTAO_MUITO_RARA_RETURN;
   }},
 
+  // ===== BOLAS DE AÇO (GYRO) - upgrades exclusivos da arma =====
+  { id:'bolas_comum_usinagem', weapon:'BOLAS', rarity:'COMUM', name:'Usinagem Polida', desc:'-18% tempo de carga', apply:(w)=>{
+      const base=WEAPON_BOLAS.chargeTime;
+      w.chargeTime = Math.max(UPGRADE_CAPS.MIN_CHARGE_TIME, base*(1-UPGRADE_VALUES.BOLAS_COMUM_CHARGE_REDUC));
+  }},
+  { id:'bolas_incomum_pesada', weapon:'BOLAS', rarity:'INCOMUM', name:'Bola Pesada', desc:'+25% dano e +10% tamanho', apply:(w)=>{
+      const baseD=WEAPON_BOLAS.chargeDamages;
+      const maxD=baseD[baseD.length-1]*UPGRADE_CAPS.MAX_DANO_FACTOR;
+      w.chargeDamages = baseD.map(d=> Math.min(d*(1+UPGRADE_VALUES.BOLAS_INCOMUM_DANO), maxD));
+      w.bulletSize = WEAPON_BOLAS.bulletSize * (1+UPGRADE_VALUES.BOLAS_INCOMUM_SIZE);
+  }},
+  { id:'bolas_rara_ricochete', weapon:'BOLAS', rarity:'RARA', name:'Ricochete Duplo', desc:'+1 quique em parede e +20% velocidade', apply:(w)=>{
+      w.ricochet = (WEAPON_BOLAS.ricochet||0) + UPGRADE_VALUES.BOLAS_RARA_RICOCHET;
+      const baseS=WEAPON_BOLAS.bulletSpeed;
+      w.bulletSpeed = Math.min(baseS*(1+UPGRADE_VALUES.BOLAS_RARA_SPEED), baseS*UPGRADE_CAPS.MAX_BULLET_SPEED_FACTOR);
+  }},
+  { id:'bolas_muito_rara_giro', weapon:'BOLAS', rarity:'MUITO_RARA', name:'Giro de Tusk', desc:'+40% dano, perfura +1 e +2 quiques', apply:(w)=>{
+      const baseD=WEAPON_BOLAS.chargeDamages;
+      const maxD=baseD[baseD.length-1]*UPGRADE_CAPS.MAX_DANO_FACTOR;
+      w.chargeDamages = baseD.map(d=> Math.min(d*(1+UPGRADE_VALUES.BOLAS_MUITO_RARA_DANO), maxD));
+      w.pierce = (w.pierce||0) + UPGRADE_VALUES.BOLAS_MUITO_RARA_PIERCE;
+      w.ricochet = (WEAPON_BOLAS.ricochet||0) + UPGRADE_VALUES.BOLAS_MUITO_RARA_RICOCHET;
+  }},
+
   // ===== NOVO SISTEMA COMUM/INCOMUM COM NÍVEIS (até 3) - modular =====
   // Alcance aumentado - todas as armas
-  { id:'alcance_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO'], rarity:'COMUM', name:'Mira Alongada', desc:'Alcance +15% / +30% / +50%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.ALCANCE, apply:(w, level)=>{
+  { id:'alcance_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS'], rarity:'COMUM', name:'Mira Alongada', desc:'Alcance +15% / +30% / +50%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.ALCANCE, apply:(w, level)=>{
       const v = UPGRADE_LEVEL_VALUES.ALCANCE[level-1] || 0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS};
       const base = baseMap[w.name] ? baseMap[w.name].range : (w.range||60);
       // aplica nível atual (não cumulativo, sobrescreve)
       const factor = 1 + v;
       w.range = Math.min(base * factor, base * UPGRADE_CAPS.MAX_RANGE_FACTOR);
   }},
   // Recarga rápida - todas
-  { id:'recarga_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO'], rarity:'COMUM', name:'Recarga Ágil', desc:'Recarga -10% / -20% / -30%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.RECARGA, apply:(w, level)=>{
+  { id:'recarga_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS'], rarity:'COMUM', name:'Recarga Ágil', desc:'Recarga -10% / -20% / -30%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.RECARGA, apply:(w, level)=>{
       const v = UPGRADE_LEVEL_VALUES.RECARGA[level-1] || 0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS};
       const base = baseMap[w.name] ? baseMap[w.name].cooldown : (w.cooldown||600);
       w.cooldown = Math.max(Math.round(base * (1 - v)), Math.round(base * UPGRADE_CAPS.MIN_COOLDOWN_FACTOR));
   }},
   // Cadência aumentada - todas (similar recarga, mas para cadência)
-  { id:'cadencia_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO'], rarity:'COMUM', name:'Gatilho Veloz', desc:'Cadência -8% / -15% / -25%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.CADENCIA, apply:(w, level)=>{
+  { id:'cadencia_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS'], rarity:'COMUM', name:'Gatilho Veloz', desc:'Cadência -8% / -15% / -25%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.CADENCIA, apply:(w, level)=>{
       const v = UPGRADE_LEVEL_VALUES.CADENCIA[level-1] || 0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS};
       const base = baseMap[w.name] ? baseMap[w.name].cooldown : (w.cooldown||600);
       // cadência é mesmo que recarga mas com valores menores
       w.cooldown = Math.max(Math.round(base * (1 - v)), Math.round(base * UPGRADE_CAPS.MIN_COOLDOWN_FACTOR));
   }},
   // Dano aumentado - todas
-  { id:'dano_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO'], rarity:'COMUM', name:'Munição Potente', desc:'Dano +15% / +30% / +50%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.DANO, apply:(w, level)=>{
+  { id:'dano_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS'], rarity:'COMUM', name:'Munição Potente', desc:'Dano +15% / +30% / +50%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.DANO, apply:(w, level)=>{
       const v = UPGRADE_LEVEL_VALUES.DANO[level-1] || 0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS};
       const base = baseMap[w.name] ? baseMap[w.name].damage : (w.damage||1.5);
       w.damage = Math.min(base * (1 + v), base * UPGRADE_CAPS.MAX_DANO_FACTOR);
   }},
   // Projétil mais rápido - todas
-  { id:'velocidade_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO'], rarity:'COMUM', name:'Propulsor Leve', desc:'Vel. projétil +10% / +20% / +35%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.VELOCIDADE, apply:(w, level)=>{
+  { id:'velocidade_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS'], rarity:'COMUM', name:'Propulsor Leve', desc:'Vel. projétil +10% / +20% / +35%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.VELOCIDADE, apply:(w, level)=>{
       const v = UPGRADE_LEVEL_VALUES.VELOCIDADE[level-1] || 0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS};
       const base = baseMap[w.name] ? baseMap[w.name].bulletSpeed : (w.bulletSpeed||8);
       w.bulletSpeed = Math.min(base * (1 + v), base * UPGRADE_CAPS.MAX_BULLET_SPEED_FACTOR);
   }},
@@ -2004,26 +2037,26 @@ const UPGRADE_DEFS = [
       w.pochitaGlow='rgba(255,180,60,0.38)';
   }},
   // ===== NOVAS MELHORIAS GERAIS (balanceadas, todas as armas) =====
-  { id:'geral_comum_poder', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO'], rarity:'COMUM', name:'Núcleo de Poder', desc:'+12% dano (todas)', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.DANO, apply:(w, level)=>{
+  { id:'geral_comum_poder', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS'], rarity:'COMUM', name:'Núcleo de Poder', desc:'+12% dano (todas)', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.DANO, apply:(w, level)=>{
       const v=[0.12,0.24,0.36][level-1]||0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS};
       const base=baseMap[w.name]?baseMap[w.name].damage:(w.damage||1);
       w.damage=Math.min(base*(1+v), base*UPGRADE_CAPS.MAX_DANO_FACTOR);
   }},
-  { id:'geral_comum_alcance', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO'], rarity:'COMUM', name:'Mira Estabilizadora', desc:'+15% alcance (todas)', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.ALCANCE, apply:(w, level)=>{
+  { id:'geral_comum_alcance', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS'], rarity:'COMUM', name:'Mira Estabilizadora', desc:'+15% alcance (todas)', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.ALCANCE, apply:(w, level)=>{
       const v=UPGRADE_LEVEL_VALUES.ALCANCE[level-1]||0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS};
       const base=baseMap[w.name]?baseMap[w.name].range:(w.range||60);
       w.range=Math.min(base*(1+v), base*UPGRADE_CAPS.MAX_RANGE_FACTOR);
   }},
-  { id:'geral_incomum_recarga', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO'], rarity:'INCOMUM', name:'Recarga Quântica', desc:'-15% recarga (todas)', maxLevel:3, levelValues: [0.15,0.28,0.40], apply:(w, level)=>{
+  { id:'geral_incomum_recarga', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS'], rarity:'INCOMUM', name:'Recarga Quântica', desc:'-15% recarga (todas)', maxLevel:3, levelValues: [0.15,0.28,0.40], apply:(w, level)=>{
       const v=[0.15,0.28,0.40][level-1]||0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS};
       const base=baseMap[w.name]?baseMap[w.name].cooldown:(w.cooldown||600);
       w.cooldown=Math.max(Math.round(base*(1-v)), Math.round(base*UPGRADE_CAPS.MIN_COOLDOWN_FACTOR));
   }},
-  { id:'geral_rara_critico', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO'], rarity:'RARA', name:'Sobrecarga Prismática', desc:'+28% dano raro (todas)', apply:(w)=>{
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE};
+  { id:'geral_rara_critico', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS'], rarity:'RARA', name:'Sobrecarga Prismática', desc:'+28% dano raro (todas)', apply:(w)=>{
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS};
       const base=baseMap[w.name]?baseMap[w.name].damage:(w.damage||1);
       w.damage=Math.min(w.damage*1.28, base*UPGRADE_CAPS.MAX_DANO_FACTOR);
   }},
@@ -3545,6 +3578,46 @@ const JG_BASTAO_WAVE_RADIUS = 132; // raio da onda ao redor do JG
 const JG_BASTAO_WAVE_PUSH = 30;    // força base do empurrão radial
 const JG_BASTAO_WAVE_STUN = 1500;  // 1.5s de paralisia (requisito)
 
+// ===================== NOVA ARMA EXCLUSIVA - BOLAS DE AÇO (GYRO) =====================
+// Referência: Gyro Zeppelli (Steel Ball Run - JoJo Parte 7)
+// Duas esferas de aço que o Gyro carrega SEMPRE na mão.
+// - Segurar para carregar (dano escala por tier), soltar arremessa.
+// - A bola voa, QUICA nas paredes (ricochete) e volta para a mão depois.
+// - Arremesse a 2ª bola enquanto a 1ª ainda está no ar => a 2ª orbita o Gyro.
+const WEAPON_BOLAS = {
+  name: 'BOLAS',
+  cooldown: 300,             // intervalo entre arremessos
+  range: 380,                // alcance do arremesso
+  damage: 1.0,               // dano no toque rápido (sem carga)
+  chargeTime: 900,           // ms para carga máxima
+  chargeDamages: [1.0, 2.2, 3.6, 5.0], // dano por nível de carga
+  bulletSpeed: 10.5,         // velocidade do arremesso
+  bulletSize: 8,             // raio da bola
+  count: 1,
+  spread: 0,
+  color: '#cbd5e1',          // aço prateado
+  glow: 'rgba(203,213,225,0.35)',
+  ricochet: 2,               // quica em paredes antes de voltar
+  pierce: 1,                 // atravessa 1 inimigo (atinge 2 por arremesso)
+  balls: 2,                  // duas bolas na mão
+  isSteelBall: true,
+  isSteelBallWeapon: true
+};
+// Constantes balanceáveis GYRO (fácil edição)
+const GYRO_BALLS_MAX = 2;               // duas bolas de aço
+const GYRO_BALLS_CHARGE_TIME = 900;     // ms até carga máxima
+const GYRO_BALLS_COOLDOWN = 300;        // cooldown entre arremessos
+const GYRO_BALLS_DAMAGES = [1.0, 2.2, 3.6, 5.0]; // dano por tier de carga
+const GYRO_BALLS_CHARGE_TIERS = [0, 0.35, 0.70, 0.99]; // limites dos tiers de carga
+const GYRO_BALLS_SPEED = 10.5;          // velocidade do arremesso
+const GYRO_BALLS_RANGE = 380;           // alcance do arremesso
+const GYRO_BALLS_SIZE = 8;              // raio da bola
+const GYRO_BALLS_RICOCHET = 2;          // quiques em parede
+const GYRO_BALLS_ORBIT_TIME = 1200;     // ms orbitando o Gyro (2ª bola)
+const GYRO_BALLS_ORBIT_RADIUS = 34;     // raio da órbita dupla
+const GYRO_BALLS_ORBIT_SPEED = 0.011;   // rad/frame da órbita
+const GYRO_CHARGE_SPEED_PENALTY = 0.35; // -35% velocidade enquanto carrega
+
 // ===================== NOVA ARMA INCOMUM - MOTOSSERRA (ÁREA RETA AFINADA + BARRA CURA) =====================
 // AFINADA: ataque curto RETO em retângulo AFIADO na frente, altamente preciso e responsivo
 // - Quadrado afinado: mais estreito (32px altura) para exigir mira, mais longo (62px) para alcance preciso
@@ -3973,6 +4046,21 @@ const CHARACTER_DEFS = {
     allowedWeapons: null, // pode usar qualquer arma mas foco é Lazer Codificado
     exclusive: 'raio_matematico',
     description: '3 ♥ • Óculos e jaleco branco • Programador/Cientista • Lazer Codificado: Brimstone retângulo reto com ondulações • Dano moderado (2.2) • Segure 100% e solte'
+  },
+  gyro: {
+    id: 'gyro',
+    displayName: 'Gyro',
+    icon: '🟢', // só um círculo verde
+    color: '#22c55e',
+    bg: 'rgba(34,197,94,0.16)',
+    border: 'rgba(34,197,94,0.45)',
+    maxHp: 6, // 3 corações
+    boneHearts: 0,
+    starterWeapon: 'BOLAS', // arma exclusiva
+    starterSpecial: null, // sem especial - foco nas Bolas de Aço
+    allowedWeapons: ['BOLAS'], // lock exclusivo - mantém a identidade
+    exclusive: 'bolas',
+    description: '3 ♥ • Duas Bolas de Aço • Segure para carregar e solte para arremessar • A bola quica nas paredes e volta pra mão • Chapéu de aba larga'
   }
 };
 const CHARACTER_IDS = Object.keys(CHARACTER_DEFS);
@@ -4032,6 +4120,14 @@ const CHARACTER_HOOKS = {
     canEquipWeapon(player, weaponName){
       return true; // Dev pode equipar qualquer arma - versátil científico
     }
+  },
+  gyro: {
+    canEquipWeapon(player, weaponName){
+      if(weaponName==='CHICOTE') return true; // Chicote é exceção - todos podem usar
+      // Gyro lock: só Bolas de Aço para não duplicar e manter o exclusivo
+      const allowed = CHARACTER_DEFS.gyro.allowedWeapons;
+      return allowed.includes(weaponName);
+    }
   }
 };
 function canCharacterEquipWeapon(characterId, weaponName){
@@ -4076,22 +4172,31 @@ function applyCharacterToPlayer(player, characterId){
     player.bastaoChargeTime = 0;
     player.bastaoChargeDir = null;
   }
+  // Gyro - Bolas de Aço (duas bolas na mão, sem especial)
+  player.gyroBallsInHand = GYRO_BALLS_MAX;
+  player.gyroBallsInFlight = 0;
+  player.isGyroCharging = false;
+  player.gyroChargeTime = 0;
+  player.gyroChargeDir = null;
+  player.gyroChargeTier = 0;
+  player.gyroMaxChargeReady = false;
   // Reseta contaminação de outros personagens
   player.cyberHp = 0;
   player.maxCyberHp = CYBER_HEART_MAX_CYBER;
   // Arma inicial - inclui RAIO_MATEMATICO exclusivo Dev
-  const wMap = { NORMAL: WEAPON_NORMAL, SHOTGUN: WEAPON_SHOTGUN, RAIO: WEAPON_RAIO, METRALHADORA: WEAPON_METRALHADORA, CARREGADA: WEAPON_CARREGADA, BAZUCA: WEAPON_BAZUCA, ESPADA: WEAPON_ESPADA, LUVA: WEAPON_LUVA, BASTAO: WEAPON_BASTAO, MOTOSSERRA: WEAPON_MOTOSSERRA, RAIO_MATEMATICO: WEAPON_RAIO_MATEMATICO, CHICOTE: WEAPON_CHICOTE };
+  const wMap = { NORMAL: WEAPON_NORMAL, SHOTGUN: WEAPON_SHOTGUN, RAIO: WEAPON_RAIO, METRALHADORA: WEAPON_METRALHADORA, CARREGADA: WEAPON_CARREGADA, BAZUCA: WEAPON_BAZUCA, ESPADA: WEAPON_ESPADA, LUVA: WEAPON_LUVA, BASTAO: WEAPON_BASTAO, MOTOSSERRA: WEAPON_MOTOSSERRA, RAIO_MATEMATICO: WEAPON_RAIO_MATEMATICO, CHICOTE: WEAPON_CHICOTE, BOLAS: WEAPON_BOLAS };
   // limpa upgrades anteriores? Mantém? No startGame já reseta, mas aqui reconstrói com upgrades se houver
   // Starter weapon com upgrades vinculados (se já houver upgrades coletados, buildUpgraded)
   if(def.starterWeapon && wMap[def.starterWeapon]){
     // Usa createWeaponWithUpgrades se existir, senão copia base
     if(typeof player.buildUpgradedWeapon === 'function'){
       // Garante que weaponUpgrades está inicializado
-      if(!player.weaponUpgrades) player.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], RAIO_MATEMATICO:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], ALL:[], SPECIAL:[] };
+      if(!player.weaponUpgrades) player.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], RAIO_MATEMATICO:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], BOLAS:[], ALL:[], SPECIAL:[] };
       // Para JG, adiciona suporte BASTAO e MOTOSSERRA
       if(!player.weaponUpgrades['BASTAO']) player.weaponUpgrades['BASTAO'] = [];
       if(!player.weaponUpgrades['MOTOSSERRA']) player.weaponUpgrades['MOTOSSERRA'] = [];
       if(!player.weaponUpgrades['RAIO_MATEMATICO']) player.weaponUpgrades['RAIO_MATEMATICO'] = [];
+      if(!player.weaponUpgrades['BOLAS']) player.weaponUpgrades['BOLAS'] = [];
       const built = player.buildUpgradedWeapon(def.starterWeapon);
       player.primaryWeapon = built || {...wMap[def.starterWeapon]};
     } else {
@@ -9245,6 +9350,153 @@ class BastaoProjectile {
   getRect(){ return {x:this.x-this.size,y:this.y-this.size,w:this.size*2,h:this.size*2}; }
 }
 
+// ===================== GYRO - BOLA DE AÇO (PROJÉTIL) =====================
+// Estados: 'fly' (voa + ricochete em parede), 'orbit' (orbita o Gyro), 'return' (volta pra mão)
+class SteelBallProjectile {
+  constructor(x, y, dirX, dirY, opts={}){
+    this.x=x; this.y=y;
+    this.dirX=dirX; this.dirY=dirY;
+    this.speed=opts.speed||GYRO_BALLS_SPEED;
+    this.maxRange=opts.range||GYRO_BALLS_RANGE;
+    this.damage=opts.damage||GYRO_BALLS_DAMAGES[0];
+    this.size=opts.size||GYRO_BALLS_SIZE;
+    this.color=opts.color||'#cbd5e1';
+    this.glow=opts.glow||'rgba(203,213,225,0.35)';
+    this.maxRicochet=opts.ricochet||GYRO_BALLS_RICOCHET;
+    this.ricochetsLeft=this.maxRicochet;
+    this.pierce=opts.pierce||0;
+    this.hitsLeft=(opts.pierce||0)+1;       // quantos inimigos ainda podem ser atingidos
+    this.isOrbiting=!!opts.orbit;           // true = já nasce orbitando o Gyro
+    this.mode=this.isOrbiting?'orbit':'fly';
+    this.orbitAngle=opts.orbitAngle||0;
+    this.orbitTimer=this.isOrbiting?GYRO_BALLS_ORBIT_TIME:0;
+    this.maxCharge=!!opts.maxCharge;        // bola carregada ao máximo
+    this.owner='player';
+    this.traveled=0;
+    this.dead=false;
+    this.hitEnemies=new Set();
+    this.spin=0;
+    this.trail=[];
+    this.life=6000; // tempo máximo antes de forçar o retorno
+  }
+  update(dt, player, walls, particles){
+    this.life-=dt;
+    if(this.life<=0) this.mode='return';
+    this.spin += dt*0.02; // gira rápido
+    // rastro
+    this.trail.push({x:this.x,y:this.y,life:170,alpha:1});
+    if(this.trail.length>9) this.trail.shift();
+    for(const t of this.trail) t.life-=dt;
+    this.trail=this.trail.filter(t=>t.life>0);
+
+    // ---- ÓRBITA: duas bolas de aço girando em torno do Gyro ----
+    if(this.mode==='orbit'){
+      this.orbitAngle += GYRO_BALLS_ORBIT_SPEED*dt;
+      this.orbitTimer-=dt;
+      const r=GYRO_BALLS_ORBIT_RADIUS;
+      this.x=player.x + Math.cos(this.orbitAngle)*r;
+      this.y=player.y + Math.sin(this.orbitAngle)*r;
+      this.dirX=Math.cos(this.orbitAngle); this.dirY=Math.sin(this.orbitAngle);
+      if(this.orbitTimer<=0) this.mode='return';
+      if(particles && Math.random()<0.28){
+        particles.push(new Particle(this.x,this.y, randRange(-0.5,0.5), randRange(-0.5,0.5), 150, 'rgba(203,213,225,0.8)', 1.5));
+      }
+      return !this.dead;
+    }
+
+    // ---- VOO: quica nas paredes (ricochete) ----
+    if(this.mode==='fly'){
+      const dx=this.dirX*this.speed;
+      const dy=this.dirY*this.speed;
+      this.x+=dx; this.y+=dy;
+      this.traveled+=Math.hypot(dx,dy);
+      for(const w of walls){
+        if(circleRectCollide(this.x,this.y,this.size+2,w.x,w.y,w.w,w.h)){
+          // normal da parede (ponto mais próximo) para refletir o vetor
+          const cx=clamp(this.x,w.x,w.x+w.w);
+          const cy=clamp(this.y,w.y,w.y+w.h);
+          let nx=this.x-cx, ny=this.y-cy;
+          const len=Math.hypot(nx,ny);
+          if(len<0.0001){ nx=-this.dirX; ny=-this.dirY; }
+          else { nx/=len; ny/=len; }
+          const dot=this.dirX*nx+this.dirY*ny;
+          this.dirX-=2*dot*nx; this.dirY-=2*dot*ny;
+          // empurra pra fora da parede
+          this.x+=nx*(this.size+3); this.y+=ny*(this.size+3);
+          this.ricochetsLeft--;
+          if(particles){
+            for(let k=0;k<7;k++) particles.push(new Particle(this.x,this.y, randRange(-1.5,1.5), randRange(-1.5,1.5), 190, '#e2e8f0', 1.7));
+          }
+          if(this.ricochetsLeft<=0){ this.mode='return'; }
+          break;
+        }
+      }
+      if(this.mode==='fly' && this.traveled>=this.maxRange){ this.mode='return'; }
+      if(this.x<-24||this.x>CANVAS_W+24||this.y<-24||this.y>CANVAS_H+24){ this.mode='return'; }
+      if(particles && Math.random()<0.30){
+        particles.push(new Particle(this.x+randRange(-3,3), this.y+randRange(-3,3), randRange(-0.5,0.5), randRange(-0.5,0.5), 160, 'rgba(203,213,225,0.7)', 1.5));
+      }
+    }
+
+    // ---- RETORNO: volta pra mão do Gyro ----
+    if(this.mode==='return'){
+      const toPx=player.x-this.x;
+      const toPy=player.y-this.y;
+      const d=Math.hypot(toPx,toPy);
+      if(d<16){
+        this.dead=true;
+        if(particles){
+          for(let k=0;k<10;k++) particles.push(new Particle(this.x,this.y, randRange(-1.6,1.6), randRange(-1.6,0.6), 220, '#cbd5e1', 1.9));
+          for(let k=0;k<5;k++) particles.push(new Particle(this.x,this.y, randRange(-1,1), -0.9, 190, '#ffffff', 1.5));
+        }
+        return false;
+      }
+      const n=normalize(toPx,toPy);
+      const retSpeed=this.speed*1.2;
+      this.x+=n.x*retSpeed; this.y+=n.y*retSpeed;
+      this.dirX=n.x; this.dirY=n.y;
+    }
+    return !this.dead;
+  }
+  draw(ctx){
+    // rastro
+    for(const t of this.trail){
+      const a=clamp(t.life/170,0,1);
+      ctx.fillStyle=`rgba(203,213,225,${a*0.20})`;
+      ctx.beginPath(); ctx.arc(t.x,t.y,(this.size+5)*a,0,Math.PI*2); ctx.fill();
+    }
+    ctx.save();
+    ctx.translate(this.x,this.y);
+    ctx.rotate(this.spin);
+    // halo
+    ctx.fillStyle=this.glow;
+    ctx.beginPath(); ctx.arc(0,0,this.size+6,0,Math.PI*2); ctx.fill();
+    // corpo metálico
+    const g=ctx.createRadialGradient(-this.size*0.3,-this.size*0.3,0.5,0,0,this.size);
+    g.addColorStop(0,'#f8fafc');
+    g.addColorStop(0.5,'#cbd5e1');
+    g.addColorStop(1,'#64748b');
+    ctx.fillStyle=g;
+    ctx.beginPath(); ctx.arc(0,0,this.size,0,Math.PI*2); ctx.fill();
+    // aresta viva
+    ctx.strokeStyle='rgba(255,255,255,0.55)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.arc(0,0,this.size-0.5,0,Math.PI*2); ctx.stroke();
+    // marca do Tusk girando
+    ctx.strokeStyle='rgba(51,65,85,0.7)'; ctx.lineWidth=1.2;
+    ctx.beginPath(); ctx.moveTo(-this.size*0.55,0); ctx.lineTo(this.size*0.55,0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,-this.size*0.55); ctx.lineTo(0,this.size*0.55); ctx.stroke();
+    ctx.restore();
+    // brilho especular
+    ctx.fillStyle='rgba(255,255,255,0.85)';
+    ctx.beginPath(); ctx.arc(this.x-this.size*0.25,this.y-this.size*0.25,this.size*0.26,0,Math.PI*2); ctx.fill();
+    if(this.maxCharge){
+      ctx.strokeStyle='rgba(255,255,255,0.7)'; ctx.lineWidth=1.4;
+      ctx.beginPath(); ctx.arc(this.x,this.y,this.size+3,0,Math.PI*2); ctx.stroke();
+    }
+  }
+  getRect(){ return {x:this.x-this.size,y:this.y-this.size,w:this.size*2,h:this.size*2}; }
+}
+
 // ===================== OLI - PEÇAS DE XADREZ =====================
 // Cada peça tem vida/dano/comportamento próprios e reconhece Oli como dono
 
@@ -11410,6 +11662,14 @@ class Player {
     this.bastaoChargeTime = 0;
     this.bastaoChargeDir = null;
     this.bastaoHeavyReady = false;
+    // Gyro - Bolas de Aço (duas esferas)
+    this.gyroBallsInHand = GYRO_BALLS_MAX;
+    this.gyroBallsInFlight = 0;
+    this.isGyroCharging = false;
+    this.gyroChargeTime = 0;
+    this.gyroChargeDir = null;
+    this.gyroChargeTier = 0;
+    this.gyroMaxChargeReady = false;
     // JL - Farmar Aura (área durativa)
     this.farmarAuraActive = false;
     this.farmarAuraRadius = FARMAR_AURA_RADIUS;
@@ -11438,6 +11698,11 @@ class Player {
     this.shootCooldown = 0;
     this.animTime = 0;
     this.facing = 1;
+    // hit feedback
+    this.hitFlash = 0;        // piscada branca ao levar dano
+    this.hitStretch = 0;      // esticar ao levar dano (0-1)
+    this.hitStretchDir = { x: 0, y: 0 }; // direção do impacto
+    this.hitReturn = 0;       // voltar rápido após esticar (0-1)
     // sistema de armas primária / secundária (Q troca)
     this.primaryWeapon = { ...WEAPON_NORMAL };
     this.secondaryWeapon = null; // só existe se pegar arma especial
@@ -11513,7 +11778,7 @@ class Player {
     this.hasIoiPassive = false;
     this.ioiCooldown = 0;
     // sistema de melhorias por arma (4 raridades, valores em UPGRADE_VALUES) + níveis
-    this.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], RAIO_MATEMATICO:[], CHICOTE:[], ALL:[], SPECIAL:[] };
+    this.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], RAIO_MATEMATICO:[], CHICOTE:[], BOLAS:[], ALL:[], SPECIAL:[] };
     this.obtainedUpgrades = new Set(); // ids únicos para evitar duplicação (compatibilidade)
     this.upgradeLevels = new Map(); // id -> nível atual (1..maxLevel) para melhorias com níveis
     // ================= SISTEMA ITENS ESPECIAIS (E) =================
@@ -11767,7 +12032,7 @@ class Player {
   }
   // constrói arma com todas as melhorias já obtidas para aquele tipo (reutiliza base + aplica cumulativo com caps)
   buildUpgradedWeapon(weaponName){
-    const map = { NORMAL: WEAPON_NORMAL, SHOTGUN: WEAPON_SHOTGUN, RAIO: WEAPON_RAIO, METRALHADORA: WEAPON_METRALHADORA, CARREGADA: WEAPON_CARREGADA, BAZUCA: WEAPON_BAZUCA, ESPADA: WEAPON_ESPADA, LUVA: WEAPON_LUVA, BASTAO: WEAPON_BASTAO, MOTOSSERRA: WEAPON_MOTOSSERRA, RAIO_MATEMATICO: WEAPON_RAIO_MATEMATICO, CHICOTE: WEAPON_CHICOTE };
+    const map = { NORMAL: WEAPON_NORMAL, SHOTGUN: WEAPON_SHOTGUN, RAIO: WEAPON_RAIO, METRALHADORA: WEAPON_METRALHADORA, CARREGADA: WEAPON_CARREGADA, BAZUCA: WEAPON_BAZUCA, ESPADA: WEAPON_ESPADA, LUVA: WEAPON_LUVA, BASTAO: WEAPON_BASTAO, MOTOSSERRA: WEAPON_MOTOSSERRA, RAIO_MATEMATICO: WEAPON_RAIO_MATEMATICO, CHICOTE: WEAPON_CHICOTE, BOLAS: WEAPON_BOLAS };
     const base = map[weaponName];
     if(!base) return null;
     const w = { ...base };
@@ -12455,6 +12720,100 @@ class Player {
     this.bastaoChargeTime=0;
     this.shootCooldown=Math.min(this.shootCooldown, 80);
   }
+  // ===== GYRO - BOLAS DE AÇO (EXCLUSIVO) =====
+  isSteelBallWeapon(){ return !!(this.weapon && (this.weapon.isSteelBall || this.weapon.name==='BOLAS')); }
+  // Tier de carga (0 = toque rápido, 3 = carga máxima)
+  getGyroBallTier(prog){
+    const tiers=GYRO_BALLS_CHARGE_TIERS;
+    let t=0;
+    for(let i=0;i<tiers.length;i++){ if(prog>=tiers[i]) t=i; }
+    return t;
+  }
+  startGyroCharge(dir){
+    if(this.characterId!=='gyro') return false;
+    if(!this.canShoot()) return false;
+    if(this.isGyroCharging) return false;
+    if(this.gyroBallsInHand<=0) return false; // sem bola na mão
+    this.isGyroCharging=true;
+    this.gyroChargeTime=0;
+    this.gyroChargeDir={x:dir.x,y:dir.y};
+    this.gyroChargeTier=0;
+    this.gyroMaxChargeReady=false;
+    return true;
+  }
+  updateGyroCharge(dt, dir){
+    if(!this.isGyroCharging) return;
+    this.gyroChargeTime+=dt;
+    if(dir){ this.gyroChargeDir.x=dir.x; this.gyroChargeDir.y=dir.y; }
+    const prog=clamp(this.gyroChargeTime/this.getGyroChargeTime(),0,1);
+    this.gyroChargeTier=this.getGyroBallTier(prog);
+    if(prog>=0.99) this.gyroMaxChargeReady=true;
+  }
+  cancelGyroCharge(){
+    this.isGyroCharging=false;
+    this.gyroChargeTime=0;
+    this.gyroChargeDir=null;
+    this.gyroChargeTier=0;
+    this.gyroMaxChargeReady=false;
+  }
+  getGyroChargeTime(){
+    const w=this.weapon;
+    if(w && w.chargeTime) return w.chargeTime;
+    return GYRO_BALLS_CHARGE_TIME;
+  }
+  getGyroChargeProgress(){
+    if(!this.isGyroCharging) return 0;
+    return clamp(this.gyroChargeTime/this.getGyroChargeTime(),0,1);
+  }
+  // Arremessa uma bola de aço (devolve o projétil ou null)
+  releaseGyroCharge(){
+    if(!this.isGyroCharging) return null;
+    const prog=this.getGyroChargeProgress();
+    const tier=this.getGyroBallTier(prog);
+    const dir=normalize(this.gyroChargeDir.x,this.gyroChargeDir.y);
+    this.cancelGyroCharge();
+    if(this.gyroBallsInHand<=0) return null;
+    const w=this.weapon || WEAPON_BOLAS;
+    const maxCharge = prog>=0.99;
+    // dano pela carga
+    const dmgTable=(w.chargeDamages && w.chargeDamages.length) ? w.chargeDamages : GYRO_BALLS_DAMAGES;
+    const damage=dmgTable[Math.min(tier, dmgTable.length-1)];
+    // carga máxima: +60% alcance, bola maior, +1 quique
+    const range=(w.range||GYRO_BALLS_RANGE) * (maxCharge?1.6:1);
+    const size=(w.bulletSize||GYRO_BALLS_SIZE) * (maxCharge?1.35:1);
+    const ricochet=(w.ricochet||GYRO_BALLS_RICOCHET) + (maxCharge?1:0);
+    // se já tem uma bola no ar => a 2ª orbita o Gyro (duas steel balls)
+    const orbit = this.gyroBallsInFlight>0;
+    this.gyroBallsInHand--;
+    this.gyroBallsInFlight++;
+    this.shootCooldown = (w.cooldown||GYRO_BALLS_COOLDOWN);
+    this.lastDir.x=dir.x; this.lastDir.y=dir.y;
+    if(dir.x!==0) this.facing=dir.x>0?1:-1;
+    this.meleeAnim=140;
+    this.meleeDir=dir;
+    const sx=this.x + dir.x*(this.w/2+10);
+    const sy=this.y + dir.y*(this.h/2+8);
+    const proj=new SteelBallProjectile(sx,sy,dir.x,dir.y,{
+      speed:w.bulletSpeed||GYRO_BALLS_SPEED,
+      range:range,
+      damage:damage,
+      size:size,
+      color:w.color||'#cbd5e1',
+      glow:w.glow||'rgba(203,213,225,0.35)',
+      ricochet:ricochet,
+      pierce:w.pierce||0,
+      orbit:orbit,
+      orbitAngle: orbit ? Math.PI : 0, // a 2ª bola entra oposta na órbita
+      maxCharge:maxCharge
+    });
+    return proj;
+  }
+  // Chamado quando a bola volta pra mão
+  returnGyroBall(){
+    this.gyroBallsInHand = Math.min(GYRO_BALLS_MAX, this.gyroBallsInHand+1);
+    if(this.gyroBallsInFlight>0) this.gyroBallsInFlight--;
+    this.shootCooldown = Math.min(this.shootCooldown, 120);
+  }
   // ===== MOTOSSERRA - Barra de cura por agressividade (ataque curto reto) =====
   addMotosserraCharge(amount){
     if(!this.weapon || this.weapon.name!=='MOTOSSERRA') return false;
@@ -13094,6 +13453,27 @@ class Player {
         if(gameRef) gameRef.shake = Math.max(gameRef.shake||0, 45);
       }
     }
+    // Feedback visual de dano: esticar + voltar rapido + brilhar em branco
+    const gameRefHit = opts.game || (typeof window !== 'undefined' ? window.game : null);
+    let ax = 0, ay = 0;
+    if(opts && (opts.ax!==undefined || opts.ay!==undefined)){ ax = opts.ax||0; ay = opts.ay||0; }
+    else if(gameRefHit && gameRefHit.currentRoom){
+      // tenta achar quem causou dano mais proximo (bullets/inimigos)
+      const room = gameRefHit.currentRoom;
+      let best=null, bd2=1e18;
+      if(room.enemies){
+        for(const e of room.enemies){ if(e.dead) continue; const dx=e.x-this.x, dy=e.y-this.y; const d2=dx*dx+dy*dy; if(d2<bd2){ bd2=d2; best={x:dx,y:dy}; } }
+      }
+      if(room.bullets){
+        for(const b of room.bullets){ if(b.owner==='player') continue; const dx=b.x-this.x, dy=b.y-this.y; const d2=dx*dx+dy*dy; if(d2<bd2){ bd2=d2; best={x:dx,y:dy}; } }
+      }
+      if(best){ const d=Math.hypot(best.x,best.y)||1; ax = best.x/d; ay = best.y/d; }
+    }
+    if(Math.hypot(ax,ay)<1e-4){ ax = (Math.random()-0.5)*2; ay = (Math.random()-0.5)*2; const d=Math.hypot(ax,ay)||1; ax/=d; ay/=d; }
+    this.hitFlash = Math.max(this.hitFlash||0, 160);
+    this.hitStretch = 1.0;
+    this.hitStretchDir.x = ax; this.hitStretchDir.y = ay;
+    this.hitReturn = 0.18;
     this.hurtCooldown = 600;
     this.invulnTimer = 400;
     // Técnica Secreta Joestar - ao sofrer dano ganha bônus velocidade 5s (item comum)
@@ -13138,6 +13518,9 @@ class Player {
     if (this.dashCooldown > 0) this.dashCooldown -= dt;
     if (this.invulnTimer > 0) this.invulnTimer -= dt;
     if (this.hurtCooldown > 0) this.hurtCooldown -= dt;
+    if (this.hitFlash > 0) this.hitFlash -= dt;
+    if (this.hitStretch > 0){ this.hitStretch -= dt * 0.024; if (this.hitStretch < 0) this.hitStretch = 0; }
+    if (this.hitReturn > 0){ this.hitReturn -= dt * 0.042; if (this.hitReturn < 0) this.hitReturn = 0; }
     // Grace pós-puxão do Chicote (decai sozinho, como o invulnTimer)
     if (this.chicotePullInvulnGrace > 0) this.chicotePullInvulnGrace -= dt;
     if (this.shootCooldown > 0) this.shootCooldown -= dt;
@@ -13243,6 +13626,10 @@ class Player {
       // Espada passiva: +8% agilidade quando equipada (mais útil para kiting) - Kinight beneficia
       this.speed = baseMove * 1.08;
     }
+    // Gyro: enquanto carrega a bola de aço, fica mais lento (peso do preparo)
+    if(this.characterId==='gyro' && this.isGyroCharging){
+      this.speed *= (1 - GYRO_CHARGE_SPEED_PENALTY);
+    }
     // LASER REMOVIDA - velocidade
     // ===== ESPADA Guardião Ágil - escudo + velocidade ao carregar (upgrade) =====
     if(this.weapon && this.weapon._swordGuardian){
@@ -13340,6 +13727,10 @@ class Player {
     // JG Bastão - cancela carga se não é JG ou sem bastão ou trocou personagem
     if(this.isBastaoCharging && (this.characterId!=='jg' || !this.hasBastao)){
       this.cancelBastaoCharge();
+    }
+    // Gyro Bolas de Aço - cancela carga se não é Gyro ou ficou sem bola na mão
+    if(this.isGyroCharging && (this.characterId!=='gyro' || this.gyroBallsInHand<=0)){
+      this.cancelGyroCharge();
     }
     // Dev Raio Matemático - cancela se trocou arma (inclui minigame do Lazer Codificado)
     if((this.isRayMatematicoCharging || this.rayMatematicoMinigameActive) && !this.isRayMatematicoWeapon()){
@@ -13471,6 +13862,11 @@ class Player {
     // Enquanto bastão está arremessado (projétil ativo) não pode atacar de novo
     if(this.characterId==='jg' && this.bastaoProjectile && !this.bastaoProjectile.dead) return false;
     if(this.isBastaoCharging) return false;
+    // Gyro - sem bola na mão não pode atacar; carregando o arremesso também bloqueia
+    if(this.characterId==='gyro'){
+      if(this.gyroBallsInHand<=0) return false;
+      if(this.isGyroCharging) return false;
+    }
     if(this.weapon && this.weapon.name==='METRALHADORA' && this.isOverheated) return false;
     if(this.weapon && this.weapon.isLuva){
       const hasRocketReady = this.luvaCharge >= this.luvaChargeMax - 0.5;
@@ -13764,9 +14160,30 @@ class Player {
   }
 
   draw(ctx) {
-    if (this.isInvulnerable() && Math.floor(this.animTime / 60) % 2 === 0 && this.hurtCooldown > 0) ctx.globalAlpha = 0.45;
+    if (this.isInvulnerable() && Math.floor(this.animTime / 60) % 2 === 0 && this.hurtCooldown > 0 && (this.hitFlash||0) <= 0) ctx.globalAlpha = 0.45;
     let x = this.x - this.w/2;
     let y = this.y - this.h/2;
+    // hit feedback: esticar + voltar rápido + brilhar em branco
+    const hf = this.hitFlash || 0;
+    const isHitFlash = hf > 0 && Math.floor(hf / 28) % 2 === 0;
+    if((this.hitStretch||0) > 0 && this.hitStretchDir){
+      const s = this.hitStretch * 0.28;
+      const sxv = 1 + Math.abs(this.hitStretchDir.x)*s*1.25;
+      const syv = 1 + Math.abs(this.hitStretchDir.y)*s*0.9;
+      x += this.hitStretchDir.x * s * 4.2;
+      y += this.hitStretchDir.y * s * 3.6;
+      ctx.save();
+      ctx.translate(this.x, this.y);
+      ctx.scale(sxv, syv);
+      ctx.translate(-this.x, -this.y);
+      if(isHitFlash) ctx.globalAlpha = Math.min(1, (ctx.globalAlpha||1) + 0.25);
+    }
+    if((this.hitReturn||0) > 0 && this.hitStretchDir){
+      const r = this.hitReturn * 0.32;
+      x -= this.hitStretchDir.x * r * 5.2;
+      y -= this.hitStretchDir.y * r * 4.0;
+      if(isHitFlash) ctx.globalAlpha = Math.min(1, (ctx.globalAlpha||1) + 0.18);
+    }
     const bob = Math.sin(this.animTime * 0.012) * 2;
     // Motosserra tremor enquanto segura ataque
     if(this.motosserraActive){
@@ -14035,6 +14452,23 @@ class Player {
         ctx.fillStyle='rgba(255,215,0,0.92)'; ctx.font='5px monospace'; ctx.textAlign='center'; ctx.fillText('COMBO!', cx, cy-8); ctx.textAlign='left';
       }
     }
+    // Gyro - capa verde-escura (atrás do corpo, balança ao andar/dash)
+    if(this.characterId==='gyro'){
+      const capeSwing = Math.sin(this.animTime*0.02)*(this.isDashing()?3.2:1.2);
+      ctx.fillStyle='rgba(22,50,36,0.92)';
+      ctx.beginPath();
+      ctx.moveTo(x+5, y+8+bob);
+      ctx.lineTo(x+1+capeSwing*0.5, y+18+bob);
+      ctx.lineTo(x+7+capeSwing*0.3, y+20+bob);
+      ctx.lineTo(x+8, y+8+bob);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle='rgba(65,107,83,0.85)';
+      ctx.beginPath();
+      ctx.moveTo(x+5, y+8+bob);
+      ctx.lineTo(x+3+capeSwing*0.4, y+17+bob);
+      ctx.lineTo(x+6, y+18+bob);
+      ctx.closePath(); ctx.fill();
+    }
     // corpo - pernas (com armadura para Kinight, JG esportivo)
     if(this.characterId==='kinight'){
       // Grevas metálicas - Kinight com armadura completa
@@ -14076,6 +14510,17 @@ class Player {
       ctx.fillStyle='#a8b8d0';
       ctx.fillRect(x+5, y+20 + bob, 6, 1.2);
       ctx.fillRect(x+15, y+20 + bob, 6, 1.2);
+    } else if(this.characterId==='gyro'){
+      // Gyro - calça escura + botas (Steel Ball Run)
+      ctx.fillStyle='#1f2a24';
+      ctx.fillRect(x+4, y+16 + bob, 6, 6);
+      ctx.fillRect(x+14, y+16 + bob, 6, 6);
+      ctx.fillStyle='#141c18';
+      ctx.fillRect(x+4, y+18 + bob, 6, 1);
+      ctx.fillRect(x+14, y+18 + bob, 6, 1);
+      ctx.fillStyle='#0d120f';
+      ctx.fillRect(x+5, y+20 + bob, 6, 1.5);
+      ctx.fillRect(x+15, y+20 + bob, 6, 1.5);
     } else {
       ctx.fillStyle = '#3a6ea5';
       ctx.fillRect(x+4, y + 16 + bob, 6, 6);
@@ -14154,6 +14599,21 @@ class Player {
       ctx.strokeStyle='rgba(122,242,255,0.55)'; ctx.lineWidth=0.8;
       ctx.strokeRect(x+5, y+11 + bob, 3, 3);
       ctx.fillStyle='#ff6a00'; ctx.fillRect(x+6, y+10 + bob, 0.8, 2);
+    } else if(this.characterId==='gyro'){
+      // Gyro - casaco verde-escuro (Steel Ball Run) com camisa clara e cinto
+      ctx.fillStyle='#2f4f3e';
+      ctx.fillRect(x+4, y+8 + bob, 16, 9);
+      ctx.fillStyle='#416b53';
+      ctx.fillRect(x+4, y+8 + bob, 2, 9);
+      ctx.fillRect(x+18, y+8 + bob, 2, 9);
+      ctx.fillStyle='#1e3629';
+      ctx.fillRect(x+6, y+8 + bob, 1, 9);
+      ctx.fillRect(x+17, y+8 + bob, 1, 9);
+      // camisa clara por baixo
+      ctx.fillStyle='#e7e5e4'; ctx.fillRect(x+9, y+9 + bob, 6, 5);
+      // cinto + fivela
+      ctx.fillStyle='#3f3f46'; ctx.fillRect(x+5, y+16 + bob, 14, 1.6);
+      ctx.fillStyle='#d4d4d8'; ctx.fillRect(x+11, y+16 + bob, 2, 1.6);
     }
     // arma visual diferente - novas armas comuns com identidade visual distinta + Bastão JG + Motosserra
     const isShotgun = this.weapon.name==='SHOTGUN';
@@ -14164,6 +14624,7 @@ class Player {
     const isEspada = this.weapon.name==='ESPADA';
     const isLuva = this.weapon.name==='LUVA';
     const isBastao = this.weapon.name==='BASTAO' || (this.characterId==='jg' && this.weapon.name==='BASTAO');
+    const isBolas = this.weapon.name==='BOLAS' || !!this.weapon.isSteelBall;
     const isMotosserra = this.weapon.name==='MOTOSSERRA';
     const isRayMatematico = this.weapon.name==='RAIO_MATEMATICO';
     const isChicote = !!this.weapon.isChicote;
@@ -14209,12 +14670,42 @@ class Player {
         ctx.fillStyle = prog>0.85 ? '#ffffff' : prog>0.5 ? '#fde68a' : '#facc15';
       } else ctx.fillStyle = '#facc15';
     }
+    else if (isBolas) {
+      // Gyro - bola de aço na mão (fica branca quando a carga está no máximo)
+      const prog = this.isGyroCharging ? this.getGyroChargeProgress() : 0;
+      ctx.fillStyle = prog>0.85 ? '#ffffff' : prog>0.5 ? '#e2e8f0' : '#cbd5e1';
+    }
     else if (isMartelo) ctx.fillStyle = '#8a6d3b';
     else if (isLanca) ctx.fillStyle = '#c0a080';
     else if (isArco) ctx.fillStyle = '#4ade80';
     else if (isMachado) ctx.fillStyle = '#ff8c42';
     else ctx.fillStyle = '#5a8fd4';
-    ctx.fillRect(x+3, y+8 + bob, 18, 10);
+    if(!isBolas) ctx.fillRect(x+3, y+8 + bob, 18, 10);
+    if (isBolas) {
+      // Gyro - bola de aço girando na ponta do dedo indicador
+      const prog = this.isGyroCharging ? this.getGyroChargeProgress() : 0;
+      const spin = this.animTime*0.06;
+      const bx = x + 12 + (this.facing>0 ? 7 : -7);
+      const by = y + 12 + Math.sin(spin)*1.6;
+      const r = 4 + (prog>0.85 ? 1.2 : 0);
+      // halo
+      ctx.fillStyle = prog>0.85 ? 'rgba(255,255,255,0.30)' : 'rgba(203,213,225,0.24)';
+      ctx.beginPath(); ctx.arc(bx, by, r+3, 0, Math.PI*2); ctx.fill();
+      // bola
+      ctx.fillStyle = prog>0.85 ? '#ffffff' : '#cbd5e1';
+      ctx.beginPath(); ctx.arc(bx, by, r, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle='#94a3b8';
+      ctx.beginPath(); ctx.arc(bx+1, by+1, r*0.5, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle='#ffffff';
+      ctx.beginPath(); ctx.arc(bx-1, by-1, r*0.3, 0, Math.PI*2); ctx.fill();
+      // marca do Tusk girando
+      ctx.save();
+      ctx.translate(bx, by); ctx.rotate(spin);
+      ctx.strokeStyle='rgba(51,65,85,0.75)'; ctx.lineWidth=0.9;
+      ctx.beginPath(); ctx.moveTo(-r*0.55,0); ctx.lineTo(r*0.55,0); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0,-r*0.55); ctx.lineTo(0,r*0.55); ctx.stroke();
+      ctx.restore();
+    }
     if (isShotgun) {
       ctx.fillStyle='#1a1a1a';
       ctx.fillRect(x+6, y+11 + bob, 12, 2);
@@ -14737,6 +15228,58 @@ class Player {
       ctx.fillStyle='rgba(255,107,107,0.28)';
       ctx.fillRect(x+6, y+8 + bob, 2, 1);
       ctx.fillRect(x+16, y+8 + bob, 2, 1);
+    } else if(this.characterId==='gyro'){
+      // GYRO - Gyro Zeppelli: chapéu de aba larga (brasão do Tusk), rosto e a 2ª Bola de Aço
+      const gyroProg = this.isGyroCharging ? this.getGyroChargeProgress() : 0;
+      const gyroMax = gyroProg>=0.99;
+      // ---- Cabeça ----
+      ctx.fillStyle='#e8c39e'; ctx.fillRect(x+6, y+3+bob, 12, 8);
+      // olhos (Gyro: olhar cerrado e determinado)
+      const eyeYg = y+6+bob;
+      ctx.fillStyle='#1a1a1a';
+      ctx.fillRect(x+8, eyeYg, 2.5, 1.4); ctx.fillRect(x+13, eyeYg, 2.5, 1.4);
+      ctx.fillStyle='#f5f5f4'; ctx.fillRect(x+8, eyeYg, 1, 0.6); ctx.fillRect(x+13, eyeYg, 1, 0.6);
+      // sombra do chapéu no rosto
+      ctx.fillStyle='rgba(0,0,0,0.22)'; ctx.fillRect(x+6, y+3+bob, 12, 2);
+      // ---- Chapéu de aba larga com brasão do Tusk ----
+      ctx.fillStyle='#1f2a24'; ctx.fillRect(x+5, y+0+bob, 14, 4);      // copa
+      ctx.fillStyle='#2f4f3e'; ctx.fillRect(x+5, y+0+bob, 14, 1.4);    // brilho da copa
+      ctx.fillStyle='#16201b'; ctx.fillRect(x+1, y+3+bob, 22, 1.6);    // aba larga
+      ctx.fillStyle='#0f1512'; ctx.fillRect(x+1, y+4.2+bob, 22, 0.6);  // sombra da aba
+      // brasão do Tusk (cruz estilizada) na frente do chapéu
+      ctx.fillStyle='#e5e7eb'; ctx.fillRect(x+11, y+0.6+bob, 2, 2.8);
+      ctx.fillStyle='#e5e7eb'; ctx.fillRect(x+10, y+1.6+bob, 4, 1);
+      ctx.fillStyle='#22c55e'; ctx.fillRect(x+11.4, y+1.4+bob, 1.2, 1.2);
+      // ---- A 2ª Bola de Aço (a 1ª é desenhada na mão junto com a arma) ----
+      const ballSpin = this.animTime*0.05;
+      if(this.gyroBallsInHand>=2){
+        const side = (this.facing>0) ? -1 : 1;
+        const bx = x+12 + side*(8 + Math.cos(ballSpin)*2);
+        const by = y+12 + Math.sin(ballSpin)*2;
+        ctx.fillStyle = gyroMax ? 'rgba(255,255,255,0.30)' : 'rgba(203,213,225,0.26)';
+        ctx.beginPath(); ctx.arc(bx, by, 5, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = gyroMax ? '#ffffff' : '#cbd5e1';
+        ctx.beginPath(); ctx.arc(bx, by, 3.1, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle='#94a3b8';
+        ctx.beginPath(); ctx.arc(bx+0.9, by+0.9, 1.4, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle='#ffffff';
+        ctx.beginPath(); ctx.arc(bx-0.9, by-0.9, 0.9, 0, Math.PI*2); ctx.fill();
+        ctx.save();
+        ctx.translate(bx, by); ctx.rotate(ballSpin);
+        ctx.strokeStyle='rgba(51,65,85,0.75)'; ctx.lineWidth=0.9;
+        ctx.beginPath(); ctx.moveTo(-1.8,0); ctx.lineTo(1.8,0); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,-1.8); ctx.lineTo(0,1.8); ctx.stroke();
+        ctx.restore();
+      }
+      // aura de carga
+      if(this.isGyroCharging && gyroProg>0.3){
+        ctx.fillStyle=`rgba(203,213,225,${0.10+gyroProg*0.18})`;
+        ctx.beginPath(); ctx.arc(x+12, y+12+bob, 8+gyroProg*5, 0, Math.PI*2); ctx.fill();
+      }
+      if(gyroMax && Math.floor(this.animTime/80)%2===0){
+        ctx.fillStyle='rgba(255,255,255,0.9)';
+        ctx.fillRect(x+10, y+11+bob, 4, 1);
+      }
     } else if(this.characterId==='jl'){
       // JL - Visual exclusivo: Hoodie preto/rosa neon com 67, óculos e tênis farmar - identidade premium
       // pernas / calça street escura com faixa neon
@@ -15226,6 +15769,49 @@ class Player {
         ctx.fillRect(px,py,1,1);
       }
     }
+    // GYRO - barra de carga prateada da Bola de Aço + indicador das 2 bolas
+    if(this.characterId==='gyro'){
+      const inHand=this.gyroBallsInHand;
+      // pips das bolas (verde = na mão, cinza = no ar)
+      for(let b=0;b<GYRO_BALLS_MAX;b++){
+        const bx2=this.x - (GYRO_BALLS_MAX-1)*2.5 + b*5;
+        const by2=y -14 + bob;
+        ctx.beginPath(); ctx.arc(bx2, by2, 2, 0, Math.PI*2);
+        ctx.fillStyle = b<inHand ? '#22c55e' : 'rgba(148,163,184,0.45)';
+        ctx.fill();
+        if(b<inHand){ ctx.strokeStyle='rgba(255,255,255,0.6)'; ctx.lineWidth=0.6; ctx.stroke(); }
+      }
+      if(this.isGyroCharging){
+        const prog=this.getGyroChargeProgress();
+        const tier=this.getGyroBallTier(prog);
+        const bw=24, bh=4;
+        const bx=x+this.w/2 - bw/2;
+        const by=y -10 + bob;
+        ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(bx,by,bw,bh);
+        ctx.fillStyle='rgba(255,255,255,0.18)'; ctx.fillRect(bx+1,by+1,bw-2,bh-2);
+        let fillCol;
+        if(prog<0.35) fillCol='#cbd5e1';
+        else if(prog<0.70) fillCol='#e2e8f0';
+        else fillCol='#ffffff';
+        if(prog>=0.99 && Math.floor(this.animTime/70)%2===0) fillCol='#f8fafc';
+        ctx.fillStyle=fillCol; ctx.fillRect(bx+1,by+1,(bw-2)*prog,bh-2);
+        // marcadores de tier (35% / 70%)
+        ctx.fillStyle='rgba(34,197,94,0.75)';
+        ctx.fillRect(bx+1+(bw-2)*0.35, by, 1, bh);
+        ctx.fillRect(bx+1+(bw-2)*0.70, by, 1, bh);
+        if(prog>0.85){ ctx.strokeStyle='rgba(203,213,225,0.65)'; ctx.lineWidth=1; ctx.strokeRect(bx,by,bw,bh); }
+        ctx.fillStyle='rgba(255,255,255,0.9)'; ctx.font='5px monospace'; ctx.textAlign='center';
+        const dmgTable=(this.weapon&&this.weapon.chargeDamages&&this.weapon.chargeDamages.length)?this.weapon.chargeDamages:GYRO_BALLS_DAMAGES;
+        const dmg=(dmgTable[tier]||1).toFixed(1);
+        ctx.fillText(prog>=0.99?`BOLA MÁX. ${dmg}`:`bola ${dmg}`, this.x, by-2); ctx.textAlign='left';
+        if(prog>0.6 && Math.random()<0.35){
+          ctx.fillStyle=prog>0.85?'#ffffff':'#cbd5e1';
+          const px=this.x + randRange(-9,9);
+          const py=y + randRange(-5,2)+bob;
+          ctx.fillRect(px,py,1,1);
+        }
+      }
+    }
     // LUVA - barra de carga sobre jogador (enquanto segura)
     if(this.weapon && this.weapon.isLuva && (this.luvaIsCharging || this.luvaCharge>0)){
       const pct = clamp(this.luvaCharge/this.luvaChargeMax,0,1);
@@ -15346,11 +15932,29 @@ class Player {
         ctx.fillStyle='#d1d5db'; ctx.font='5px monospace'; ctx.textAlign='center';
         ctx.fillText('EQUILÍBRIO', this.x, y-16 + bob); ctx.textAlign='left';
       }
-      // tag pequena com ícone do personagem ao lado do nome da arma (sobreposto na barra)
-      // desenha acima da barra de vida no canvas? Já está na HUD, então apenas aura acima já basta
-    }
-    // ===== Power Star ⭐ - efeito visual invencibilidade =====
-    if(this.powerStarActive){
+    // tag pequena com ícone do personagem ao lado do nome da arma (sobreposto na barra)
+    // desenha acima da barra de vida no canvas? Já está na HUD, então apenas aura acima já basta
+  }
+  // hit flash branco por cima do corpo (overlay)
+  const hf2 = this.hitFlash || 0;
+  if(hf2 > 0 && Math.floor(hf2 / 24) % 2 === 0){
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.45 + Math.sin(this.animTime*0.08)*(0.18);
+    // desenha outline/leves blocos em branco cobrindo area do player
+    const px = this.x - this.w/2, py = this.y - this.h/2;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(px-1, py+bob-1, this.w+2, 4);
+    ctx.fillRect(px-1, py+bob+this.h-5, this.w+2, 4);
+    ctx.fillRect(px-1, py+bob-1, 3, this.h+2);
+    ctx.fillRect(px+this.w-2, py+bob-1, 3, this.h+2);
+    ctx.restore();
+  }
+  if((this.hitStretch||0) > 0 || (this.hitReturn||0) > 0){
+    try{ ctx.restore(); }catch(e){}
+  }
+  // ===== Power Star ⭐ - efeito visual invencibilidade =====
+  if(this.powerStarActive){
       const pulse = 0.65 + Math.sin(this.animTime*0.018)*0.35;
       const alphaOuter = 0.15 + pulse*0.10;
       // glow externo dourado pulsante
@@ -15411,11 +16015,18 @@ class Chaser {
     this.variation = null;
     // Status Flecha Stand
     this.slowTimer=0; this.slowFactor=1; this.stunTimer=0;
+    // hit feedback
+    this.hitFlash = 0;
+    this.hitStretch = 0;
+    this.hitStretchDir = {x:0,y:0};
+    this.hitReturn = 0;
   }
-  takeDamage(dmg) { this.hp -= dmg; this.hitFlash = 160; if (this.hp <= 0) { this.dead = true; return true; } return false; }
+  takeDamage(dmg) { this.hp -= dmg; this.hitFlash = 160; this.hitStretch = 1.0; this.hitStretchDir.x = (Math.random()-0.5)*2; this.hitStretchDir.y = (Math.random()-0.5)*2; const d=Math.hypot(this.hitStretchDir.x,this.hitStretchDir.y)||1; this.hitStretchDir.x/=d; this.hitStretchDir.y/=d; this.hitReturn = 0.16; if (this.hp <= 0) { this.dead = true; return true; } return false; }
   update(dt, player, walls) {
     this.anim += dt;
     if (this.hitFlash > 0) this.hitFlash -= dt;
+    if (this.hitStretch > 0){ this.hitStretch -= dt * 0.026; if (this.hitStretch < 0) this.hitStretch = 0; }
+    if (this.hitReturn > 0){ this.hitReturn -= dt * 0.046; if (this.hitReturn < 0) this.hitReturn = 0; }
     if (this.damageCooldown > 0) this.damageCooldown -= dt;
     // Flecha Stand - Paralisia (imobiliza totalmente)
     if(this.stunTimer>0){ this.stunTimer-=dt; if(this.stunTimer<=0) this.stunTimer=0; return; }
@@ -15451,8 +16062,17 @@ class Chaser {
   canDamage(){ return this.damageCooldown<=0; }
   resetDamageCooldown(){ this.damageCooldown=ENEMY_DAMAGE_COOLDOWN; }
   draw(ctx){
-    const x=this.x-this.w/2, y=this.y-this.h/2, bob=Math.sin(this.anim*0.008)*1.5;
+    let x=this.x-this.w/2, y=this.y-this.h/2, bob=Math.sin(this.anim*0.008)*1.5;
     const isFlash=this.hitFlash>0 && Math.floor(this.hitFlash/40)%2===0;
+    if((this.hitStretch||0)>0 && this.hitStretchDir){
+      const s=this.hitStretch*0.24;
+      const sxv=1+Math.abs(this.hitStretchDir.x)*s*1.15, syv=1+Math.abs(this.hitStretchDir.y)*s*0.88;
+      x+=this.hitStretchDir.x*s*3.2; y+=this.hitStretchDir.y*s*2.8;
+      ctx.save(); ctx.translate(this.x,this.y); ctx.scale(sxv,syv); ctx.translate(-this.x,-this.y);
+    }
+    if((this.hitReturn||0)>0 && this.hitStretchDir){
+      const r=this.hitReturn*0.28; x-=this.hitStretchDir.x*r*4.2; y-=this.hitStretchDir.y*r*3.4;
+    }
     // Aura lentidão/paralisia Flecha Stand
     if(this.stunTimer>0){
       const pulse=0.5+Math.sin(this.anim*0.015)*0.35;
@@ -15489,6 +16109,18 @@ class Chaser {
     ctx.fillStyle='#1a0000'; ctx.fillRect(x+10,y+18+bob,8,3); ctx.fillStyle='#fff'; ctx.fillRect(x+11,y+18+bob,2,2); ctx.fillRect(x+15,y+18+bob,2,2);
     if(this.hp < this.maxHp){ const hpPct=clamp(this.hp/this.maxHp,0,1); ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(x,y-6+bob,this.w,4); ctx.fillStyle=hpPct>0.5?'#4ade80':hpPct>0.25?'#facc15':'#ef4444'; ctx.fillRect(x,y-6+bob,this.w*hpPct,4); }
     drawVariationIcon(ctx,this,x,y,bob);
+    const hf2=this.hitFlash||0;
+    if(hf2>0 && Math.floor(hf2/24)%2===0){
+      ctx.save(); ctx.globalCompositeOperation='lighter'; ctx.globalAlpha=0.5 + Math.sin(this.anim*0.08)*0.16;
+      const px=x, py=y+bob;
+      ctx.fillStyle='#ffffff';
+      ctx.fillRect(px-1,py-1,this.w+2,3);
+      ctx.fillRect(px-1,py+this.h-4,this.w+2,3);
+      ctx.fillRect(px-1,py-1,3,this.h+2);
+      ctx.fillRect(px+this.w-2,py-1,3,this.h+2);
+      ctx.restore();
+    }
+    if((this.hitStretch||0)>0 || (this.hitReturn||0)>0){ try{ctx.restore();}catch(e){} }
   }
   getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
 }
@@ -18437,7 +19069,7 @@ class Room {
       if(pool.length){
         // Escolha ponderada: se personagem exclusivo, dá peso 3x para melhorias da arma exclusiva dentro do pool final
         let pick;
-        const __exclusiveCheck = (()=>{ const p = (typeof window!=='undefined' && window.game && window.game.player) ? window.game.player : null; if(!p||!p.characterDef) return null; const m={bastao:'BASTAO',cavaleiro:'ESPADA',motosserra:'MOTOSSERRA',raio_matematico:'RAIO_MATEMATICO',espada:'ESPADA'}; return m[p.characterDef.exclusive]||null; })();
+        const __exclusiveCheck = (()=>{ const p = (typeof window!=='undefined' && window.game && window.game.player) ? window.game.player : null; if(!p||!p.characterDef) return null; const m={bastao:'BASTAO',cavaleiro:'ESPADA',motosserra:'MOTOSSERRA',raio_matematico:'RAIO_MATEMATICO',espada:'ESPADA'}; const direct=m[p.characterDef.exclusive]||null; if(direct) return direct; if(p.characterDef.allowedWeapons && p.characterDef.allowedWeapons.length===1) return p.characterDef.allowedWeapons[0]; return null; })();
         if(__exclusiveCheck && pool.some(u=> u.weapon===__exclusiveCheck || (u.compatible||[u.weapon]).includes(__exclusiveCheck))){
           // monta array ponderado: exclusivas duplicadas 2x extras (peso 3)
           const weighted=[];
@@ -21782,6 +22414,7 @@ class Game {
     this.meleeSwings = []; // ataques corpo a corpo ativos
     this.fists = []; // punhos foguete ativos
     this.bastaoProjectiles = []; // JG - bastões arremessados (sem duplicação, máximo 1 ativo)
+    this.steelBalls = []; // GYRO - bolas de aço arremessadas (máx 2 no ar)
     this.lazerBeams = []; // LAZER CODIFICADO - feixes Brimstone retangulares ondulados
     this.chicoteWhips = []; // CHICOTE DO INDIANA - chicotes ativos (grapple parede)
     this.particles = [];
@@ -21880,6 +22513,7 @@ class Game {
         else if(e.key==='5') selectChar('oli');
         else if(e.key==='6') selectChar('ash');
         else if(e.key==='7') selectChar('dev');
+        else if(e.key==='8') selectChar('gyro');
         else if(e.key==='Escape'){ this.hideCharacterSelect(); }
       } else if(this.state==='MENU' && !this.controlsScreen.classList.contains('active') && !(this.characterScreen && this.characterScreen.classList.contains('active'))){
         if(e.key==='1'){ this.showCharacterSelect(); selectChar('jg'); }
@@ -21889,6 +22523,7 @@ class Game {
         else if(e.key==='5'){ this.showCharacterSelect(); selectChar('oli'); }
         else if(e.key==='6'){ this.showCharacterSelect(); selectChar('ash'); }
         else if(e.key==='7'){ this.showCharacterSelect(); selectChar('dev'); }
+        else if(e.key==='8'){ this.showCharacterSelect(); selectChar('gyro'); }
       }
     });
     if(btnPlay){
@@ -22214,10 +22849,14 @@ class Game {
       if(w.name==='BASTAO') wDesc=`Dano ${w.damage} • Alcance ${w.range} • Arremesso ${w.throwDamage||w.heavyDamage} dmg • Gira e retorna`;
       else if(w.name==='ESPADA') wDesc=`Dano ${w.damage} • Pesado ${w.heavyDamage} • Alcance ${w.range}/${w.heavyRange} • Combo 3 golpes`;
       else if(w.name==='NORMAL') wDesc=`Dano ${w.damage} • Alcance ${w.range} • ${p.hasDoubleShot?'Tiro duplo ativo':''}`;
+      else if(w.name==='BOLAS'){
+        const cd=(w.chargeDamages&&w.chargeDamages.length)?w.chargeDamages.join(' / '):'1 / 2.2 / 3.6 / 5';
+        wDesc=`2 Bolas de Aço • Dano por carga: ${cd} • Alcance ${w.range} • Carrega ${w.chargeTime}ms • ${w.ricochet} quiques`;
+      }
       else wDesc=`Dano ${w.damage} • Alcance ${w.range} • Cooldown ${w.cooldown}ms`;
       const sec = p.secondaryWeapon ? ` + Sec: ${p.secondaryWeapon.name}` : '';
       cards.push({
-        icon: w.name==='BASTAO'?'🏏': w.name==='ESPADA'?'⚔️': w.name==='NORMAL'?'🔫': w.name==='SHOTGUN'?'💥': w.name==='RAIO'?'⚡': w.name==='LUVA'?'🥊': w.name==='BAZUCA'?'🚀': '🔫',
+        icon: w.name==='BASTAO'?'🏏': w.name==='ESPADA'?'⚔️': w.name==='NORMAL'?'🔫': w.name==='SHOTGUN'?'💥': w.name==='RAIO'?'⚡': w.name==='LUVA'?'🥊': w.name==='BAZUCA'?'🚀': w.name==='BOLAS'?'⚪': '🔫',
         name: `ARMA: ${w.name}${sec}`,
         desc: wDesc,
         badge: w.name,
@@ -22264,6 +22903,10 @@ class Game {
     if(p.farmarAuraActive) passives.push('67 Aura ativa (dano+empurrão)');
     if(p.hasBastao===false && p.characterId==='jg') passives.push('🏏 Sem bastão (lento)');
     else if(p.hasBastao && p.characterId==='jg') passives.push('🏏 Com bastão (rápido)');
+    if(p.characterId==='gyro'){
+      passives.push(`🟢 Bolas de Aço (${p.gyroBallsInHand}/${GYRO_BALLS_MAX} na mão)`);
+      if(p.isGyroCharging) passives.push(`🟢 Carregando ${Math.round(p.getGyroChargeProgress()*100)}%`);
+    }
     if(passives.length){
       cards.push({
         icon: '🎒',
@@ -22558,7 +23201,7 @@ class Game {
     this.totalEnemiesDefeated = 0;
     // reset completo do jogador (armas, passivos, melhorias) - Bone Heart: reseta recipientes cinza
     // Inclui suporte a BASTAO no weaponUpgrades modular
-    this.player.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], RAIO_MATEMATICO:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], CHICOTE:[], ALL:[], SPECIAL:[] };
+    this.player.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], RAIO_MATEMATICO:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], CHICOTE:[], BOLAS:[], ALL:[], SPECIAL:[] };
     this.player.obtainedUpgrades = new Set();
     this.player.upgradeLevels = new Map();
     // Aplica personagem de forma modular (não duplica lógica, prepara para novos)
@@ -22611,7 +23254,17 @@ class Game {
       this.player.bastaoProjectile=null;
       this.player.isBastaoCharging=false;
     }
-    this.bullets=[]; this.meleeSwings=[]; this.fists=[]; this.bastaoProjectiles=[]; this.lazerBeams=[]; this.chicoteWhips=[]; this.particles=[]; this.allies=[]; this.gatoAntivirus=[]; this.oliPieces=[]; this.oliPawns=[]; this.ioiOrbits=[];
+    // Gyro: garante as 2 bolas de aço na mão no início
+    if(this.player.characterId==='gyro'){
+      this.player.gyroBallsInHand=GYRO_BALLS_MAX;
+      this.player.gyroBallsInFlight=0;
+      this.player.isGyroCharging=false;
+      this.player.gyroChargeTime=0;
+      this.player.gyroChargeDir=null;
+      this.player.gyroChargeTier=0;
+      this.player.gyroMaxChargeReady=false;
+    }
+    this.bullets=[]; this.meleeSwings=[]; this.fists=[]; this.bastaoProjectiles=[]; this.steelBalls=[]; this.lazerBeams=[]; this.chicoteWhips=[]; this.particles=[]; this.allies=[]; this.gatoAntivirus=[]; this.oliPieces=[]; this.oliPawns=[]; this.ioiOrbits=[];
     // DISQUETE DA VIDA: run nova zera os continues e o histórico de sala
     this.player.continues = 0;
     this.lastRoom = null;
@@ -22694,7 +23347,7 @@ class Game {
     // DISQUETE DA VIDA: continues carry entre atos, mas o histórico de sala não (novo mapa)
     this.lastRoom = null;
     this.bullets = [];
-    this.bastaoProjectiles=[]; this.meleeSwings=[]; this.fists=[]; this.lazerBeams=[]; this.chicoteWhips=[];
+    this.bastaoProjectiles=[]; this.steelBalls=[]; this.meleeSwings=[]; this.fists=[]; this.lazerBeams=[]; this.chicoteWhips=[];
     this.particles = [];
     this.allies = []; this.gatoAntivirus=[]; this.oliPieces = []; this.oliPawns = []; // aliados, gato e xadrez são por andar, limpa ao trocar de andar (gato respawnará se passiva ativa)
     this.ioiOrbits = []; // io-ios são por sala, limpa ao trocar de andar
@@ -22708,6 +23361,14 @@ class Game {
       this.player.bastaoProjectile=null;
       this.player.isBastaoCharging=false;
       this.player.bastaoChargeTime=0;
+    }
+    // Gyro: garante as 2 bolas de aço de volta ao avançar de andar
+    if(this.player.characterId==='gyro'){
+      this.player.gyroBallsInHand=GYRO_BALLS_MAX;
+      this.player.gyroBallsInFlight=0;
+      this.player.isGyroCharging=false;
+      this.player.gyroChargeTime=0;
+      this.player.gyroChargeDir=null;
     }
     this.transitionCooldown = 0;
     this.floor = floor;
@@ -22758,13 +23419,19 @@ class Game {
       this.roomsExplored++;
       this.player.x=CANVAS_W/2; this.player.y=CANVAS_H/2+40;
       this.player.vx=0; this.player.vy=0;
-      this.bullets=[]; this.meleeSwings=[]; this.fists=[]; this.bastaoProjectiles=[]; this.lazerBeams=[]; this.chicoteWhips=[]; this.particles=[];
+      this.bullets=[]; this.meleeSwings=[]; this.fists=[]; this.bastaoProjectiles=[]; this.steelBalls=[]; this.lazerBeams=[]; this.chicoteWhips=[]; this.particles=[];
       // JG: o bastão em voo foi descartado no teleporte -> devolve pra mão
       // (evita renascer sem bastão: sem ataque, lento e laranja)
       if(this.player.characterId==='jg'){
         this.player.bastaoProjectile=null;
         if(!this.player.hasBastao) this.player.hasBastao=true;
         this.player.isBastaoCharging=false; this.player.bastaoChargeTime=0;
+      }
+      // Gyro: as bolas em voo foram descartadas no teleporte -> voltam pra mão
+      if(this.player.characterId==='gyro'){
+        this.player.gyroBallsInHand=GYRO_BALLS_MAX;
+        this.player.gyroBallsInFlight=0;
+        this.player.isGyroCharging=false; this.player.gyroChargeTime=0;
       }
       this.transitionCooldown=600;
       this._hackerTransition=false;
@@ -23153,10 +23820,12 @@ class Game {
     if(p.isRayMatematicoCharging) p.cancelRayMatematicoCharge();
     p.activeFists = []; p.activeFist = null; p.bastaoProjectile = null;
     this.bullets = []; this.meleeSwings = []; this.fists = [];
-    this.bastaoProjectiles = []; this.lazerBeams = []; this.chicoteWhips = [];
+    this.bastaoProjectiles = []; this.steelBalls = []; this.lazerBeams = []; this.chicoteWhips = [];
     // JG: se morreu com o bastão arremessado, ele volta pra mão ao renascer
     // (sem isto o JG renasce sem bastão: não ataca, fica lento e laranja)
     if(p.characterId==='jg'){ p.hasBastao = true; p.isBastaoCharging = false; p.bastaoChargeTime = 0; }
+    // Gyro: se morreu com a bola no ar, ela volta pra mão ao renascer
+    if(p.characterId==='gyro'){ p.gyroBallsInHand = GYRO_BALLS_MAX; p.gyroBallsInFlight = 0; p.isGyroCharging = false; p.gyroChargeTime = 0; }
     if(this.motosserraZone) this.motosserraZone.active = false;
     if(this.motosserraSideZones) for(const z of this.motosserraSideZones) z.active=false;
     p.motosserraActive = false;
@@ -23292,6 +23961,13 @@ class Game {
             this.player.bastaoProjectile = null;
           }
           if(this.player.isBastaoCharging) this.player.cancelBastaoCharge();
+        }
+        // Gyro - corrige bolas de aço presas ao passar de sala
+        if(this.steelBalls && this.steelBalls.length){ this.steelBalls = []; }
+        if(this.player.characterId==='gyro'){
+          this.player.gyroBallsInHand = GYRO_BALLS_MAX;
+          this.player.gyroBallsInFlight = 0;
+          if(this.player.isGyroCharging) this.player.cancelGyroCharge();
         }
         // Garante que estados de carga não fiquem presos
         if(this.player.isCharging) this.player.cancelCharge();
@@ -24377,6 +25053,57 @@ class Game {
           }
         }
       }
+    } else if(this.player.characterId==='gyro'){
+      // GYRO - Bolas de Aço: segurar para carregar, soltar arremessa (quica e volta pra mão)
+      const gyroThrow=()=>{
+        const progBefore=this.player.getGyroChargeProgress();
+        const result=this.player.releaseGyroCharge();
+        if(result instanceof SteelBallProjectile){
+          if(!this.steelBalls) this.steelBalls=[];
+          this.steelBalls.push(result);
+          const tier=this.player.getGyroBallTier(progBefore);
+          const isMax=progBefore>=0.99;
+          for(let i=0;i<8;i++) this.particles.push(new Particle(this.player.x+result.dirX*6, this.player.y+result.dirY*6, result.dirX*randRange(1.4,3)+randRange(-0.6,0.6), result.dirY*randRange(1.4,3)+randRange(-0.6,0.6), 220, '#cbd5e1',2));
+          for(let k=0;k<6;k++) this.particles.push(new Particle(this.player.x, this.player.y, randRange(-1.4,1.4), randRange(-1.4,0.4), 220, '#ffffff',2));
+          this.shake=isMax?92:72;
+          const tierName=['toque','carga 1','carga 2','CARGA MÁX.'][tier] || 'toque';
+          this.showToast(result.isOrbiting
+            ? `🟢 SEGUNDA BOLA! Orbita o Gyro (${result.damage.toFixed(1)} dano)`
+            : `🟢 BOLA DE AÇO ARREMESSADA! ${tierName} (${result.damage.toFixed(1)} dano)`, 1100);
+        }
+      };
+      if(shootVec){
+        if(!this.player.isGyroCharging){
+          if(this.player.canShoot() && this.player.gyroBallsInHand>0){
+            this.player.startGyroCharge(shootVec);
+          } else if(this.player.gyroBallsInHand<=0){
+            // sem bola na mão - mostra hint sutil de vez em quando
+            if(Math.random()<0.02) this.showToast('🟢 Bola de aço retornando...', 700);
+          }
+        } else {
+          this.player.updateGyroCharge(dt, shootVec);
+          const prog=this.player.getGyroChargeProgress();
+          if(Math.random()<0.22+prog*0.22){
+            const col=prog>0.85?'#ffffff':prog>0.5?'#e2e8f0':'#cbd5e1';
+            this.particles.push(new Particle(this.player.x+shootVec.x*12+randRange(-1.5,1.5), this.player.y+shootVec.y*12+randRange(-1.5,1.5), randRange(-0.5,0.5), randRange(-0.7,0.1), 150, col, prog>0.7?2:1.4));
+          }
+          if(prog>=0.99 && Math.random()<0.18) this.shake=Math.max(this.shake,12);
+          if(prog>=0.99 && Math.random()<0.28) this.particles.push(new Particle(this.player.x,this.player.y-8, randRange(-0.6,0.6), -1.2, 160, '#ffffff',1.5));
+        }
+      } else {
+        if(this.player.isGyroCharging){
+          gyroThrow();
+        } else {
+          // toque rápido (apertou e soltou dentro do mesmo frame) -> arremessa sem carga
+          const tapped=this.input.consumeJustPressed('ArrowUp')||this.input.consumeJustPressed('ArrowDown')
+            ||this.input.consumeJustPressed('ArrowLeft')||this.input.consumeJustPressed('ArrowRight')
+            ||this.input.consumeJustPressed(' ')||this.input.consumeJustPressed('z');
+          if(tapped && this.player.canShoot() && this.player.gyroBallsInHand>0){
+            this.player.startGyroCharge(this.player.lastDir||{x:1,y:0});
+            gyroThrow();
+          }
+        }
+      }
     } else if(w && w.isMotosserra){
       // MOTOSSERRA: área RETA contínua na frente enquanto segura - dano em ticks, vibração, recuo
       if(shootVec){
@@ -25169,6 +25896,73 @@ class Game {
       }
     }
 
+    // ===== GYRO - BOLAS DE AÇO - update do projétil (ricochete + retorno) =====
+    if(this.steelBalls && this.steelBalls.length){
+      for(let i=this.steelBalls.length-1;i>=0;i--){
+        const sb=this.steelBalls[i];
+        const alive=sb.update(dt, this.player, this.currentRoom.walls, this.particles);
+        // colisão com inimigos (bola de aço causa dano ao encostar)
+        for(const e of this.currentRoom.enemies){
+          if(e.dead) continue;
+          if(sb.hitEnemies.has(e)) continue;
+          if(sb.hitsLeft<=0) continue; // já bateu em todos que podia
+          let hit=false;
+          let target=null;
+          if(e.type==='stair_boss'){
+            if(!e.leftHand.dead && !e.leftHand.invulnerable && circleRectCollide(sb.x,sb.y,sb.size, e.leftHand.x-e.leftHand.w/2, e.leftHand.y-e.leftHand.h/2, e.leftHand.w, e.leftHand.h)){ hit=true; target=e.leftHand; }
+            else if(!e.rightHand.dead && !e.rightHand.invulnerable && circleRectCollide(sb.x,sb.y,sb.size, e.rightHand.x-e.rightHand.w/2, e.rightHand.y-e.rightHand.h/2, e.rightHand.w, e.rightHand.h)){ hit=true; target=e.rightHand; }
+            else if(e.canDamageHead() && circleRectCollide(sb.x,sb.y,sb.size, e.x-e.w/2, e.y-e.h/2, e.w, e.h)){ hit=true; target=e; }
+          } else {
+            if(circleRectCollide(sb.x,sb.y,sb.size+2, e.x-e.w/2, e.y-e.h/2, e.w, e.h)){ hit=true; target=e; }
+          }
+          if(hit){
+            const died=target.takeDamage(sb.damage);
+            sb.hitEnemies.add(e);
+            sb.hitsLeft--;
+            for(let k=0;k<6;k++) this.particles.push(new Particle(target.x,target.y, randRange(-1.5,1.5), randRange(-1.5,0.5), 180, '#cbd5e1', 2));
+            const ang=Math.atan2(target.y - sb.y, target.x - sb.x);
+            target.x+=Math.cos(ang)*16; target.y+=Math.sin(ang)*16;
+            target.hitFlash=Math.max(target.hitFlash||0, 160);
+            if(target.stunTimer!==undefined) target.stunTimer=Math.max(target.stunTimer||0, 180);
+            if(died){
+              for(let k=0;k<10;k++){ const ang2=Math.random()*Math.PI*2; this.particles.push(new Particle(target.x,target.y, Math.cos(ang2)*randRange(1.4,3), Math.sin(ang2)*randRange(1.2,3), 280, '#cbd5e1', 2)); }
+            }
+            // bola com perfuração avança sem morrer; sem perfuração continua voando (ricochete)
+          }
+        }
+        // reflexão de projéteis inimigos - a bola de aço rebate o tiro
+        for(let j=this.bullets.length-1;j>=0;j--){
+          const eb=this.bullets[j];
+          if(eb.owner!=='enemy' || eb.dead) continue;
+          if(dist(sb.x,sb.y,eb.x,eb.y) < sb.size + eb.size + 3){
+            eb.owner='player';
+            eb.dirX*=-1; eb.dirY*=-1;
+            const ang=Math.atan2(eb.dirY, eb.dirX) + randRange(-0.15,0.15);
+            eb.dirX=Math.cos(ang); eb.dirY=Math.sin(ang);
+            eb.damage = Math.max(eb.damage*1.4, sb.damage*0.9);
+            eb.color='#cbd5e1';
+            eb.glow='rgba(203,213,225,0.38)';
+            eb.speed = Math.max(eb.speed*1.15, sb.speed*0.85);
+            eb.hitEnemies.clear();
+            eb.traveled=0;
+            eb.range = Math.max(eb.range, 420);
+            for(let k=0;k<8;k++) this.particles.push(new Particle(eb.x,eb.y, eb.dirX*randRange(0.8,1.6)+randRange(-0.4,0.4), eb.dirY*randRange(0.8,1.6)+randRange(-0.4,0.4), 220, '#cbd5e1', 1.8));
+            for(let k=0;k<4;k++) this.particles.push(new Particle(sb.x,sb.y, randRange(-1.2,1.2), randRange(-0.8,0.4), 180, '#f8fafc', 1.6));
+            this.shake=Math.max(this.shake, 28);
+          }
+        }
+        if(!alive || sb.dead){
+          // bola voltou pra mão do Gyro
+          if(this.player.characterId==='gyro'){
+            this.player.returnGyroBall();
+            this.showToast('🟢 Bola de aço retornou!', 900);
+            for(let k=0;k<8;k++) this.particles.push(new Particle(this.player.x,this.player.y, randRange(-1.2,1.2), randRange(-1.2,0.4), 200, '#cbd5e1', 1.8));
+          }
+          this.steelBalls.splice(i,1);
+        }
+      }
+    }
+
     // room + enemies + items update
     const beforeEnemies=this.currentRoom.enemies.length;
     const tempEnemyBullets=[];
@@ -25369,6 +26163,7 @@ class Game {
       try{ for(const m of this.meleeSwings) m.draw(ctx); }catch(e){ console.error('Melee draw error', e); }
       try{ for(const f of this.fists) f.draw(ctx); }catch(e){ console.error('Fist draw error', e); }
       try{ for(const bp of (this.bastaoProjectiles||[])) bp.draw(ctx); }catch(e){ console.error('Bastao draw error', e); }
+      try{ for(const sb of (this.steelBalls||[])) sb.draw(ctx); }catch(e){ console.error('SteelBall draw error', e); }
       try{ for(const al of this.allies) al.draw(ctx); }catch(e){ console.error('Ally draw error', e); }
       try{ for(const cat of (this.gatoAntivirus||[])) cat.draw(ctx); }catch(e){ console.error('Gato draw error', e); }
       try{ for(const pc of (this.oliPieces||[])) pc.draw(ctx); }catch(e){ console.error('Oli piece draw error', e); }
@@ -25584,6 +26379,16 @@ class Game {
       return { pct: prog, color: prog>=0.99 ? '#ffffff' : prog>0.60 ? '#7af2ff' : '#1a8fb3',
                label: prog>=0.99 ? 'SOLTE!' : (cnt?`lazer ${cnt}/4` : 'lazer'),
                strong: prog>=0.99, strongColor:'#b8fffb', ticks:true };
+    }
+    if(wn==='BOLAS'){
+      if(p.isGyroCharging){
+        const prog = p.getGyroChargeProgress();
+        return { pct: prog, color: prog>=0.99 ? '#ffffff' : prog>0.5 ? '#e2e8f0' : '#94a3b8',
+                 label: prog>=0.99 ? 'PRONTO!' : 'carga', strong: prog>=0.99, strongColor:'#e2e8f0' };
+      }
+      const balls = p.gyroBallsInHand||0;
+      return { pct: balls>0 ? 1 : 0.08, color: balls>0 ? '#cbd5e1' : '#475569',
+               label: balls>0 ? `${balls} bola${balls>1?'s':''}` : 'sem bolas' };
     }
     if(wn==='MOTOSSERRA'){
       const pct = p.getMotosserraChargePct();
