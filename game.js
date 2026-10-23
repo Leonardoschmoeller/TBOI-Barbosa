@@ -2442,7 +2442,7 @@ const UPGRADE_DEFS = [
       w.ghostWalls = true;
   }},
   { id:'aspect_muito_rara_ioio', weapon:'ALL', compatible:ASPECT_ALL_WEAPONS, rarity:'MUITO_RARA', category:ASPECT_CATEGORY,
-    name:'Órbita de Io-io', desc:'Aspecto JL: um io-io orbita você causando dano por contato', apply:(w)=>{
+    name:'Órbita de Io-io', desc:'Aspecto JL: ao sofrer dano, invoca um io-io maior e mais forte', apply:(w)=>{
       if(!ASPECT_ALL_WEAPONS.includes(w.name)) return;
       w._aspectIoi = true;
   }},
@@ -2559,7 +2559,7 @@ const DILLIAN_SHIELD_BLOCK_RADIUS = 15;  // raio bloqueio projéteis
 const AXE_DASH_SIZE = 20;
 const AXE_DASH_COUNT = 2;
 const AXE_DASH_RADIUS = 44;
-const AXE_DASH_SPEED = 0.045;       // rad/ms (~1.15 volta durante o dash)
+const AXE_DASH_SPEED = 0.026;       // rad/ms (mais lento: ~0.66 volta durante o dash)
 const AXE_DASH_DAMAGE = 1.2;
 const AXE_DASH_COOLDOWN = 320;      // ms entre hits no mesmo alvo
 
@@ -13721,6 +13721,9 @@ class Player {
     return true;
   }
   // ===================== IO-IO (passivo do NPC JL) =====================
+  hasIoiAspect(){
+    return !!(this.weapon && this.weapon._aspectIoi);
+  }
   enableIoiPassive(){
     if(this.hasIoiPassive) return false;
     this.hasIoiPassive = true;
@@ -13737,19 +13740,38 @@ class Player {
   }
   // Invoca io-ios orbitais ao redor do jogador (chamado quando ele leva dano)
   triggerIoiOrbit(gameRef){
-    if(!this.hasIoiPassive) return false;
+    const hasAspect = this.hasIoiAspect();
+    if(!this.hasIoiPassive && !hasAspect) return false;
     if(this.ioiCooldown > 0) return false;
     const g = gameRef || (typeof window!=='undefined' && window.game ? window.game : null);
     if(!g || !g.currentRoom) return false;
     if(!g.ioiOrbits) g.ioiOrbits = [];
     this.ioiCooldown = IOI_SUMMON_COOLDOWN;
+    // Monta a lista antes de reciclar: o passivo cria os io-ios normais e o
+    // aspecto acrescenta um io-io reforçado. Nada fica permanente.
+    const specs = [];
+    if(this.hasIoiPassive){
+      for(let k=0;k<IOI_ORBIT_COUNT;k++){
+        specs.push({ damage:IOI_ORBIT_DAMAGE, radius:IOI_ORBIT_RADIUS, life:IOI_ORBIT_LIFE, aspect:false });
+      }
+    }
+    if(hasAspect){
+      specs.push({ damage:UPGRADE_VALUES.ASPECT_IOI_DAMAGE, radius:UPGRADE_VALUES.ASPECT_IOI_RADIUS, life:IOI_ORBIT_LIFE, aspect:true });
+    }
     // respeita o limite simultâneo: recicla o mais antigo se estiver cheio
-    while(g.ioiOrbits.length + IOI_ORBIT_COUNT > IOI_ORBIT_MAX){
+    while(g.ioiOrbits.length + specs.length > IOI_ORBIT_MAX){
       g.ioiOrbits.shift();
     }
     const base = Math.random() * Math.PI * 2;
-    for(let k=0;k<IOI_ORBIT_COUNT;k++){
-      g.ioiOrbits.push(new IoiOrbit(this, base + (k * Math.PI*2 / IOI_ORBIT_COUNT)));
+    for(let k=0;k<specs.length;k++){
+      const spec = specs[k];
+      const oi = new IoiOrbit(this, base + (k * Math.PI*2 / specs.length));
+      oi.damage = spec.damage;
+      oi.radius = spec.radius;
+      oi.life = spec.life;
+      oi.maxLife = spec.life;
+      oi.isAspect = spec.aspect;
+      g.ioiOrbits.push(oi);
     }
     if(g.shake) g.shake = Math.max(g.shake, 40);
     for(let k=0;k<10;k++){
@@ -14106,7 +14128,7 @@ class Player {
         // Técnica Secreta Joestar - mesmo quebrando osso conta como sofrer dano (ativa bônus 5s)
         if(this.hasJoestarTechnique) this.triggerJoestarTechnique();
         // IO-IO - levar dano (mesmo absorvido pelo osso) invoca io-io orbital
-        if(this.hasIoiPassive) this.triggerIoiOrbit(opts.game);
+        if(this.hasIoiPassive || this.hasIoiAspect()) this.triggerIoiOrbit(opts.game);
         return false; // dano absorvido pela quebra do osso, sem perder vida vermelha
       }
       // Caso especial: osso com apenas ½ coração (1 HP) e dano de 1 coração (2 HP) -> só esvazia, não quebra (fiel ao Isaac)
@@ -14165,7 +14187,7 @@ class Player {
     // Técnica Secreta Joestar - ao sofrer dano ganha bônus velocidade 5s (item comum)
     if(this.hasJoestarTechnique) this.triggerJoestarTechnique();
     // IO-IO (passivo do JL) - ao levar dano invoca io-ios que orbitam causando dano
-    if(this.hasIoiPassive) this.triggerIoiOrbit(opts.game);
+    if(this.hasIoiPassive || this.hasIoiAspect()) this.triggerIoiOrbit(opts.game);
     return true;
   }
   isAlive() { return this.hp > 0; }
@@ -25173,33 +25195,17 @@ class Game {
     }
   }
   // ===== ASPECTO "ÓRBITA DE IO-IO" (aspecto do JL) =====
-  // Garante um io-io sempre orbitando o jogador enquanto o aspecto estiver equipado.
+  // O aspecto agora é reativo como o passivo: ao levar dano ele acrescenta um
+  // io-io reforçado com vida finita. O método só limpa órbitas permanentes
+  // criadas por versões antigas do jogo, para não deixar io-io preso para sempre.
   updateAspectIoiOrbit(){
-    const p = this.player;
-    const temAspecto = !!(p && p.weapon && p.weapon._aspectIoi);
-    if(!temAspecto){
-      // perdeu o aspecto (trocou de arma): remove o io-io permanente
-      const old = this._aspectIoiOrbit;
-      if(old && this.ioiOrbits){
-        const i = this.ioiOrbits.indexOf(old);
-        if(i>=0) this.ioiOrbits.splice(i,1);
-        for(let k=0;k<8;k++) this.particles.push(new Particle(old.x, old.y, randRange(-1.2,1.2), randRange(-1.2,0.6), 240, '#e53935', 1.6));
-      }
-      this._aspectIoiOrbit = null;
-      return;
+    const old = this._aspectIoiOrbit;
+    if(!old) return;
+    if(this.ioiOrbits){
+      const i = this.ioiOrbits.indexOf(old);
+      if(i>=0) this.ioiOrbits.splice(i,1);
     }
-    if(!this.ioiOrbits) this.ioiOrbits = [];
-    let oi = this._aspectIoiOrbit;
-    if(!oi || oi.dead || this.ioiOrbits.indexOf(oi)===-1){
-      oi = new IoiOrbit(p, Math.random()*Math.PI*2);
-      oi.damage = UPGRADE_VALUES.ASPECT_IOI_DAMAGE;
-      oi.radius = UPGRADE_VALUES.ASPECT_IOI_RADIUS;
-      oi.life = 1e9; oi.maxLife = 1e9;
-      this.ioiOrbits.push(oi);
-      this._aspectIoiOrbit = oi;
-      for(let k=0;k<10;k++){ const ang=Math.random()*Math.PI*2; this.particles.push(new Particle(p.x, p.y, Math.cos(ang)*randRange(1.2,3), Math.sin(ang)*randRange(1.2,3), 300, '#e53935', 2)); }
-      if(this.showToast) this.showToast('🌀 Io-io em órbita!', 1400);
-    }
+    this._aspectIoiOrbit = null;
   }
   // ===== ASPECTO "GARRA DO INDIANA" (aspecto do Chicote) =====
   // O projétil que crava na parede explode no ponto da âncora: dano em área + atordoamento.
