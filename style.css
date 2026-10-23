@@ -2674,3 +2674,447 @@ details > summary { cursor: pointer; min-height: 2.75em; display: flex; align-it
   min-height: 2.5em;
   padding: 0.7em 1em;
 }
+
+/* ============================================================================
+   ===== MENU PRINCIPAL: ATMOSFERA, IDENTIDADE E TRANSIÇÕES ==================
+   ========================================================================= */
+
+/* --- Camada decorativa (fica atrás do conteúdo, sem capturar cliques) ------ */
+.menu-visuals {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+#menuScreen .menu-content { position: relative; z-index: 3; }
+#menuScreen .records-block { z-index: 4; }
+
+.menu-grid {
+  position: absolute;
+  inset: -35% -20% -10%;
+  background-image:
+    linear-gradient(rgba(0,217,255,0.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,217,255,0.16) 1px, transparent 1px);
+  background-size: 52px 52px;
+  transform: perspective(460px) rotateX(57deg) translateY(14%);
+  transform-origin: 50% 72%;
+  opacity: 0.30;
+  -webkit-mask-image: radial-gradient(ellipse at 50% 62%, #000 0%, transparent 72%);
+  mask-image: radial-gradient(ellipse at 50% 62%, #000 0%, transparent 72%);
+  animation: menuGridFlow 16s linear infinite;
+}
+@keyframes menuGridFlow {
+  from { background-position: 0 0, 0 0; }
+  to   { background-position: 0 52px, 52px 0; }
+}
+
+.menu-scanlines {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(255,255,255,0.045) 0px,
+    rgba(255,255,255,0.045) 1px,
+    transparent 1px,
+    transparent 4px
+  );
+  opacity: 0.30;
+  mix-blend-mode: overlay;
+}
+
+.menu-orb {
+  position: absolute;
+  width: 42vmax;
+  height: 42vmax;
+  border-radius: 50%;
+  filter: blur(70px);
+  opacity: 0.34;
+  mix-blend-mode: screen;
+  will-change: transform;
+}
+.menu-orb-a {
+  top: -18%;
+  left: -14%;
+  background: radial-gradient(circle, rgba(255,59,48,0.55) 0%, transparent 66%);
+  animation: menuOrbDrift 11s ease-in-out infinite;
+}
+.menu-orb-b {
+  right: -16%;
+  bottom: -22%;
+  background: radial-gradient(circle, rgba(0,217,255,0.45) 0%, transparent 66%);
+  animation: menuOrbDrift 14s ease-in-out infinite reverse;
+}
+@keyframes menuOrbDrift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(4%, -3%, 0) scale(1.08); }
+}
+
+.menu-particles span {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #8ff6ff;
+  box-shadow: 0 0 10px rgba(0,217,255,0.9), 0 0 22px rgba(0,217,255,0.4);
+  opacity: 0;
+  animation: menuParticleFloat 8s ease-in-out infinite;
+}
+.menu-particles span:nth-child(1) { left: 9%;  top: 26%; animation-delay: -1.2s; }
+.menu-particles span:nth-child(2) { left: 21%; top: 68%; animation-delay: -3.4s; }
+.menu-particles span:nth-child(3) { left: 38%; top: 15%; animation-delay: -5.1s; }
+.menu-particles span:nth-child(4) { left: 66%; top: 74%; animation-delay: -2.3s; }
+.menu-particles span:nth-child(5) { left: 82%; top: 21%; animation-delay: -6.2s; }
+.menu-particles span:nth-child(6) { left: 91%; top: 58%; animation-delay: -4.1s; }
+@keyframes menuParticleFloat {
+  0%, 100% { opacity: 0; transform: translateY(10px) scale(0.6); }
+  35%      { opacity: 0.75; }
+  70%      { opacity: 0.35; transform: translateY(-22px) scale(1); }
+}
+
+/* --- Kicker de status ----------------------------------------------------- */
+#menuScreen .menu-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55em;
+  margin-bottom: 0.9rem;
+  padding: 0.45em 0.85em;
+  border: 1px solid rgba(0,217,255,0.30);
+  border-radius: 999px;
+  background: rgba(0,217,255,0.07);
+  color: #8ff6ff;
+  font-size: clamp(0.5rem, 1vw, 0.625rem);
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 12px rgba(0,217,255,0.55);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), 0 0 22px rgba(0,217,255,0.10);
+}
+#menuScreen .menu-kicker b { color: #ffd94a; font-weight: 900; }
+.menu-kicker-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 9px #4ade80;
+  animation: menuKickerPulse 1.6s ease-in-out infinite;
+}
+@keyframes menuKickerPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.72); }
+}
+
+/* --- Título com glitch sutil (a maior parte do tempo fica limpo) ---------- */
+.title-main {
+  position: relative;
+  display: inline-block;
+  align-self: center;
+  filter: drop-shadow(0 0 26px rgba(255,59,48,0.34));
+}
+.title-main::before,
+.title-main::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  text-shadow: none;
+}
+.title-main::before {
+  color: #00d9ff;
+  clip-path: inset(0 0 54% 0);
+  animation: titleGlitchTop 7.5s steps(1) infinite;
+}
+.title-main::after {
+  color: #ff3b30;
+  clip-path: inset(50% 0 0 0);
+  animation: titleGlitchBottom 8.3s steps(1) infinite;
+}
+@keyframes titleGlitchTop {
+  0%, 91%, 100% { opacity: 0; transform: translate(0, 0); }
+  92%           { opacity: 0.85; transform: translate(-3px, -1px); }
+  94%           { opacity: 0.55; transform: translate(3px, 1px); }
+  96%           { opacity: 0; transform: translate(0, 0); }
+}
+@keyframes titleGlitchBottom {
+  0%, 89%, 100% { opacity: 0; transform: translate(0, 0); }
+  90%           { opacity: 0.75; transform: translate(3px, 1px); }
+  93%           { opacity: 0.45; transform: translate(-2px, -1px); }
+  95%           { opacity: 0; transform: translate(0, 0); }
+}
+
+#menuScreen .title-tag {
+  align-self: center;
+  padding: 0.32em 0.85em;
+  border: 1px solid rgba(110,231,255,0.34);
+  border-radius: 999px;
+  background: rgba(0,217,255,0.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), 0 0 18px rgba(0,217,255,0.10);
+}
+
+/* --- Chips de conteúdo do jogo -------------------------------------------- */
+#menuScreen .menu-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.45rem;
+  margin: -0.35rem 0 1rem;
+}
+#menuScreen .menu-chips span {
+  padding: 0.36em 0.7em;
+  border: 1px solid rgba(255,255,255,0.13);
+  border-radius: 7px;
+  background: rgba(255,255,255,0.035);
+  color: #c9c1dd;
+  font-family: system-ui, sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+}
+
+/* --- Entrada do conteúdo --------------------------------------------------- */
+#menuScreen .menu-content {
+  animation: menuContentIn 0.85s cubic-bezier(0.22, 0.8, 0.24, 1) both;
+}
+@keyframes menuContentIn {
+  from { opacity: 0; transform: translateY(18px) scale(0.985); filter: blur(6px); }
+  to   { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+#menuScreen .menu-kicker { animation: menuKickerIn 0.7s 0.12s cubic-bezier(0.22, 0.8, 0.24, 1) both; }
+#menuScreen .menu-chips  { animation: menuKickerIn 0.7s 0.24s cubic-bezier(0.22, 0.8, 0.24, 1) both; }
+@keyframes menuKickerIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================================
+   ===== TRANSIÇÕES ENTRE TELAS (menu <-> seleção) ===========================
+   ========================================================================= */
+.screen.screen-enter-right,
+.screen.screen-enter-left,
+.screen.screen-leave-left,
+.screen.screen-leave-right {
+  pointer-events: none;
+  will-change: transform, opacity, filter;
+}
+.screen.screen-enter-right { z-index: 27; animation: screenEnterRight 0.56s cubic-bezier(0.22, 0.8, 0.24, 1) both; }
+.screen.screen-enter-left  { z-index: 27; animation: screenEnterLeft 0.56s cubic-bezier(0.22, 0.8, 0.24, 1) both; }
+.screen.screen-leave-left  { z-index: 26; animation: screenLeaveLeft 0.56s cubic-bezier(0.4, 0, 0.6, 1) both; }
+.screen.screen-leave-right { z-index: 26; animation: screenLeaveRight 0.56s cubic-bezier(0.4, 0, 0.6, 1) both; }
+
+.screen.screen-enter-right::before,
+.screen.screen-enter-left::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  background: linear-gradient(105deg,
+    transparent 32%,
+    rgba(0,217,255,0.16) 48%,
+    rgba(255,255,255,0.10) 51%,
+    transparent 68%);
+  background-size: 220% 100%;
+  animation: screenSweep 0.56s ease-out both;
+}
+@keyframes screenEnterRight {
+  from { opacity: 0; transform: translate3d(6%, 0, 0) scale(0.975); filter: blur(10px); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); filter: blur(0); }
+}
+@keyframes screenEnterLeft {
+  from { opacity: 0; transform: translate3d(-6%, 0, 0) scale(0.975); filter: blur(10px); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); filter: blur(0); }
+}
+@keyframes screenLeaveLeft {
+  from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); filter: blur(0); }
+  to   { opacity: 0; transform: translate3d(-5%, 0, 0) scale(1.02); filter: blur(8px); }
+}
+@keyframes screenLeaveRight {
+  from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); filter: blur(0); }
+  to   { opacity: 0; transform: translate3d(5%, 0, 0) scale(1.02); filter: blur(8px); }
+}
+@keyframes screenSweep {
+  from { background-position: 130% 0; opacity: 0; }
+  35%  { opacity: 1; }
+  to   { background-position: -40% 0; opacity: 0; }
+}
+
+/* ============================================================================
+   ===== SELEÇÃO -> PARTIDA: LAUNCH + OVERLAY ================================
+   ========================================================================= */
+#characterScreen.screen-launch {
+  z-index: 28;
+  pointer-events: none;
+}
+#characterScreen.screen-launch .character-panel {
+  transform-origin: 50% 55%;
+  animation: charLaunch 0.58s cubic-bezier(0.55, 0, 0.8, 0.2) both;
+}
+@keyframes charLaunch {
+  0%   { opacity: 1; transform: scale(1); filter: blur(0); }
+  45%  { opacity: 0.9; transform: scale(1.015); filter: blur(1px); }
+  100% { opacity: 0; transform: scale(1.10); filter: blur(16px); }
+}
+
+.transition-fx {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(0,217,255,0.10) 0%, transparent 40%),
+    linear-gradient(135deg, #05040a 0%, #090613 52%, #05040a 100%);
+  transition: opacity 0.24s ease, visibility 0s linear 0.24s;
+}
+.transition-fx.active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 0.18s ease;
+}
+.transition-fx.closing {
+  opacity: 0;
+  transition: opacity 0.48s ease;
+}
+.transition-fx::before {
+  content: "";
+  position: absolute;
+  inset: -45%;
+  background: conic-gradient(from 0deg,
+    transparent 0 76%,
+    rgba(0,217,255,0.13) 82%,
+    transparent 89%);
+  opacity: 0.8;
+}
+.transition-fx.active::before { animation: tfSpin 2.6s linear infinite; }
+.transition-fx::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 50%, transparent 42%, rgba(0,0,0,0.72) 100%);
+}
+@keyframes tfSpin { to { transform: rotate(360deg); } }
+
+.tf-grid {
+  position: absolute;
+  inset: -20%;
+  z-index: 1;
+  background-image:
+    linear-gradient(rgba(0,217,255,0.18) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,217,255,0.18) 1px, transparent 1px);
+  background-size: 56px 56px;
+  opacity: 0.34;
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 0%, transparent 67%);
+  mask-image: radial-gradient(circle at 50% 50%, #000 0%, transparent 67%);
+}
+.transition-fx.active .tf-grid { animation: tfGridPan 0.9s linear infinite; }
+@keyframes tfGridPan {
+  from { background-position: 0 0, 0 0; }
+  to   { background-position: 0 56px, 56px 0; }
+}
+
+.tf-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -4px;
+  z-index: 2;
+  height: 3px;
+  background: linear-gradient(90deg, transparent 0%, rgba(0,217,255,0.15) 12%, #8ff6ff 50%, rgba(0,217,255,0.15) 88%, transparent 100%);
+  box-shadow: 0 0 18px rgba(0,217,255,0.85), 0 0 48px rgba(0,217,255,0.35);
+  opacity: 0;
+}
+.transition-fx.active .tf-scan { animation: tfScanDown 0.9s cubic-bezier(0.4, 0, 0.2, 1) both; }
+@keyframes tfScanDown {
+  0%   { top: -4px; opacity: 0; }
+  12%  { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+
+.tf-center {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.1rem;
+  padding: 2rem;
+  text-align: center;
+}
+.tf-glyph {
+  color: #8ff6ff;
+  font-size: clamp(1.6rem, 5vw, 2.6rem);
+  line-height: 1;
+  text-shadow: 0 0 14px rgba(0,217,255,0.9), 0 0 38px rgba(0,217,255,0.5);
+}
+.transition-fx.active .tf-glyph { animation: tfPulse 0.55s ease-in-out infinite alternate; }
+@keyframes tfPulse {
+  from { transform: scale(0.92) rotate(0deg); opacity: 0.7; }
+  to   { transform: scale(1.08) rotate(90deg); opacity: 1; }
+}
+.tf-label {
+  color: #ffffff;
+  font-size: clamp(0.56rem, 1.5vw, 0.82rem);
+  letter-spacing: 0.16em;
+  line-height: 1.6;
+  text-shadow: 0 0 12px rgba(0,217,255,0.55), 0 2px 0 #000;
+}
+.transition-fx.active .tf-label { animation: tfFlicker 1.1s steps(2) infinite; }
+@keyframes tfFlicker {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.72; }
+}
+.tf-bar {
+  width: min(22rem, 66vw);
+  height: 7px;
+  padding: 1px;
+  border: 1px solid rgba(0,217,255,0.38);
+  border-radius: 999px;
+  background: rgba(0,0,0,0.55);
+  box-shadow: 0 0 22px rgba(0,217,255,0.16), inset 0 1px 3px rgba(0,0,0,0.8);
+  overflow: hidden;
+}
+.tf-bar span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ff3b30 0%, #ffcc00 48%, #00d9ff 100%);
+  box-shadow: 0 0 12px rgba(0,217,255,0.8);
+}
+.transition-fx.active .tf-bar span { animation: tfLoad 0.82s 0.06s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes tfLoad {
+  from { width: 0; }
+  to   { width: 100%; }
+}
+
+/* Em telas curtas o menu já rola: esconde só os adornos menos essenciais. */
+@media (max-height: 560px) {
+  #menuScreen .menu-kicker,
+  #menuScreen .menu-chips { display: none; }
+}
+@media (max-width: 640px) {
+  .menu-grid { opacity: 0.20; background-size: 42px 42px; }
+  .menu-orb { filter: blur(54px); opacity: 0.28; }
+  #menuScreen .menu-chips { gap: 0.35rem; }
+  #menuScreen .menu-chips span { font-size: 0.625rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #menuScreen .menu-content,
+  #menuScreen .menu-kicker,
+  #menuScreen .menu-chips { animation: none; }
+  .menu-grid,
+  .menu-orb,
+  .menu-particles span,
+  .menu-kicker-dot,
+  .title-main::before,
+  .title-main::after { animation: none !important; opacity: 1; }
+  .menu-particles span { display: none; }
+}

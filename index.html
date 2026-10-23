@@ -34,13 +34,28 @@
   <div id="app">
     <!-- Menu Inicial -->
     <div id="menuScreen" class="screen active">
+      <div class="menu-visuals" aria-hidden="true">
+        <div class="menu-grid"></div>
+        <div class="menu-scanlines"></div>
+        <div class="menu-orb menu-orb-a"></div>
+        <div class="menu-orb menu-orb-b"></div>
+        <div class="menu-particles">
+          <span></span><span></span><span></span><span></span><span></span><span></span>
+        </div>
+      </div>
       <div class="menu-content">
+        <div class="menu-kicker"><span class="menu-kicker-dot"></span> SISTEMA ONLINE <b>// v6.1</b></div>
         <h1 class="game-title">
-          <span class="title-main">Cyber Requiem</span>
+          <span class="title-main" data-text="Cyber Requiem">Cyber Requiem</span>
           <span class="title-sub">Salve seu código</span>
           <span class="title-tag">ROGUELIKE</span>
         </h1>
         <p class="menu-desc">Entre no mundo cibernético. Hackeie sistemas, neutralize vírus e sobreviva às salas corrompidas.</p>
+        <div class="menu-chips" aria-hidden="true">
+          <span>◈ 6 FASES</span>
+          <span>◈ 8 PERSONAGENS</span>
+          <span>◈ BOSS FINAL</span>
+        </div>
         <div class="menu-buttons">
           <button id="btnPlay" class="btn btn-primary" aria-label="Jogar">
             <span class="btn-play-label"><i class="btn-play-arrow" aria-hidden="true">▶</i>JOGAR</span>
@@ -216,7 +231,7 @@
             <div class="char-name">Neutro</div>
             <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥</span> <span style="color:#8a8198;font-size:0.8125rem">3 corações</span></div>
             <div class="char-weapon"> Pistola</div>
-            <p class="char-desc">3 ♥ • <b>Pistola padrão</b> — sem exclusivos, equilíbrio puro. Ideal para iniciantes, pode usar qualquer arma/upgrade.</p>
+            <p class="char-desc">3 ♥ • <b>Pistola padrão</b> — sem exclusivos, equilíbrio puro com <b>+6% velocidade</b>. Ideal para iniciantes, pode usar qualquer arma/upgrade.</p>
             <span class="char-badge neutro">NEUTRO • EQUILÍBRIO</span>
           </div>
           <div class="char-card oli-card" data-char="oli" tabindex="0" role="button" aria-label="Selecionar Oli">
@@ -256,7 +271,7 @@
           <div class="char-card gyro-card" data-char="gyro" tabindex="0" role="button" aria-label="Selecionar Gyro">
             <div class="char-icon" style="color:#22c55e">🟢</div>
             <div class="char-name">Gyro</div>
-            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥ ♥ ♥ ♥</span> <span style="color:#8a8198;font-size:0.8125rem">6 corações</span></div>
+            <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥</span> <span style="color:#8a8198;font-size:0.8125rem">3 corações</span></div>
             <div class="char-weapon"><span style="color:#cbd5e1; text-shadow:0 0 6px rgba(203,213,225,0.6)">⚪</span> Bolas de Aço • Casaco + boné</div>
             <p class="char-desc">🟢 <b>Bolas de Aço [Segure]</b>: carrega o arremesso • Dano sobe com a carga (<b>1 → 2.2 → 3.6 → 5</b>) • A 1ª bola <b>ricocheteia</b> e <b>volta</b> pra mão • A 2ª bola <b>orbita</b> você • <b style="color:#22c55e">Arma exclusiva</b> • <b>Sem especiais</b>.</p>
             <div style="display:flex; gap:4px; flex-wrap:wrap; margin-top:6px;">
@@ -286,9 +301,9 @@
         <div class="controls-header">
           <div class="controls-header-top">
             <h2>⌨ CONTROLES & GUIA</h2>
-            <span class="controls-version">Cyber Requiem v6.1 • 6 Atos • Power Star ⭐ + Setch</span>
+            <span class="controls-version">Cyber Requiem v6.2 • 8 Personagens • 6 Atos • Machado no Dash 🪓</span>
           </div>
-          <p class="controls-subtitle">Domine os comandos, armas e segredos. Tudo que você precisa para sobreviver ao mundo cibernético até a Sala da Escada.</p>
+          <p class="controls-subtitle">Comandos separados por tópicos: movimento, combate, itens/passivos e sistema. Domine o dash, as armas e os segredos do mundo cibernético até a Sala da Escada.</p>
           <!-- Só aparece quando o jogo detecta toque de verdade (ver TouchControls) -->
           <p class="touch-note" id="touchNote">
             📱 <strong>No celular:</strong> arraste na <strong>metade esquerda</strong> para andar e na
@@ -297,10 +312,11 @@
             Jogue com o celular na horizontal.
           </p>
           <div class="controls-quickstats">
+            <span class="qstat"><i>👥</i> 8 Personagens</span>
             <span class="qstat"><i>🎯</i> 6 Fases</span>
+            <span class="qstat"><i>🪓</i> Machado no Dash</span>
             <span class="qstat"><i>⭐</i> Power Star</span>
             <span class="qstat"><i>◉</i> Boss Final</span>
-            <span class="qstat"><i>♥</i> 3 Corações</span>
           </div>
         </div>
 
@@ -318,8 +334,8 @@
           <details class="controls-section" open>
             <summary class="section-summary">
               <span class="section-icon">🎮</span>
-              <span class="section-title">Comandos Essenciais</span>
-              <span class="section-badge">6 controles</span>
+              <span class="section-title">Movimento & Defesa</span>
+              <span class="section-badge">2 controles</span>
             </summary>
             <div class="controls-grid modern">
               <div class="control-card">
@@ -331,23 +347,33 @@
                 <p class="cc-desc">8 direções com diagonal normalizada. Segure duas teclas para mover na diagonal sem perder velocidade.</p>
                 <span class="cc-hint">Diagonal = 1/√2 • Colisão com paredes deslizante</span>
               </div>
-              <div class="control-card">
-                <div class="control-card-head">
-                  <span class="cc-icon">🎯</span>
-                  <span class="cc-title">Mira & Tiro</span>
-                  <span class="cc-keys"><span class="key">↑</span><span class="key">←</span><span class="key">↓</span><span class="key">→</span></span>
-                </div>
-                <p class="cc-desc">8 direções. Combine 2 setas para diagonal. Segurar = carrega arma <span style="color:#a78bfa">CARREGADA</span> (1 → 4 dano).</p>
-                <span class="cc-hint">Metralhadora: aquecimento • Carregada: barra roxa sobre o jogador</span>
-              </div>
               <div class="control-card accent-blue">
                 <div class="control-card-head">
                   <span class="cc-icon">💨</span>
                   <span class="cc-title">Dash</span>
                   <span class="cc-keys"><span class="key wide">SHIFT</span></span>
                 </div>
-                <p class="cc-desc">Impulso de <b>160ms</b> a <b>8.5 vel</b> + invulnerabilidade <b>220ms</b>. Cooldown 900ms.</p>
-                <span class="cc-hint">Funciona parado (usa última direção). Deixa <span style="color:#ff6a00">🔥 fogo</span> se tiver Rastro de Fogo.</span>
+                <p class="cc-desc">Impulso de <b>160ms</b> a <b>8.5 vel</b> + invulnerabilidade <b>220ms</b>. Cooldown <b>900ms</b>.</p>
+                <span class="cc-hint">Funciona parado (usa a última direção) • Com <span style="color:#ff6a00">🔥 Rastro de Fogo</span> deixa chamas • Com <span style="color:#fcd34d">🪓 Machado para Chicaras</span> ganha 2 machados orbitais.</span>
+              </div>
+            </div>
+          </details>
+
+          <details class="controls-section" open>
+            <summary class="section-summary">
+              <span class="section-icon">⚔️</span>
+              <span class="section-title">Combate & Armas</span>
+              <span class="section-badge">4 controles</span>
+            </summary>
+            <div class="controls-grid modern">
+              <div class="control-card">
+                <div class="control-card-head">
+                  <span class="cc-icon">🎯</span>
+                  <span class="cc-title">Mira & Tiro</span>
+                  <span class="cc-keys"><span class="key">↑</span><span class="key">←</span><span class="key">↓</span><span class="key">→</span></span>
+                </div>
+                <p class="cc-desc">8 direções. Combine 2 setas para diagonal. Segurar = carrega armas com carga.</p>
+                <span class="cc-hint">CARREGADA 1→4 dano • Espada/Chicote/Luva/Motosserra têm carga ou combo próprios</span>
               </div>
               <div class="control-card accent-yellow">
                 <div class="control-card-head">
@@ -355,8 +381,8 @@
                   <span class="cc-title">Trocar Arma</span>
                   <span class="cc-keys"><span class="key">Q</span></span>
                 </div>
-                <p class="cc-desc">Troca com arma no chão a <b>58px</b>. A equipada vai ao chão — sem duplicação. Hint dourado aparece quando próximo.</p>
-                <span class="cc-hint">Primária ↔ Secundária • Cancela carregamento</span>
+                <p class="cc-desc">Troca com a arma no chão a <b>58px</b>. A equipada vai ao chão — sem duplicação.</p>
+                <span class="cc-hint">Primária ↔ Secundária • Cancela carregamento • Ash usa [E] para trocar</span>
               </div>
               <div class="control-card accent-cyan">
                 <div class="control-card-head">
@@ -364,17 +390,108 @@
                   <span class="cc-title">Especial [E]</span>
                   <span class="cc-keys"><span class="key wide">E</span></span>
                 </div>
-                <p class="cc-desc">Ativa item equipado. <b>Espada Flamejante</b> explosão 120px • <b>Escudo</b> absorve <b>1 dano</b> (5s ou até absorver) • <b>Flecha Stand</b> sorteia lentidão/aliado/paralisia.</p>
-                <span class="cc-hint">Prioridade: pegar/trocar no chão &gt; ativar. Cooldown na HUD (barra no topo).</span>
+                <p class="cc-desc">Ativa o item especial equipado: <b>Espada Flamejante</b> (explosão 120px) • <b>Escudo</b> (absorve 1 dano por 5s) • <b>Flecha Stand</b> (sorteia efeito) • <b>Giro Áureo</b> do Gyro (7s de bolas douradas perfurantes com marcas explosivas).</p>
+                <span class="cc-hint">Habilidades próprias como <b>67 Aura</b> e <b>Xadrez</b> também usam [E] • Cooldown na HUD</span>
               </div>
               <div class="control-card accent-cyan">
                 <div class="control-card-head">
-                  <span class="cc-icon">▣</span>
-                  <span class="cc-title">Painel Central [E]</span>
-                  <span class="cc-keys"><span class="key wide">E</span><span class="key wide">ENTER</span></span>
+                  <span class="cc-icon">🌡️</span>
+                  <span class="cc-title">Carga, Combo & Calor</span>
+                  <span class="cc-keys"><span class="key">↑</span><span class="key wide">SEGURE</span></span>
                 </div>
-                <p class="cc-desc">Sala <b>exclusiva</b>: só aparece na <b>Fase 1</b> e apenas se o nome do jogador for <b>SCHMOELLER</b>. Chegue perto do console e aperte <b>E</b>: abre o <b>terminal de códigos</b>. <b>F1</b>–<b>F6</b> mudam de fase na hora • <b>BORZUK</b> libera <b>todas</b> as melhorias e <b>todos</b> os passivos.</p>
-                <span class="cc-hint">O terminal pausa o jogo • a lista de códigos fica no lado direito (pode clicar) • ESC fecha.</span>
+                <p class="cc-desc">Segure a seta para carregar ou encadear golpes. A <b>Metralhadora</b> aquece e superaquece por <b>1.65s</b>.</p>
+                <span class="cc-hint">Barras TEMP/CARGA aparecem no HUD • Solte para disparar ou golpear</span>
+              </div>
+            </div>
+          </details>
+
+          <details class="controls-section" open>
+            <summary class="section-summary">
+              <span class="section-icon">🎒</span>
+              <span class="section-title">Itens & Passivos</span>
+              <span class="section-badge">10 itens</span>
+            </summary>
+            <div class="controls-grid modern">
+              <div class="control-card accent-gold">
+                <div class="control-card-head">
+                  <span class="cc-icon">🪓</span>
+                  <span class="cc-title">Machado para Chicaras</span>
+                  <span class="cc-keys"><span class="key">PASSIVA</span></span>
+                </div>
+                <p class="cc-desc"><span style="color:#4ade80"><b>INCOMUM</b></span> — ao dar dash, <b>2 machados</b> aparecem e orbitam o personagem durante o impulso, cortando inimigos por contato.</p>
+                <span class="cc-hint">Só ativo durante o dash • Dano por contato • Item dourado no chão</span>
+              </div>
+              <div class="control-card">
+                <div class="control-card-head">
+                  <span class="cc-icon">🔥</span>
+                  <span class="cc-title">Rastro de Fogo</span>
+                  <span class="cc-keys"><span class="key">PASSIVA</span></span>
+                </div>
+                <p class="cc-desc"><span style="color:#60a5fa"><b>RARA</b></span> — o dash deixa chamas no caminho por <b>3.2s</b>, causando <b>1 dano</b> a cada <b>420ms</b>.</p>
+                <span class="cc-hint">Ótimo para controlar hordas e fugir de Kamikazes</span>
+              </div>
+              <div class="control-card">
+                <div class="control-card-head">
+                  <span class="cc-icon">💨</span>
+                  <span class="cc-title">Botas Velozes</span>
+                  <span class="cc-keys"><span class="key">PASSIVA</span></span>
+                </div>
+                <p class="cc-desc">Aumenta permanentemente a velocidade em <b>+0.75</b>.</p>
+                <span class="cc-hint">Combina com dash e Técnica Joestar</span>
+              </div>
+              <div class="control-card">
+                <div class="control-card-head">
+                  <span class="cc-icon">✦</span>
+                  <span class="cc-title">Tiro Duplo</span>
+                  <span class="cc-keys"><span class="key">MELHORIA</span></span>
+                </div>
+                <p class="cc-desc">A arma <b>NORMAL</b> passa a disparar <b>2 projéteis</b> lado a lado.</p>
+                <span class="cc-hint">Vinculado à arma • Não se aplica a todas as armas</span>
+              </div>
+              <div class="control-card">
+                <div class="control-card-head">
+                  <span class="cc-icon">◈</span>
+                  <span class="cc-title">Noclip</span>
+                  <span class="cc-keys"><span class="key">PASSIVA</span></span>
+                </div>
+                <p class="cc-desc"><span style="color:#4ade80"><b>INCOMUM</b></span> — atravessa espinhos sem levar dano.</p>
+                <span class="cc-hint">Não impede colisão com paredes ou inimigos</span>
+              </div>
+              <div class="control-card">
+                <div class="control-card-head">
+                  <span class="cc-icon">🛡️</span>
+                  <span class="cc-title">Escudo do Dillian</span>
+                  <span class="cc-keys"><span class="key">PASSIVA</span></span>
+                </div>
+                <p class="cc-desc"><span style="color:#4ade80"><b>INCOMUM</b></span> — escudo orbital (<b>Dream Shield</b>) que bloqueia projéteis e causa dano leve por contato.</p>
+                <span class="cc-hint">Gira ao redor do personagem • Cooldown curto por inimigo</span>
+              </div>
+              <div class="control-card">
+                <div class="control-card-head">
+                  <span class="cc-icon">✴</span>
+                  <span class="cc-title">Técnica Secreta Joestar</span>
+                  <span class="cc-keys"><span class="key">PASSIVA</span></span>
+                </div>
+                <p class="cc-desc"><span style="color:#d1d5db"><b>COMUM</b></span> — ao sofrer dano, ganha <b>+1.45 velocidade</b> por <b>5s</b>.</p>
+                <span class="cc-hint">Aura dourada/roxa durante o bônus</span>
+              </div>
+              <div class="control-card">
+                <div class="control-card-head">
+                  <span class="cc-icon">🐱</span>
+                  <span class="cc-title">Gato Antivírus</span>
+                  <span class="cc-keys"><span class="key">PASSIVA</span></span>
+                </div>
+                <p class="cc-desc"><span style="color:#60a5fa"><b>INCOMUM</b></span> — invoca um gato azul que persegue, ataca e atordoa inimigos por <b>1.8s</b>.</p>
+                <span class="cc-hint">Acompanha entre salas • Volta após atacar</span>
+              </div>
+              <div class="control-card">
+                <div class="control-card-head">
+                  <span class="cc-icon">🪀</span>
+                  <span class="cc-title">IO-IO</span>
+                  <span class="cc-keys"><span class="key">PASSIVA</span></span>
+                </div>
+                <p class="cc-desc"><span style="color:#d1d5db"><b>COMUM</b></span> — presente do JL na Sala Setch. Ao sofrer dano, invoca io-ios que orbitam e cortam inimigos.</p>
+                <span class="cc-hint">Automático ao encostar no presente • Não usa [E]</span>
               </div>
               <div class="control-card accent-gold">
                 <div class="control-card-head">
@@ -382,17 +499,54 @@
                   <span class="cc-title">Power Star</span>
                   <span class="cc-keys"><span class="key star">⭐</span></span>
                 </div>
-                <p class="cc-desc"><span style="color:#ffd700"><b>RARO</b></span> — Fica <b>7s invencível</b> + dano <b>3</b> ao encostar. Aura estrelada orbitando.</p>
-                <span class="cc-hint">Cooldown <b>50s</b> na HUD • Não acumula com Dash/Escudo</span>
+                <p class="cc-desc"><span style="color:#ffd700"><b>RARO</b></span> — fica <b>7s invencível</b> e causa <b>3 dano</b> ao encostar nos inimigos.</p>
+                <span class="cc-hint">Cooldown <b>50s</b> na HUD • Ativa com [E] • Aura estrelada</span>
               </div>
+            </div>
+          </details>
+
+          <details class="controls-section">
+            <summary class="section-summary">
+              <span class="section-icon">⚙️</span>
+              <span class="section-title">Sistema & Atalhos</span>
+              <span class="section-badge">4 tópicos</span>
+            </summary>
+            <div class="controls-grid modern">
               <div class="control-card accent-blue">
                 <div class="control-card-head">
-                  <span class="cc-icon">🐱</span>
-                  <span class="cc-title">Gato Antivírus</span>
-                  <span class="cc-keys"><span class="key">PASSIVA</span></span>
+                  <span class="cc-icon">⏸️</span>
+                  <span class="cc-title">Pausa</span>
+                  <span class="cc-keys"><span class="key wide">ESC</span><span class="key">P</span></span>
                 </div>
-                <p class="cc-desc"><span style="color:#3b82f6"><b>PASSIVA INCOMUM</b></span> — Ao coletar (item azul no chão) invoca <b>gato azul</b> que persegue, ataca e atordoa <b>1.8s</b>, volta e fica <b>2s</b> sem atacar. Fica para sempre.</p>
-                <span class="cc-hint">Item normal • Não usa [E] • Acompanha entre salas • Brilho azul</span>
+                <p class="cc-desc">Pausa ou continua a partida a qualquer momento. Também é possível clicar no botão de pausa do HUD.</p>
+                <span class="cc-hint">No menu de pausa: continuar, reiniciar fase/partida, controles, configurações e sair</span>
+              </div>
+              <div class="control-card accent-cyan">
+                <div class="control-card-head">
+                  <span class="cc-icon">▣</span>
+                  <span class="cc-title">Terminal Central</span>
+                  <span class="cc-keys"><span class="key wide">E</span><span class="key wide">ENTER</span></span>
+                </div>
+                <p class="cc-desc">Sala secreta da <b>Fase 1</b> para o nome <b>SCHMOELLER</b>. Aperte <b>E</b> perto do console para abrir o terminal de códigos.</p>
+                <span class="cc-hint">ESC fecha o terminal • O jogo pausa enquanto ele está aberto</span>
+              </div>
+              <div class="control-card accent-yellow">
+                <div class="control-card-head">
+                  <span class="cc-icon">⌨</span>
+                  <span class="cc-title">Códigos do Terminal</span>
+                  <span class="cc-keys"><span class="key">F1</span><span class="key">F6</span><span class="key wide">BORZUK</span></span>
+                </div>
+                <p class="cc-desc"><b>F1–F6</b> mudam de fase na hora. <b>BORZUK</b> libera <b>todas</b> as melhorias e <b>todos</b> os passivos.</p>
+                <span class="cc-hint">A lista de códigos fica no lado direito e pode ser clicada</span>
+              </div>
+              <div class="control-card">
+                <div class="control-card-head">
+                  <span class="cc-icon">🔠</span>
+                  <span class="cc-title">Tamanho da Letra</span>
+                  <span class="cc-keys"><span class="key">CTRL</span><span class="key">+</span><span class="key">−</span><span class="key">0</span></span>
+                </div>
+                <p class="cc-desc">Ajusta HUD, menus, diálogos e pontuação. Também disponível nos botões <b>A− / A / A+ / A++</b> das configurações e da pausa.</p>
+                <span class="cc-hint">CTRL + 0 restaura o tamanho padrão • Mudança aplicada na hora</span>
               </div>
             </div>
           </details>
@@ -422,8 +576,8 @@
               </div>
               <div class="arsenal-card" style="border-color:rgba(209,213,219,0.22)">
                 <div class="arsenal-head"><span class="arsenal-name" style="color:#d1d5db">Neutro 👤</span><span class="rarity-badge comum">3 ♥</span></div>
-                <div class="arsenal-stats"><span>PISTOLA</span><span>equilíbrio</span><span>versátil</span></div>
-                <p class="arsenal-desc">3 ♥ • <b>Pistola padrão</b> — sem exclusivos, pode usar qualquer arma/upgrade. Perfeito para aprender.</p>
+                <div class="arsenal-stats"><span>PISTOLA</span><span>+6% vel</span><span>versátil</span></div>
+                <p class="arsenal-desc">3 ♥ • <b>Pistola padrão</b> — sem exclusivos, pode usar qualquer arma/upgrade. <b>+6% velocidade</b> compensa a ausência de especial. Perfeito para aprender.</p>
               </div>
               <div class="arsenal-card" style="border-color:rgba(167,139,250,0.28)">
                 <div class="arsenal-head"><span class="arsenal-name" style="color:#a78bfa">Oli ♞</span><span class="rarity-badge muito-rara">3 ♥</span></div>
@@ -440,6 +594,11 @@
                 <div class="arsenal-stats"><span>LAZER COD.</span><span>Brimstone</span><span>🧁 Sobremesa</span></div>
                 <p class="arsenal-desc">3 ♥ • Óculos e jaleco branco • <b style="color:#7af2ff">Lazer Codificado</b> retângulo reto <b>Brimstone</b> com <b>ondulações</b> • <b>Segure até 100%</b> • Dano moderado (2.2) • Alcance médio-longo (400) • <b style="color:#ffd8a8">Sobremesa</b> mini a cada 10%.</p>
               </div>
+              <div class="arsenal-card" style="border-color:rgba(34,197,94,0.28)">
+                <div class="arsenal-head"><span class="arsenal-name" style="color:#22c55e">Gyro 🟢</span><span class="rarity-badge incomum">3 ♥</span></div>
+                <div class="arsenal-stats"><span>BOLAS</span><span>2 na mão</span><span>GIRO ÁUREO</span></div>
+                <p class="arsenal-desc">3 ♥ • <b>Duas Bolas de Aço</b> exclusivas • Segure para carregar e solte para arremessar • Quica nas paredes e volta para a mão • <b style="color:#fbbf24">[E] Giro Áureo</b> por <b>7s</b>: arremesso em leque, bolas perfurantes e marcas que explodem.</p>
+              </div>
             </div>
             <p class="section-note">Seleção em menu próprio (1 JG • 2 Kinight • 3 JL • 4 Neutro • 5 Oli • 6 Ash • 7 Dev • 8 Gyro). Estrutura modular: novo personagem = adicionar entrada em <code>CHARACTER_DEFS</code> + hook + peça em <code>OliXadrez</code>.</p>
           </details>
@@ -449,7 +608,7 @@
             <summary class="section-summary">
               <span class="section-icon">🔫</span>
               <span class="section-title">Arsenal & Raridades</span>
-              <span class="section-badge">5 armas + 4 raridades</span>
+              <span class="section-badge">6 armas + 4 raridades</span>
             </summary>
             <div class="arsenal-grid">
               <div class="arsenal-card normal">
@@ -497,7 +656,7 @@
             <summary class="section-summary">
               <span class="section-icon">👾</span>
               <span class="section-title">Inimigos & Ameaças</span>
-              <span class="section-badge">8 tipos</span>
+              <span class="section-badge">11 tipos</span>
             </summary>
             <div class="enemies-grid">
               <div class="enemy-card">
@@ -592,13 +751,14 @@
             <summary class="section-summary">
               <span class="section-icon">💡</span>
               <span class="section-title">Dicas Estratégicas</span>
-              <span class="section-badge">11 dicas</span>
+              <span class="section-badge">12 dicas</span>
             </summary>
             <ul class="tips modern">
               <li><span class="tip-icon">🚪</span> <span>Portas com cadeado <span class="dot locked"></span> só abrem quando a sala está limpa. Minimapa marca salas limpas em verde.</span></li>
               <li><span class="tip-icon">💔</span> <span>Toque = ½ coração. Existe cooldown de 600ms — não tome dano contínuo se ficar colado.</span></li>
               <li><span class="tip-icon">✦</span> <span>Dash funciona parado: usa última direção mirada. Use para atravessar explosões e raio do boss.</span></li>
               <li><span class="tip-icon">🔥</span> <span><span style="color:#ff6a00">Rastro de Fogo</span> deixa chamas 3.2s no dash (1 dano a cada 420ms). Ótimo para controlar horda.</span></li>
+              <li><span class="tip-icon">🪓</span> <span><span style="color:#fcd34d">Machado para Chicaras</span> (passivo incomum): ao dar dash, <b>2 machados</b> orbitam o personagem e cortam inimigos. Use o dash para abrir caminho ou finalizar alvos colados.</span></li>
               <li><span class="tip-icon">⭐</span> <span><span style="color:#ffd700">Power Star</span> use em horda ou contra Boss: fique colado para causar 3 dano a cada 320ms por 7s.</span></li>
               <li><span class="tip-icon">◉</span> <span>Boss Fase 5: 1ª fase só cabeça toma dano. Em 50% cabeça fica <b>BLOQUEADA</b> — destrua as <b>2 mãos (16 HP cada)</b> para liberar.</span></li>
               <li><span class="tip-icon">⚡</span> <span>Boss avisa raio 950ms (linha amarela até o centro). Saia do centro! Mãos batem → 8 projéteis radiais.</span></li>
@@ -620,6 +780,7 @@
             <span class="hud-legend-item">ESPECIAL [E] barra</span>
             <span class="hud-legend-item">TEMP/CARGA barras</span>
             <span class="hud-legend-item">MELHORIAS chips</span>
+            <span class="hud-legend-item">🪓 MACHADO NO DASH</span>
             <span class="hud-legend-item">MAPA 5×5</span>
           </div>
         </div>
@@ -740,6 +901,17 @@
     </div>
   </div> 
   
+
+  <!-- Transição cinematográfica: seleção de personagem -> partida -->
+  <div id="transitionFx" class="transition-fx" aria-hidden="true">
+    <div class="tf-grid"></div>
+    <div class="tf-scan"></div>
+    <div class="tf-center">
+      <div class="tf-glyph">◈</div>
+      <div class="tf-label" id="transitionLabel">INICIANDO PROTOCOLO</div>
+      <div class="tf-bar"><span></span></div>
+    </div>
+  </div>
 
   <script src="game.js"></script>
 </body>

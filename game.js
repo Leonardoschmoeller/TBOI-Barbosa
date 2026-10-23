@@ -72,6 +72,7 @@ const PLAYER_SIZE = 24;
 const PLAYER_SPEED = 3.0;
 const JL_SPEED_FACTOR = 0.89;       // JL ~11% mais lento que base (um pouco mais lento conforme pedido)
 const KINIGHT_SPEED_FACTOR = 0.86;  // Kinight ~14% mais lento (tanque, armadura pesada)
+const NEUTRO_SPEED_FACTOR = 1.06;   // Neutro ~6% mais rápido (compensa não ter especial/exclusivo)
 const DASH_SPEED = 8.5;
 const DASH_DURATION = 160; // ms
 const DASH_COOLDOWN = 900;
@@ -1544,6 +1545,57 @@ class OliXadrez extends SpecialItem {
   playEffects(player, game){}
 }
 
+// ===================== GYRO - GIRO ÁUREO (ESPECIAL) =====================
+// Enquanto ativo, as bolas de aço ficam douradas: carga mais rápida, sem lentidão,
+// sem ricochete/órbita e o arremesso vira uma broca perfurante que marca e explode.
+class GiroAureo extends SpecialItem {
+  constructor(){
+    super({
+      id: 'giro_aureo',
+      name: 'GIRO ÁUREO',
+      key: 'e',
+      cooldown: GIRO_AUREO.cooldown,
+      duration: GIRO_AUREO.duration,
+      icon: '✦',
+      description: 'Arremesso vira broca dourada perfurante com marca de giro e explosão',
+      color: '#fbbf24'
+    });
+  }
+  tryActivate(player, game){
+    if((player.gyroBallsInHand||0) <= 0 && (player.gyroBallsInFlight||0) <= 0){
+      if(game && game.showToast) game.showToast('✦ Giro Áureo: espere a bola voltar!', 1100);
+      return false;
+    }
+    const ok = super.tryActivate(player, game);
+    if(ok && game){
+      for(let k=0;k<18;k++){
+        const ang = Math.random()*Math.PI*2;
+        game.particles.push(new Particle(player.x, player.y, Math.cos(ang)*randRange(1.2,3.4), Math.sin(ang)*randRange(1.2,3.4), 380, k%2?'#fbbf24':'#fef3c7', 2.2));
+      }
+      game.shake = Math.max(game.shake||0, 60);
+    }
+    return ok;
+  }
+  activate(player, game){
+    player.goldenSpin = true;
+    if(game && game.showToast) game.showToast('✦ GIRO ÁUREO! Arremessos viraram brocas douradas (7s)', 1800);
+  }
+  onActiveTick(dt, player, game){
+    if(game && Math.random()<0.22){
+      game.particles.push(new Particle(player.x+randRange(-9,9), player.y+randRange(-9,9), randRange(-0.5,0.5), randRange(-0.9,-0.2), 200, '#fbbf24', 1.5));
+    }
+  }
+  onDeactivate(player, game){
+    player.goldenSpin = false;
+    if(game && game.showToast) game.showToast('✦ Giro Áureo encerrado', 900);
+  }
+  getStatusText(){
+    if(this.isActive) return `Ativo: ${Math.ceil(this.durationRemaining/1000)}s • broca dourada`;
+    if(this.isOnCooldown()) return `Cooldown: ${this.getRemainingSeconds()}s`;
+    return 'Pronto!';
+  }
+}
+
 // Registro modular: facilita adicionar novos itens sem reescrever Game/Player
 // Basta criar classe nova extends SpecialItem e adicionar aqui.
 const SPECIAL_REGISTRY = {
@@ -1553,6 +1605,7 @@ const SPECIAL_REGISTRY = {
   'power_star':        () => new PowerStar(),
   'farmar_aura':       () => new FarmarAura(),
   'oli_xadrez':        () => new OliXadrez(),
+  'giro_aureo':        () => new GiroAureo(),
 };
 function createSpecialItem(id){
   const factory = SPECIAL_REGISTRY[id];
@@ -1570,6 +1623,18 @@ const RARITY = {
   RARA:       { id:'RARA',       name:'Rara',       color:'#60a5fa', bg:'rgba(96,165,250,0.22)', border:'rgba(96,165,250,0.65)', glow:'rgba(96,165,250,0.35)', chance:0.15 },
   MUITO_RARA: { id:'MUITO_RARA', name:'Muito Rara', color:'#c084fc', bg:'rgba(192,132,252,0.22)', border:'rgba(192,132,252,0.70)', glow:'rgba(192,132,252,0.35)', gold:'#ffd700' }
 };
+// ===================== ASPECTOS DE ARMAS =====================
+// Melhorias que COPIAM uma trait de outra arma para a arma que o jogador usa.
+// Cada aspecto nasce de uma arma-base: Chicote (âncora/empurrão), Lazer Codificado
+// (atravessa parede), Bazuca (explosão), Bolas de Aço (ricochete), Bastão (retorno),
+// Raio (cadeia/perfuração), Dev (mini raio), Pistola (tiro duplo).
+// A lista abaixo é quem usa projétil (Bullet). Quem usa feixe (LazerBeam) entra
+// apenas no aspecto "Parede Fantasma", porque o laser é desenhado por outro caminho.
+const ASPECT_BULLET_WEAPONS = ['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA'];
+const ASPECT_FANTASMA_WEAPONS = [...ASPECT_BULLET_WEAPONS, 'RAIO_MATEMATICO'];
+// Todas as armas do jogo (aspectos que não dependem de projétil: escudo, gato, io-io)
+const ASPECT_ALL_WEAPONS = ['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS','RAIO_MATEMATICO','CHICOTE'];
+const ASPECT_CATEGORY = 'ASPECT';
 // Valores balanceados facilmente editáveis por raridade/arma (requisito balanceamento)
 const UPGRADE_VALUES = {
   // NORMAL - pistola equilibrada
@@ -1684,6 +1749,45 @@ const UPGRADE_VALUES = {
   BOLAS_MUITO_RARA_DANO: 0.40,      // +40% dano total
   BOLAS_MUITO_RARA_PIERCE: 1,       // perfura +1 inimigo
   BOLAS_MUITO_RARA_RICOCHET: 2,     // +2 quiques em parede
+  // ASPECTOS DE ARMAS (traits copiadas de outra arma)
+  ASPECT_RICOCHETE_WALLS: 1,        // Aspecto Bolas de Aço: +1 quique na parede
+  ASPECT_DOUBLE_SHOT_SPREAD: 9,    // Aspecto Pistola: separação lateral do tiro duplo
+  ASPECT_CHAIN_JUMPS: 1,           // Aspecto Raio: +1 salto de cadeia elétrica
+  ASPECT_RETURN_COOLDOWN: 140,      // Aspecto Bastão: ms de recarga devolvidos no retorno
+  ASPECT_KNOCKBACK: 1,             // Aspecto Chicote: +1 nível de empurrão
+  ASPECT_EXPLOSION_RADIUS: 72,      // Aspecto Bazuca: raio da explosão
+  ASPECT_EXPLOSION_DAMAGE: 2.4,     // Aspecto Bazuca: dano da explosão
+  ASPECT_PULL_SPEED: 7.6,           // Aspecto Chicote: velocidade do puxão até a parede
+  ASPECT_PULL_MAX_MS: 1400,         // Aspecto Chicote: duração máxima do puxão
+  ASPECT_SOBREMESA_DAMAGE: 0.8,     // Aspecto Dev: dano do mini raio extra
+  ASPECT_PIERCE_COUNT: 999,         // Aspecto Raio: perfura todos
+  // ===== NOVOS ASPECTOS DE ARMAS (traits copiadas de outras armas) =====
+  ASPECT_CONE_SPREAD: 0.17,         // Aspecto Shotgun: abertura do cone (rad)
+  ASPECT_CONE_EXTRA: 2,              // Aspecto Shotgun: +2 projéteis no cone
+  ASPECT_HOMING_TURN: 0.075,         // Aspecto Hacker: curva do projétil por frame
+  ASPECT_HOMING_RANGE: 300,          // Aspecto Hacker: raio de detecção do alvo
+  ASPECT_ROCKET_EVERY: 4,            // Aspecto Luva: foguete extra a cada N tiros
+  ASPECT_ROCKET_DAMAGE: 2.8,         // Aspecto Luva: dano do foguete extra
+  ASPECT_ROCKET_SPEED: 12.5,         // Aspecto Luva: velocidade do foguete extra
+  ASPECT_ROCKET_SIZE: 8,             // Aspecto Luva: tamanho do foguete extra
+  ASPECT_BLADE_PIERCE: 3,            // Aspecto Espada: inimigos perfurados pela lâmina
+  ASPECT_BLADE_DAMAGE_FACTOR: 0.85,  // Aspecto Espada: dano da lâmina (fração do normal)
+  ASPECT_BLADE_SIZE: 11,             // Aspecto Espada: tamanho da lâmina
+  ASPECT_BIFURCACAO_DAMAGE: 0.5,     // Aspecto Dev: dano dos raios laterais
+  ASPECT_BIFURCACAO_ANGLE: 0.42,     // Aspecto Dev: abertura dos raios laterais (rad)
+  ASPECT_BIFURCACAO_RANGE: 0.7,      // Aspecto Dev: alcance dos raios laterais (fração)
+  ASPECT_BEAM_DAMAGE_FACTOR: 0.62,   // Aspecto Dev: dano do feixe codificado
+  ASPECT_BEAM_WIDTH: 16,             // Aspecto Dev: largura do feixe codificado
+  ASPECT_RETURN_WAVE_RADIUS: 124,    // Aspecto Bastão: raio da onda de retorno
+  ASPECT_RETURN_WAVE_DAMAGE: 1.7,    // Aspecto Bastão: dano da onda de retorno
+  ASPECT_RETURN_WAVE_STUN: 700,      // Aspecto Bastão: atordoamento da onda de retorno
+  ASPECT_RETURN_WAVE_PUSH: 22,       // Aspecto Bastão: empurrão da onda de retorno
+  ASPECT_GARRA_RADIUS: 86,           // Aspecto Chicote: raio da explosão da âncora
+  ASPECT_GARRA_DAMAGE: 2.6,          // Aspecto Chicote: dano da explosão da âncora
+  ASPECT_GARRA_STUN: 900,            // Aspecto Chicote: atordoamento da explosão da âncora
+  ASPECT_IOI_DAMAGE: 1.2,            // Aspecto JL: dano do io-io orbital
+  ASPECT_IOI_RADIUS: 42,             // Aspecto JL: raio da órbita do io-io
+  ASPECT_GATO_DAMAGE_FACTOR: 0.75,   // Aspecto Gato: dano do gato companheiro
 };
 // Caps para evitar infinito/exagerado
 const UPGRADE_CAPS = {
@@ -2221,6 +2325,133 @@ const UPGRADE_DEFS = [
       const base=WEAPON_RAIO_MATEMATICO.damage;
       w.damage = Math.min(w.damage*1.14, base*UPGRADE_CAPS.MAX_DANO_FACTOR);
   }},
+  // ===== ASPECTOS DE ARMAS =====
+  // Melhorias que COPIAM uma trait de outra arma para a arma que o jogador usa.
+  // Origem de cada aspecto:
+  //   Bolas de Aço -> ricochete | Pistola -> tiro duplo | Raio -> cadeia/perfuração
+  //   Bastão -> retorno | Chicote -> âncora/empurrão | Lazer Codificado -> parede fantasma
+  //   Bazuca -> explosão | Dev -> mini raio
+  // Nenhuma vale para armas corpo a corpo: só para as que atiram projétil
+  // (e para o feixe do Dev no caso da Parede Fantasma).
+  { id:'aspect_comum_ricochete', weapon:'ALL', compatible:ASPECT_BULLET_WEAPONS, rarity:'COMUM', category:ASPECT_CATEGORY,
+    name:'Ricochete', desc:'Aspecto Bolas de Aço: o projétil quica 1x na parede', apply:(w)=>{
+      if(!ASPECT_BULLET_WEAPONS.includes(w.name)) return;
+      w.ricochetWalls = (w.ricochetWalls||0) + UPGRADE_VALUES.ASPECT_RICOCHETE_WALLS;
+  }},
+  { id:'aspect_comum_duplo', weapon:'ALL', compatible:ASPECT_BULLET_WEAPONS, rarity:'COMUM', category:ASPECT_CATEGORY,
+    name:'Tiro Duplo', desc:'Aspecto Pistola: dispara 2 projéteis lado a lado', apply:(w)=>{
+      if(!ASPECT_BULLET_WEAPONS.includes(w.name)) return;
+      w.aspectDoubleShot = true;
+  }},
+  { id:'aspect_incomum_cadeia', weapon:'ALL', compatible:ASPECT_BULLET_WEAPONS, rarity:'INCOMUM', category:ASPECT_CATEGORY,
+    name:'Cadeia Elétrica', desc:'Aspecto Raio: o projétil salta para 1 inimigo próximo (50% dano)', apply:(w)=>{
+      if(!ASPECT_BULLET_WEAPONS.includes(w.name)) return;
+      w.chain = (w.chain||0) + UPGRADE_VALUES.ASPECT_CHAIN_JUMPS;
+  }},
+  { id:'aspect_incomum_retorno', weapon:'ALL', compatible:ASPECT_BULLET_WEAPONS, rarity:'INCOMUM', category:ASPECT_CATEGORY,
+    name:'Retorno à Mão', desc:'Aspecto Bastão: o projétil volta e devolve recarga', apply:(w)=>{
+      if(!ASPECT_BULLET_WEAPONS.includes(w.name)) return;
+      w.returnToHand = true;
+  }},
+  { id:'aspect_incomum_empurrao', weapon:'ALL', compatible:ASPECT_BULLET_WEAPONS, rarity:'INCOMUM', category:ASPECT_CATEGORY,
+    name:'Onda de Choque', desc:'Aspecto Chicote: o impacto empurra e atordoa o alvo', apply:(w)=>{
+      if(!ASPECT_BULLET_WEAPONS.includes(w.name)) return;
+      w.knockback = (w.knockback||0) + UPGRADE_VALUES.ASPECT_KNOCKBACK;
+  }},
+  { id:'aspect_rara_fantasma', weapon:'ALL', compatible:ASPECT_FANTASMA_WEAPONS, rarity:'RARA', category:ASPECT_CATEGORY,
+    name:'Parede Fantasma', desc:'Aspecto Lazer Codificado: o projétil/feixe atravessa as paredes', apply:(w)=>{
+      if(!ASPECT_FANTASMA_WEAPONS.includes(w.name)) return;
+      w.ghostWalls = true;
+  }},
+  { id:'aspect_rara_presa', weapon:'ALL', compatible:ASPECT_BULLET_WEAPONS, rarity:'RARA', category:ASPECT_CATEGORY,
+    name:'Presa na Parede', desc:'Aspecto Chicote: o projétil crava na parede e te puxa até ela', apply:(w)=>{
+      if(!ASPECT_BULLET_WEAPONS.includes(w.name)) return;
+      w.wallAnchor = true;
+  }},
+  { id:'aspect_rara_perfurante', weapon:'ALL', compatible:ASPECT_BULLET_WEAPONS, rarity:'RARA', category:ASPECT_CATEGORY,
+    name:'Perfuração Espectral', desc:'Aspecto Raio: o projétil perfura todos os inimigos', apply:(w)=>{
+      if(!ASPECT_BULLET_WEAPONS.includes(w.name)) return;
+      w.pierce = true;
+      w.pierceCount = UPGRADE_VALUES.ASPECT_PIERCE_COUNT;
+  }},
+  { id:'aspect_muito_rara_explosiva', weapon:'ALL', compatible:ASPECT_BULLET_WEAPONS, rarity:'MUITO_RARA', category:ASPECT_CATEGORY,
+    name:'Carga Explosiva', desc:'Aspecto Bazuca: o projétil explode ao acertar', apply:(w)=>{
+      if(!ASPECT_BULLET_WEAPONS.includes(w.name)) return;
+      w.aspectExplosion = true;
+  }},
+  { id:'aspect_muito_rara_sobresmesa', weapon:'ALL', compatible:ASPECT_BULLET_WEAPONS, rarity:'MUITO_RARA', category:ASPECT_CATEGORY,
+    name:'Sobremesa', desc:'Aspecto Dev: cada disparo lança um mini raio teleguiado', apply:(w)=>{
+      if(!ASPECT_BULLET_WEAPONS.includes(w.name)) return;
+      w._aspectSobremesa = true;
+  }},
+  // ===== NOVOS ASPECTOS DE ARMAS (mais traits copiadas de outras armas) =====
+  // Origem: Shotgun (cone), Metralhadora (sem superaquecimento), Hacker (vírus
+  // teleguiado), Luva (foguete de mão), Espada (corte de vento), Dev (bifurcação e
+  // feixe codificado), Bastão (onda de retorno), Chicote (garra explosiva),
+  // JL (órbita de io-io), Dillian (escudo), Gato Antivírus (gato companheiro).
+  { id:'aspect_comum_cone', weapon:'ALL', compatible:ASPECT_BULLET_WEAPONS, rarity:'COMUM', category:ASPECT_CATEGORY,
+    name:'Cone de Pelotas', desc:'Aspecto Shotgun: os tiros saem em cone (+2 projéteis e abertura menor)', apply:(w)=>{
+      if(!ASPECT_BULLET_WEAPONS.includes(w.name)) return;
+      w._aspectCone = true;
+  }},
+  { id:'aspect_comum_refrigeracao', weapon:'ALL', compatible:['METRALHADORA'], rarity:'COMUM', category:ASPECT_CATEGORY,
+    name:'Refrigeração', desc:'Aspecto Metralhadora: a arma nunca superaquece', apply:(w)=>{
+      if(w.name!=='METRALHADORA') return;
+      w._aspectNoHeat = true;
+  }},
+  { id:'aspect_incomum_virus', weapon:'ALL', compatible:ASPECT_BULLET_WEAPONS, rarity:'INCOMUM', category:ASPECT_CATEGORY,
+    name:'Vírus Teleguiado', desc:'Aspecto Hacker: o projétil curva na direção do inimigo mais próximo', apply:(w)=>{
+      if(!ASPECT_BULLET_WEAPONS.includes(w.name)) return;
+      w._aspectHoming = true;
+  }},
+  { id:'aspect_incomum_foguete', weapon:'ALL', compatible:ASPECT_BULLET_WEAPONS, rarity:'INCOMUM', category:ASPECT_CATEGORY,
+    name:'Foguete de Mão', desc:'Aspecto Luva: a cada 4 tiros dispara um foguete extra', apply:(w)=>{
+      if(!ASPECT_BULLET_WEAPONS.includes(w.name)) return;
+      w._aspectRocket = true;
+  }},
+  { id:'aspect_incomum_corte', weapon:'ALL', compatible:ASPECT_BULLET_WEAPONS, rarity:'INCOMUM', category:ASPECT_CATEGORY,
+    name:'Corte de Vento', desc:'Aspecto Espada: o projétil vira lâmina perfurante (corta 3 inimigos)', apply:(w)=>{
+      if(!ASPECT_BULLET_WEAPONS.includes(w.name)) return;
+      w._aspectBlade = true;
+  }},
+  { id:'aspect_rara_bifurcacao', weapon:'ALL', compatible:ASPECT_BULLET_WEAPONS, rarity:'RARA', category:ASPECT_CATEGORY,
+    name:'Bifurcação', desc:'Aspecto Dev: cada disparo lança 2 raios laterais (50% dano)', apply:(w)=>{
+      if(!ASPECT_BULLET_WEAPONS.includes(w.name)) return;
+      w._aspectBifurcacao = true;
+  }},
+  { id:'aspect_rara_onda_retorno', weapon:'ALL', compatible:ASPECT_BULLET_WEAPONS, rarity:'RARA', category:ASPECT_CATEGORY,
+    name:'Onda de Retorno', desc:'Aspecto Bastão: o projétil volta para a mão e solta uma onda que empurra e atordoa', apply:(w)=>{
+      if(!ASPECT_BULLET_WEAPONS.includes(w.name)) return;
+      w._aspectReturnWave = true;
+      w.returnToHand = true;
+  }},
+  { id:'aspect_rara_guardiao', weapon:'ALL', compatible:ASPECT_ALL_WEAPONS, rarity:'RARA', category:ASPECT_CATEGORY,
+    name:'Guardião de Dillian', desc:'Aspecto Dillian: um escudo orbital bloqueia projéteis inimigos', apply:(w)=>{
+      if(!ASPECT_ALL_WEAPONS.includes(w.name)) return;
+      w._aspectEscudo = true;
+  }},
+  { id:'aspect_rara_gato', weapon:'ALL', compatible:ASPECT_ALL_WEAPONS, rarity:'RARA', category:ASPECT_CATEGORY,
+    name:'Gato Antivírus', desc:'Aspecto Gato: um gato acompanha você e ataca os inimigos', apply:(w)=>{
+      if(!ASPECT_ALL_WEAPONS.includes(w.name)) return;
+      w._aspectGato = true;
+  }},
+  { id:'aspect_muito_rara_feixe', weapon:'ALL', compatible:ASPECT_BULLET_WEAPONS, rarity:'MUITO_RARA', category:ASPECT_CATEGORY,
+    name:'Feixe Codificado', desc:'Aspecto Dev: o projétil vira feixe largo que perfura e atravessa paredes', apply:(w)=>{
+      if(!ASPECT_BULLET_WEAPONS.includes(w.name)) return;
+      w._aspectBeam = true;
+      w.ghostWalls = true;
+  }},
+  { id:'aspect_muito_rara_ioio', weapon:'ALL', compatible:ASPECT_ALL_WEAPONS, rarity:'MUITO_RARA', category:ASPECT_CATEGORY,
+    name:'Órbita de Io-io', desc:'Aspecto JL: um io-io orbita você causando dano por contato', apply:(w)=>{
+      if(!ASPECT_ALL_WEAPONS.includes(w.name)) return;
+      w._aspectIoi = true;
+  }},
+  { id:'aspect_muito_rara_garra', weapon:'ALL', compatible:ASPECT_BULLET_WEAPONS, rarity:'MUITO_RARA', category:ASPECT_CATEGORY,
+    name:'Garra do Indiana', desc:'Aspecto Chicote: o projétil crava na parede, te puxa e explode no ponto da âncora', apply:(w)=>{
+      if(!ASPECT_BULLET_WEAPONS.includes(w.name)) return;
+      w._aspectGarra = true;
+      w.wallAnchor = true;
+  }},
 ];
 // Mapa rápido id -> def e weapon -> lista
 const UPGRADE_MAP = new Map(UPGRADE_DEFS.map(u=>[u.id,u]));
@@ -2323,6 +2554,14 @@ const DILLIAN_SHIELD_SPEED = 0.0027;     // rad/ms (~2.3s por volta)
 const DILLIAN_SHIELD_DAMAGE = 0.8;       // pouco dano ao tocar inimigo
 const DILLIAN_SHIELD_COOLDOWN = 520;     // ms entre hits no mesmo inimigo
 const DILLIAN_SHIELD_BLOCK_RADIUS = 15;  // raio bloqueio projéteis
+
+// --- Machado para Chicaras (passivo incomum - machados orbitais no dash) ---
+const AXE_DASH_SIZE = 20;
+const AXE_DASH_COUNT = 2;
+const AXE_DASH_RADIUS = 44;
+const AXE_DASH_SPEED = 0.045;       // rad/ms (~1.15 volta durante o dash)
+const AXE_DASH_DAMAGE = 1.2;
+const AXE_DASH_COOLDOWN = 320;      // ms entre hits no mesmo alvo
 
 // --- Técnica Secreta Joestar (passivo comum - JoJo referência) ---
 const JOESTAR_SIZE = 20;                 // tamanho hitbox item
@@ -3617,6 +3856,23 @@ const GYRO_BALLS_ORBIT_TIME = 1200;     // ms orbitando o Gyro (2ª bola)
 const GYRO_BALLS_ORBIT_RADIUS = 34;     // raio da órbita dupla
 const GYRO_BALLS_ORBIT_SPEED = 0.011;   // rad/frame da órbita
 const GYRO_CHARGE_SPEED_PENALTY = 0.35; // -35% velocidade enquanto carrega
+// GIRO ÁUREO (especial do Gyro) - por 7s o arremesso vira broca dourada perfurante
+const GIRO_AUREO = {
+  duration: 7000,
+  cooldown: 20000,
+  chargeMult: 0.45,          // carga 55% mais rápida
+  rangeMult: 1.20,           // +20% alcance
+  tickPct: 0.08,             // 8% do dano de impacto por tick
+  tickMs: 150,               // intervalo entre ticks
+  markMs: 1200,              // duração da marca de giro
+  maxMarkMs: 1800,           // marca em carga máxima
+  explosionPct: 0.60,        // explosão = 60% do impacto
+  explosionRadius: 64,
+  maxExplosionPct: 0.80,
+  maxExplosionRadius: 90,
+  returnMult: 1.4,           // retorno 40% mais rápido
+  spread: 15 * Math.PI / 180 // leque da segunda bola
+};
 
 // ===================== NOVA ARMA INCOMUM - MOTOSSERRA (ÁREA RETA AFINADA + BARRA CURA) =====================
 // AFINADA: ataque curto RETO em retângulo AFIADO na frente, altamente preciso e responsivo
@@ -4000,7 +4256,7 @@ const CHARACTER_DEFS = {
     starterSpecial: null, // sem habilidade exclusiva - puro equilíbrio
     allowedWeapons: null, // pode usar qualquer arma
     exclusive: 'neutro',
-    description: '3 ♥ • Pistola padrão • Sem exclusivos - equilíbrio puro, ideal para iniciantes'
+    description: '3 ♥ • Pistola padrão • +6% velocidade • Sem exclusivos - equilíbrio puro, ideal para iniciantes'
   },
   oli: {
     id: 'oli',
@@ -4057,10 +4313,10 @@ const CHARACTER_DEFS = {
     maxHp: 6, // 3 corações
     boneHearts: 0,
     starterWeapon: 'BOLAS', // arma exclusiva
-    starterSpecial: null, // sem especial - foco nas Bolas de Aço
+    starterSpecial: 'giro_aureo', // especial exclusivo - muda o arremesso
     allowedWeapons: ['BOLAS'], // lock exclusivo - mantém a identidade
     exclusive: 'bolas',
-    description: '3 ♥ • Duas Bolas de Aço • Segure para carregar e solte para arremessar • A bola quica nas paredes e volta pra mão • Chapéu de aba larga'
+    description: '3 ♥ • Duas Bolas de Aço • Segure para carregar e solte para arremessar • A bola quica nas paredes e volta pra mão • E: Giro Áureo (brocas perfurantes) • Chapéu de aba larga'
   }
 };
 const CHARACTER_IDS = Object.keys(CHARACTER_DEFS);
@@ -4172,7 +4428,7 @@ function applyCharacterToPlayer(player, characterId){
     player.bastaoChargeTime = 0;
     player.bastaoChargeDir = null;
   }
-  // Gyro - Bolas de Aço (duas bolas na mão, sem especial)
+  // Gyro - Bolas de Aço (duas bolas na mão, especial Giro Áureo)
   player.gyroBallsInHand = GYRO_BALLS_MAX;
   player.gyroBallsInFlight = 0;
   player.isGyroCharging = false;
@@ -4180,6 +4436,8 @@ function applyCharacterToPlayer(player, characterId){
   player.gyroChargeDir = null;
   player.gyroChargeTier = 0;
   player.gyroMaxChargeReady = false;
+  player.goldenSpin = false;
+  player.gyroExtraBall = null;
   // Reseta contaminação de outros personagens
   player.cyberHp = 0;
   player.maxCyberHp = CYBER_HEART_MAX_CYBER;
@@ -8346,12 +8604,30 @@ class Bullet {
     this.isMiniRay = !!opts.isMiniRay; // Sobremesa mini
     this.explosionRadius = opts.explosionRadius ?? 96;
     this.explosionDamage = opts.explosionDamage ?? 4;
+    // ===== ASPECTOS DE ARMAS (traits copiadas de outra arma) =====
+    this.ghostWalls = !!opts.ghostWalls;      // atravessa paredes (aspecto do Lazer Codificado)
+    this.ricochetWalls = opts.ricochetWalls||0; // quica na parede (aspecto das Bolas de Aço)
+    this.ricochetCount = 0;                    // quiques já usados
+    this.wallAnchor = !!opts.wallAnchor;      // crava na parede e puxa o jogador (aspecto do Chicote)
+    this.returnToHand = !!opts.returnToHand;  // volta para a mão (aspecto do Bastão)
+    this.knockback = opts.knockback||0;       // empurrão extra no impacto (aspecto do Chicote)
+    this.aspectExplosion = !!opts.aspectExplosion; // explode ao acertar (aspecto da Bazuca)
+    // ===== NOVOS ASPECTOS =====
+    this.aspectHoming = !!opts.aspectHoming;   // curva para o inimigo mais próximo (aspecto do Hacker)
+    this.aspectHomingRange = opts.aspectHomingRange || UPGRADE_VALUES.ASPECT_HOMING_RANGE;
+    this.aspectBlade = !!opts.aspectBlade;     // lâmina de vento perfurante (aspecto da Espada)
+    this.aspectBeam = !!opts.aspectBeam;       // feixe codificado (aspecto do Dev)
+    this.aspectRocket = !!opts.aspectRocket;   // foguete de mão (aspecto da Luva)
+    this.returning = false;   // já está voltando para a mão
+    this.anchored = false;    // cravou na parede (o Game converte em puxão)
+    this.anchorX = 0; this.anchorY = 0;
+    this.returnedToHand = false; // chegou de volta na mão
     this.hitEnemies = new Set(); // para pierce não acertar mesmo inimigo múltiplas vezes
     this.traveled = 0;
     this.owner = owner;
     this.dead = false;
   }
-  update(dt, walls) {
+  update(dt, walls, player) {
     // Vírus do Hacker: curva lentamente na direção do jogador (teleguiado fraco, desviável)
     if(this.isHackerVirus){
       try{
@@ -8391,15 +8667,94 @@ class Bullet {
         }
       }catch(e){}
     }
+    // ===== Aspecto "Vírus Teleguiado" (aspecto do Hacker) =====
+    // O projétil do jogador curva suavemente na direção do inimigo mais próximo.
+    if(this.aspectHoming && this.owner==='player'){
+      try{
+        const room = (typeof window!=='undefined' && window.game && window.game.currentRoom) ? window.game.currentRoom : null;
+        if(room && room.enemies && room.enemies.length){
+          let best=null, bestD=this.aspectHomingRange;
+          for(const e of room.enemies){
+            if(e.dead) continue;
+            const d = dist(this.x, this.y, e.x, e.y);
+            if(d < bestD){ best=e; bestD=d; }
+          }
+          if(best){
+            const tx = best.x - this.x, ty = best.y - this.y;
+            const tLen = Math.hypot(tx,ty) || 1;
+            const turn = UPGRADE_VALUES.ASPECT_HOMING_TURN;
+            let nx = this.dirX * (1-turn) + (tx/tLen) * turn;
+            let ny = this.dirY * (1-turn) + (ty/tLen) * turn;
+            const nLen = Math.hypot(nx,ny) || 1;
+            this.dirX = nx/nLen; this.dirY = ny/nLen;
+          }
+        }
+      }catch(e){}
+    }
+    // ===== Aspecto "Retorno à Mão" (Bastão) =====
+    // Ao esgotar o alcance, o projétil volta correndo para o jogador e devolve recarga.
+    if(this.returnToHand){
+      if(!this.returning && this.traveled >= this.range){
+        this.returning = true;
+      }
+      if(this.returning){
+        let p = player || null;
+        if(!p){ try{ p = (typeof window!=='undefined' && window.game) ? window.game.player : null; }catch(e){ p=null; } }
+        if(p){
+          const tx = p.x - this.x, ty = p.y - this.y;
+          const tl = Math.hypot(tx,ty) || 1;
+          this.dirX = tx/tl; this.dirY = ty/tl;
+          this.speed = Math.max(this.speed, 7);
+          if(tl < 22){ this.dead = true; this.returnedToHand = true; }
+        }
+      }
+    }
     const dx = this.dirX * this.speed;
     const dy = this.dirY * this.speed;
     this.x += dx;
     this.y += dy;
     this.traveled += Math.hypot(dx, dy);
-    if (this.traveled > this.range) this.dead = true;
-    for (const w of walls) {
-      if (circleRectCollide(this.x, this.y, this.size, w.x, w.y, w.w, w.h)) {
-        this.dead = true; break;
+    if (this.traveled > this.range && !this.returning) this.dead = true;
+    // Paredes: normal, ricochete (aspecto das Bolas) ou âncora (aspecto do Chicote).
+    // "Parede Fantasma" e o projétil que está voltando ignoram paredes.
+    if (!this.ghostWalls && !this.returning) {
+      for (const w of walls) {
+        if (circleRectCollide(this.x, this.y, this.size, w.x, w.y, w.w, w.h)) {
+          // refletindo o vetor na normal da parede
+          const nearX = Math.max(w.x, Math.min(this.x, w.x + w.w));
+          const nearY = Math.max(w.y, Math.min(this.y, w.y + w.h));
+          let nx = this.x - nearX, ny = this.y - nearY;
+          let nl = Math.hypot(nx, ny);
+          if (nl < 0.0001) {
+            // centro dentro da parede: usa o eixo de menor penetração
+            const dL = this.x - w.x, dR = (w.x + w.w) - this.x, dT = this.y - w.y, dB = (w.y + w.h) - this.y;
+            const m = Math.min(dL, dR, dT, dB);
+            if (m === dL) { nx = -1; ny = 0; } else if (m === dR) { nx = 1; ny = 0; }
+            else if (m === dT) { nx = 0; ny = -1; } else { nx = 0; ny = 1; }
+            nl = 1;
+          }
+          nx /= nl; ny /= nl;
+          if (this.ricochetWalls > 0 && this.ricochetCount < this.ricochetWalls) {
+            this.ricochetCount++;
+            const dot = this.dirX * nx + this.dirY * ny;
+            this.dirX -= 2 * dot * nx;
+            this.dirY -= 2 * dot * ny;
+            const l = Math.hypot(this.dirX, this.dirY) || 1;
+            this.dirX /= l; this.dirY /= l;
+            // volta o passo que entrou na parede e sai 2px para fora
+            this.x -= dx; this.y -= dy;
+            this.x += nx * 2.5; this.y += ny * 2.5;
+            this.traveled -= Math.hypot(dx, dy);
+          } else if (this.wallAnchor) {
+            // crava na parede: o Game transforma em puxão do jogador até aqui
+            this.dead = true;
+            this.anchored = true;
+            this.anchorX = this.x; this.anchorY = this.y;
+            break;
+          } else {
+            this.dead = true; break;
+          }
+        }
       }
     }
     if (this.x < -20 || this.x > CANVAS_W + 20 || this.y < -20 || this.y > CANVAS_H + 20) this.dead = true;
@@ -8530,9 +8885,9 @@ class Bullet {
       return;
     }
     // Corte de Vento da ESPADA - visual de slash crescent perfurante
-    if(this.isSwordWave){
+    if(this.isSwordWave || this.aspectBlade){
       const ang=Math.atan2(this.dirY,this.dirX);
-      const len=22, thick=9;
+      const len=this.aspectBlade ? 20 : 22, thick=this.aspectBlade ? 8 : 9;
       const px=-Math.sin(ang), py=Math.cos(ang);
       // rastro de vento (glow)
       ctx.strokeStyle=this.glow;
@@ -8567,6 +8922,69 @@ class Bullet {
       // faísca na ponta
       ctx.fillStyle='rgba(255,255,255,0.85)';
       ctx.beginPath(); ctx.arc(this.x + Math.cos(ang)*12, this.y + Math.sin(ang)*12, 1.6, 0, Math.PI*2); ctx.fill();
+      return;
+    }
+    // Feixe Codificado (aspecto do Dev) - feixe retangular largo perfurante
+    if(this.aspectBeam){
+      const ang=Math.atan2(this.dirY,this.dirX);
+      const beamLen = 34;
+      const bx0 = this.x - this.dirX*beamLen;
+      const by0 = this.y - this.dirY*beamLen;
+      const wave = Math.sin(Date.now()*0.009 + this.traveled*0.05)*1.2;
+      ctx.lineCap='round'; ctx.lineJoin='round';
+      // camada externa escura
+      ctx.strokeStyle='rgba(4,18,38,0.92)';
+      ctx.lineWidth=this.size*2.4 + 6;
+      ctx.beginPath();
+      ctx.moveTo(bx0 + Math.cos(ang+Math.PI/2)*wave*0.6, by0 + Math.sin(ang+Math.PI/2)*wave*0.6);
+      ctx.lineTo(this.x + Math.cos(ang+Math.PI/2)*wave*0.6, this.y + Math.sin(ang+Math.PI/2)*wave*0.6);
+      ctx.stroke();
+      // camada azul média
+      ctx.strokeStyle='#1a7fbf';
+      ctx.lineWidth=this.size*1.5 + 2;
+      ctx.beginPath(); ctx.moveTo(bx0, by0); ctx.lineTo(this.x, this.y); ctx.stroke();
+      // núcleo ciano
+      ctx.strokeStyle='#7af2ff';
+      ctx.lineWidth=Math.max(1.5, this.size*0.7);
+      ctx.globalAlpha=0.96;
+      ctx.beginPath(); ctx.moveTo(bx0, by0); ctx.lineTo(this.x, this.y); ctx.stroke();
+      ctx.globalAlpha=1;
+      // núcleo branco
+      ctx.strokeStyle='rgba(255,255,255,0.95)';
+      ctx.lineWidth=Math.max(1, this.size*0.32);
+      ctx.beginPath();
+      ctx.moveTo(bx0 + this.dirX*5, by0 + this.dirY*5);
+      ctx.lineTo(this.x - this.dirX*2, this.y - this.dirY*2);
+      ctx.stroke();
+      // cabeça do feixe
+      ctx.fillStyle='rgba(122,242,255,0.30)';
+      ctx.beginPath(); ctx.arc(this.x, this.y, this.size*1.1, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle='#b8fffb';
+      ctx.beginPath(); ctx.arc(this.x, this.y, this.size*0.5, 0, Math.PI*2); ctx.fill();
+      return;
+    }
+    // Foguete de Mão (aspecto da Luva) - foguete laranja com chama
+    if(this.aspectRocket){
+      // chama traseira
+      ctx.fillStyle='rgba(255,140,60,0.85)';
+      ctx.beginPath(); ctx.arc(this.x - this.dirX*9, this.y - this.dirY*9, 5.4,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='rgba(255,220,120,0.95)';
+      ctx.beginPath(); ctx.arc(this.x - this.dirX*6, this.y - this.dirY*6, 3.1,0,Math.PI*2); ctx.fill();
+      // corpo do foguete
+      ctx.fillStyle=this.glow;
+      ctx.beginPath(); ctx.arc(this.x, this.y, this.size+5,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle=this.color;
+      ctx.beginPath(); ctx.arc(this.x, this.y, this.size,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#fff3c4';
+      ctx.beginPath(); ctx.arc(this.x + this.dirX*3, this.y + this.dirY*3, 2.1,0,Math.PI*2); ctx.fill();
+      // fins
+      ctx.strokeStyle='rgba(255,190,120,0.85)';
+      ctx.lineWidth=1.4;
+      const px=-Math.sin(Math.atan2(this.dirY,this.dirX)), py=Math.cos(Math.atan2(this.dirY,this.dirX));
+      ctx.beginPath();
+      ctx.moveTo(this.x - this.dirX*3 + px*5, this.y - this.dirY*3 + py*5);
+      ctx.lineTo(this.x - this.dirX*3 - px*5, this.y - this.dirY*3 - py*5);
+      ctx.stroke();
       return;
     }
     // Flecha Arco - visual de flecha com haste
@@ -8663,11 +9081,31 @@ class Bullet {
       ctx.fillStyle = 'rgba(0,0,0,0.5)';
       ctx.beginPath(); ctx.arc(this.x, this.y, this.size*0.45, 0, Math.PI*2); ctx.fill();
     }
+    // Aspecto "Retorno à Mão": rastro prateado mostrando que o projétil está voltando
+    if(this.returning){
+      ctx.strokeStyle='rgba(255,236,180,0.8)';
+      ctx.lineWidth=this.size+3; ctx.lineCap='round';
+      ctx.beginPath();
+      ctx.moveTo(this.x - this.dirX*16, this.y - this.dirY*16);
+      ctx.lineTo(this.x, this.y);
+      ctx.stroke();
+      ctx.fillStyle='rgba(255,255,255,0.92)';
+      ctx.beginPath(); ctx.arc(this.x, this.y, this.size*0.5, 0, Math.PI*2); ctx.fill();
+    }
   }
   getRect() {
-    if(this.isSwordWave){
+    if(this.isSwordWave || this.aspectBlade){
       // hitbox alongada para corte (captura forma de crescente)
       return { x: this.x - this.size - 10, y: this.y - this.size - 6, w: (this.size+10)*2, h: (this.size+6)*2 };
+    }
+    if(this.aspectBeam){
+      // feixe largo: hitbox retangular no sentido do disparo
+      const ang = Math.atan2(this.dirY, this.dirX);
+      const half = this.size;
+      const len = this.size + 16;
+      const ax = Math.abs(Math.cos(ang))*len + Math.abs(Math.sin(ang))*half;
+      const ay = Math.abs(Math.sin(ang))*len + Math.abs(Math.cos(ang))*half;
+      return { x: this.x - ax, y: this.y - ay, w: ax*2, h: ay*2 };
     }
     return { x: this.x - this.size, y: this.y - this.size, w: this.size*2, h: this.size*2 };
   }
@@ -8696,6 +9134,8 @@ class LazerBeam {
     this.dead = false;
     this.waveAmp = opts.waveAmp ?? LAZER_BEAM_WAVE_AMP;
     this.waveFreq = opts.waveFreq ?? LAZER_BEAM_WAVE_FREQ;
+    // Aspecto "Parede Fantasma": o feixe atravessa as paredes (não é cortado)
+    this.ghostWalls = !!opts.ghostWalls;
     this.spawnTime = Date.now();
     // calcula comprimento efetivo até primeira parede (evita atravessar parede visualmente, mas mantém pierce opcional)
     this.effectiveRange = this.computeEffectiveRange(opts.walls);
@@ -8703,6 +9143,7 @@ class LazerBeam {
     if(this.effectiveRange === undefined || this.effectiveRange === null) this.effectiveRange = this.range;
   }
   computeEffectiveRange(walls){
+    if(this.ghostWalls) return this.range; // Parede Fantasma: atravessa tudo
     if(!walls || walls.length===0) return this.range;
     // raycast simples: avança em passos de 6px e testa ponto contra walls (com margem width/2)
     const steps = Math.ceil(this.range / 6);
@@ -9371,6 +9812,12 @@ class SteelBallProjectile {
     this.orbitAngle=opts.orbitAngle||0;
     this.orbitTimer=this.isOrbiting?GYRO_BALLS_ORBIT_TIME:0;
     this.maxCharge=!!opts.maxCharge;        // bola carregada ao máximo
+    this.golden=!!opts.golden;              // Giro Áureo - broca dourada
+    this.drill=!!opts.drill;                // voa reto, perfura e explode
+    this.explosionRadius=opts.explosionRadius||GIRO_AUREO.explosionRadius;
+    this.explosionDamage=opts.explosionDamage||this.damage*GIRO_AUREO.explosionPct;
+    this.markMs=opts.markMs||GIRO_AUREO.markMs;
+    this.pendingExplosion=false;            // Game detona após este update
     this.owner='player';
     this.traveled=0;
     this.dead=false;
@@ -9404,37 +9851,62 @@ class SteelBallProjectile {
       return !this.dead;
     }
 
-    // ---- VOO: quica nas paredes (ricochete) ----
+    // ---- VOO: quica nas paredes (normal) / broca explode (Giro Áureo) ----
     if(this.mode==='fly'){
       const dx=this.dirX*this.speed;
       const dy=this.dirY*this.speed;
       this.x+=dx; this.y+=dy;
       this.traveled+=Math.hypot(dx,dy);
-      for(const w of walls){
-        if(circleRectCollide(this.x,this.y,this.size+2,w.x,w.y,w.w,w.h)){
-          // normal da parede (ponto mais próximo) para refletir o vetor
-          const cx=clamp(this.x,w.x,w.x+w.w);
-          const cy=clamp(this.y,w.y,w.y+w.h);
-          let nx=this.x-cx, ny=this.y-cy;
-          const len=Math.hypot(nx,ny);
-          if(len<0.0001){ nx=-this.dirX; ny=-this.dirY; }
-          else { nx/=len; ny/=len; }
-          const dot=this.dirX*nx+this.dirY*ny;
-          this.dirX-=2*dot*nx; this.dirY-=2*dot*ny;
-          // empurra pra fora da parede
-          this.x+=nx*(this.size+3); this.y+=ny*(this.size+3);
-          this.ricochetsLeft--;
-          if(particles){
-            for(let k=0;k<7;k++) particles.push(new Particle(this.x,this.y, randRange(-1.5,1.5), randRange(-1.5,1.5), 190, '#e2e8f0', 1.7));
+      if(this.drill){
+        // broca dourada: não quica, para na parede e explode
+        for(const w of walls){
+          if(circleRectCollide(this.x,this.y,this.size+2,w.x,w.y,w.w,w.h)){
+            this.pendingExplosion=true;
+            this.mode='return';
+            if(particles){
+              for(let k=0;k<10;k++) particles.push(new Particle(this.x,this.y, randRange(-1.8,1.8), randRange(-1.8,1.8), 220, k%2?'#fbbf24':'#fef3c7', 2.1));
+            }
+            break;
           }
-          if(this.ricochetsLeft<=0){ this.mode='return'; }
-          break;
         }
-      }
-      if(this.mode==='fly' && this.traveled>=this.maxRange){ this.mode='return'; }
-      if(this.x<-24||this.x>CANVAS_W+24||this.y<-24||this.y>CANVAS_H+24){ this.mode='return'; }
-      if(particles && Math.random()<0.30){
-        particles.push(new Particle(this.x+randRange(-3,3), this.y+randRange(-3,3), randRange(-0.5,0.5), randRange(-0.5,0.5), 160, 'rgba(203,213,225,0.7)', 1.5));
+        if(this.mode==='fly' && this.traveled>=this.maxRange){
+          this.pendingExplosion=true;
+          this.mode='return';
+        }
+        if(this.mode==='fly' && (this.x<-24||this.x>CANVAS_W+24||this.y<-24||this.y>CANVAS_H+24)){
+          this.pendingExplosion=true;
+          this.mode='return';
+        }
+        if(this.mode==='fly' && particles && Math.random()<0.55){
+          particles.push(new Particle(this.x+randRange(-3,3), this.y+randRange(-3,3), randRange(-0.6,0.6), randRange(-0.6,0.6), 180, 'rgba(251,191,36,0.85)', 1.8));
+        }
+      } else {
+        for(const w of walls){
+          if(circleRectCollide(this.x,this.y,this.size+2,w.x,w.y,w.w,w.h)){
+            // normal da parede (ponto mais próximo) para refletir o vetor
+            const cx=clamp(this.x,w.x,w.x+w.w);
+            const cy=clamp(this.y,w.y,w.y+w.h);
+            let nx=this.x-cx, ny=this.y-cy;
+            const len=Math.hypot(nx,ny);
+            if(len<0.0001){ nx=-this.dirX; ny=-this.dirY; }
+            else { nx/=len; ny/=len; }
+            const dot=this.dirX*nx+this.dirY*ny;
+            this.dirX-=2*dot*nx; this.dirY-=2*dot*ny;
+            // empurra pra fora da parede
+            this.x+=nx*(this.size+3); this.y+=ny*(this.size+3);
+            this.ricochetsLeft--;
+            if(particles){
+              for(let k=0;k<7;k++) particles.push(new Particle(this.x,this.y, randRange(-1.5,1.5), randRange(-1.5,1.5), 190, '#e2e8f0', 1.7));
+            }
+            if(this.ricochetsLeft<=0){ this.mode='return'; }
+            break;
+          }
+        }
+        if(this.mode==='fly' && this.traveled>=this.maxRange){ this.mode='return'; }
+        if(this.x<-24||this.x>CANVAS_W+24||this.y<-24||this.y>CANVAS_H+24){ this.mode='return'; }
+        if(particles && Math.random()<0.30){
+          particles.push(new Particle(this.x+randRange(-3,3), this.y+randRange(-3,3), randRange(-0.5,0.5), randRange(-0.5,0.5), 160, 'rgba(203,213,225,0.7)', 1.5));
+        }
       }
     }
 
@@ -9446,23 +9918,25 @@ class SteelBallProjectile {
       if(d<16){
         this.dead=true;
         if(particles){
-          for(let k=0;k<10;k++) particles.push(new Particle(this.x,this.y, randRange(-1.6,1.6), randRange(-1.6,0.6), 220, '#cbd5e1', 1.9));
+          const c1=this.golden?'#fbbf24':'#cbd5e1';
+          for(let k=0;k<10;k++) particles.push(new Particle(this.x,this.y, randRange(-1.6,1.6), randRange(-1.6,0.6), 220, c1, 1.9));
           for(let k=0;k<5;k++) particles.push(new Particle(this.x,this.y, randRange(-1,1), -0.9, 190, '#ffffff', 1.5));
         }
         return false;
       }
       const n=normalize(toPx,toPy);
-      const retSpeed=this.speed*1.2;
+      const retSpeed=this.speed*(this.golden?GIRO_AUREO.returnMult:1.2);
       this.x+=n.x*retSpeed; this.y+=n.y*retSpeed;
       this.dirX=n.x; this.dirY=n.y;
     }
     return !this.dead;
   }
   draw(ctx){
+    const trailCol = this.golden ? '251,191,36' : '203,213,225';
     // rastro
     for(const t of this.trail){
       const a=clamp(t.life/170,0,1);
-      ctx.fillStyle=`rgba(203,213,225,${a*0.20})`;
+      ctx.fillStyle=`rgba(${trailCol},${a*0.20})`;
       ctx.beginPath(); ctx.arc(t.x,t.y,(this.size+5)*a,0,Math.PI*2); ctx.fill();
     }
     ctx.save();
@@ -9473,25 +9947,37 @@ class SteelBallProjectile {
     ctx.beginPath(); ctx.arc(0,0,this.size+6,0,Math.PI*2); ctx.fill();
     // corpo metálico
     const g=ctx.createRadialGradient(-this.size*0.3,-this.size*0.3,0.5,0,0,this.size);
-    g.addColorStop(0,'#f8fafc');
-    g.addColorStop(0.5,'#cbd5e1');
-    g.addColorStop(1,'#64748b');
+    if(this.golden){
+      g.addColorStop(0,'#fffbeb');
+      g.addColorStop(0.5,'#fbbf24');
+      g.addColorStop(1,'#b45309');
+    } else {
+      g.addColorStop(0,'#f8fafc');
+      g.addColorStop(0.5,'#cbd5e1');
+      g.addColorStop(1,'#64748b');
+    }
     ctx.fillStyle=g;
     ctx.beginPath(); ctx.arc(0,0,this.size,0,Math.PI*2); ctx.fill();
     // aresta viva
     ctx.strokeStyle='rgba(255,255,255,0.55)'; ctx.lineWidth=1;
     ctx.beginPath(); ctx.arc(0,0,this.size-0.5,0,Math.PI*2); ctx.stroke();
     // marca do Tusk girando
-    ctx.strokeStyle='rgba(51,65,85,0.7)'; ctx.lineWidth=1.2;
+    ctx.strokeStyle=this.golden?'rgba(120,53,15,0.78)':'rgba(51,65,85,0.7)'; ctx.lineWidth=1.2;
     ctx.beginPath(); ctx.moveTo(-this.size*0.55,0); ctx.lineTo(this.size*0.55,0); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0,-this.size*0.55); ctx.lineTo(0,this.size*0.55); ctx.stroke();
     ctx.restore();
     // brilho especular
     ctx.fillStyle='rgba(255,255,255,0.85)';
     ctx.beginPath(); ctx.arc(this.x-this.size*0.25,this.y-this.size*0.25,this.size*0.26,0,Math.PI*2); ctx.fill();
-    if(this.maxCharge){
-      ctx.strokeStyle='rgba(255,255,255,0.7)'; ctx.lineWidth=1.4;
+    if(this.maxCharge || this.golden){
+      ctx.strokeStyle=this.golden?'rgba(254,243,199,0.85)':'rgba(255,255,255,0.7)'; ctx.lineWidth=1.4;
       ctx.beginPath(); ctx.arc(this.x,this.y,this.size+3,0,Math.PI*2); ctx.stroke();
+    }
+    if(this.drill){
+      ctx.strokeStyle='rgba(251,191,36,0.55)'; ctx.lineWidth=1.2;
+      ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.arc(this.x,this.y,this.size+7,0,Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
     }
   }
   getRect(){ return {x:this.x-this.size,y:this.y-this.size,w:this.size*2,h:this.size*2}; }
@@ -11357,6 +11843,50 @@ class EscudoDillianItem extends Item {
   }
 }
 
+// ===================== MACHADO PARA CHICARAS (passivo incomum - dash orbital) =====================
+class MachadoChicarasItem extends Item {
+  constructor(x,y){
+    super(x,y, AXE_DASH_SIZE, AXE_DASH_SIZE, 'machado_chicaras');
+  }
+  onCollect(player){
+    if(player.hasAxeDash) return false;
+    player.enableAxeDash();
+    return true;
+  }
+  draw(ctx){
+    const x=this.x, y=this.y + this.bob, s=this.w;
+    const pulse = 0.5 + Math.sin(this.anim*2.8)*0.34;
+    ctx.fillStyle='rgba(0,0,0,0.28)';
+    ctx.beginPath(); ctx.ellipse(x, y+ s*0.45, s*0.5, 4, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle=`rgba(255,180,70,${0.18+pulse*0.14})`;
+    ctx.beginPath(); ctx.arc(x, y, s*0.78 + pulse*4, 0, Math.PI*2); ctx.fill();
+    ctx.save(); ctx.translate(x, y); ctx.rotate(-0.55 + Math.sin(this.anim*0.003)*0.12);
+    ctx.fillStyle='#6b3f1d';
+    ctx.fillRect(-1.5, -4, 3, 17);
+    ctx.fillStyle='#d6b36a';
+    ctx.fillRect(-2, 10, 4, 3);
+    ctx.fillStyle='#cbd5e1';
+    ctx.beginPath();
+    ctx.moveTo(0, -9);
+    ctx.lineTo(10, -6);
+    ctx.lineTo(12, 1);
+    ctx.lineTo(7, 4);
+    ctx.lineTo(0, 1);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle='#f8fafc'; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle='#f59e0b';
+    ctx.beginPath(); ctx.arc(0, -7, 1.5, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle='#fcd34d';
+    ctx.font='4px "Press Start 2P"'; ctx.textAlign='center';
+    ctx.fillText('MACHADO', x, y+ s/2 +9); ctx.textAlign='left';
+    if(Math.random()<0.10){
+      ctx.fillStyle='rgba(255,210,120,0.9)';
+      ctx.fillRect(x+randRange(-6,6), y+randRange(-6,4), 1.5, 1.5);
+    }
+  }
+}
+
 // ===================== TÉCNICA SECRETA JOESTAR (passivo comum - JoJo) =====================
 // Item comum: ao sofrer dano, ganha bônus de velocidade por 5 segundos (fuga Joestar - referência JoJo)
 // Visual: estrela dourada + roxo JoJo, tag "JOJO" / "JOESTAR"
@@ -11713,6 +12243,9 @@ class Player {
     this.hasDillianShield = false; // passivo incomum - escudo orbitante Dream Shield
     this.dillianShieldAngle = 0; // ângulo órbita
     this.dillianShieldHitTimers = new Map(); // enemy -> ms até poder dar dano de novo
+    this.hasAxeDash = false; // passivo incomum - machados orbitais durante o dash
+    this.axeDashAngle = 0;
+    this.axeDashHitTimers = new Map();
     this.hasJoestarTechnique = false; // passivo comum - Técnica Secreta Joestar (JoJo) - ao sofrer dano ganha velocidade 5s
     this.joestarTimer = 0; // ms restantes do bônus Joestar
     this.joestarActive = false; // true enquanto bônus ativo
@@ -11760,6 +12293,8 @@ class Player {
     this.chicoteWhipRef = null; // referência ChicoteWhip ativo
     this.chicotePullSpeed = CHICOTE_PULL_SPEED;
     this.chicotePullTimer = 0;
+    // ASPECTO "PRESA NA PAREDE" - puxão do projétil ancorado (aspecto do Chicote)
+    this.aspectPull = null; // {x,y,timer}
     // Invencibilidade do grapple: true desde o disparo do chicote carregado até a
     // explosão de chegada (+ grace). O jogador não controla o movimento nesse trajeto,
     // então levar dano ali seria injusto. Ver CHICOTE_PULL_INVULN_* para os flags.
@@ -11843,6 +12378,8 @@ class Player {
     if(this.isChicotePulling && (!this.chicoteWhipRef || this.chicoteWhipRef.dead)){
       this.cancelChicotePull();
     }
+    // ASPECTO "PRESA NA PAREDE" - o puxão não sobrevive à troca de sala
+    if(this.aspectPull) this.cancelAspectPull();
     // mantém chapéu Indiana entre salas (cosmético permanente após pegar Chicote)
     if(this.hasIndianaHat===undefined) this.hasIndianaHat=false;
     // IO-IO - passivo permanente entre salas; reseta só o cooldown de invocação
@@ -11933,10 +12470,12 @@ class Player {
     return true;
   }
   enableDoubleShot(){
+    if(this.hasDoubleShot) return false;
     this.hasDoubleShot = true;
     // se a primária é NORMAL, marca flag para disparar duplo
     if(this.primaryWeapon.name==='NORMAL') this.primaryWeapon.hasDoubleShot = true;
     if(this.weapon.name==='NORMAL') this.weapon.hasDoubleShot = true;
+    return true;
   }
   hasSecondary(){ return !!this.secondaryWeapon; }
   swapWeapon(){
@@ -11976,6 +12515,8 @@ class Player {
     }
     // Equipa novo item especial, descartando anterior (pode estender para inventário)
     // Aplica redução de cooldown de especiais se tiver upgrade incomum (-10% por nível)
+    // Trocar/perder o Giro Áureo encerra o buff imediatamente
+    if(this.goldenSpin && (!specialItem || specialItem.id!=='giro_aureo')) this.goldenSpin = false;
     if(specialItem){
       if(specialItem.baseCooldown===undefined) specialItem.baseCooldown = specialItem.cooldown;
       if(this.specialCooldownReduction>0){
@@ -12126,7 +12667,10 @@ class Player {
     // Para upgrades genéricos (ALL) ou com compatível, atualiza todas as armas afetadas
     const compatList = def.compatible || [def.weapon];
     const affected = [];
-    if(def.weapon==='ALL' || compatList.includes('ALL')){
+    if(def.category===ASPECT_CATEGORY){
+      // Aspectos: valem para a lista exata de armas compatíveis (sem "todas")
+      affected.push(...compatList);
+    } else if(def.weapon==='ALL' || compatList.includes('ALL')){
       affected.push('NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA');
     } else {
       affected.push(...compatList);
@@ -12215,6 +12759,16 @@ class Player {
     const hasPierceUpgrade = !!this.weapon._maxPierce;
     const extraCount = isMax && this.weapon._maxExtra ? this.weapon._maxExtra : 0;
     const pierceEff = !!this.weapon.pierce || (isMax && hasPierceUpgrade);
+    // opções base + aspectos da arma (a CARREGADA também recebe os aspectos)
+    const chargeOpts = this.bulletOptions({
+      speed: scaledSpeed,
+      damage: dmg,
+      size: scaledSize,
+      color: progress > 0.85 ? '#d8b4fe' : this.weapon.color,
+      glow: progress > 0.85 ? 'rgba(216,180,254,0.45)' : 'rgba(167,139,250,0.35)',
+      pierce: pierceEff,
+      pierceCount: pierceEff ? (this.weapon.pierceCount ?? 999) : 0
+    });
     if(extraCount > 0){
       // modo MUITO_RARA: 3 projéteis em cone leve com dano máximo
       const baseAngle = Math.atan2(dir.y, dir.x);
@@ -12227,27 +12781,13 @@ class Player {
         }
         const dx=Math.cos(ang), dy=Math.sin(ang);
         const ox = randRange(-1,1), oy=randRange(-1,1);
-        bullets.push(new Bullet(sx+ox, sy+oy, dx, dy, 'player', {
-          speed: scaledSpeed,
-          damage: dmg,
-          range: this.weapon.range,
-          size: scaledSize,
-          color: '#e9d5ff',
-          glow: 'rgba(216,180,254,0.55)',
-          pierce: pierceEff
-        }));
+        bullets.push(new Bullet(sx+ox, sy+oy, dx, dy, 'player', { ...chargeOpts }));
       }
     } else {
-      bullets.push(new Bullet(sx, sy, dir.x, dir.y, 'player', {
-        speed: scaledSpeed,
-        damage: dmg,
-        range: this.weapon.range,
-        size: scaledSize,
-        color: progress > 0.85 ? '#d8b4fe' : this.weapon.color,
-        glow: progress > 0.85 ? 'rgba(216,180,254,0.45)' : 'rgba(167,139,250,0.35)',
-        pierce: pierceEff
-      }));
+      bullets.push(new Bullet(sx, sy, dir.x, dir.y, 'player', { ...chargeOpts }));
     }
+    // a CARREGADA também recebe os aspectos extras (bifurcação, foguete, sobramesa)
+    this.appendAspectExtras(bullets, dir, chargeOpts);
     // reseta carga para zero (requisito) e impede acumulo infinito
     this.isCharging = false;
     this.chargeTime = 0;
@@ -12758,14 +13298,61 @@ class Player {
   }
   getGyroChargeTime(){
     const w=this.weapon;
-    if(w && w.chargeTime) return w.chargeTime;
-    return GYRO_BALLS_CHARGE_TIME;
+    const base = (w && w.chargeTime) ? w.chargeTime : GYRO_BALLS_CHARGE_TIME;
+    return this.goldenSpin ? base * GIRO_AUREO.chargeMult : base;
   }
   getGyroChargeProgress(){
     if(!this.isGyroCharging) return 0;
     return clamp(this.gyroChargeTime/this.getGyroChargeTime(),0,1);
   }
+  // Direção de mira do Gyro (qualquer ângulo, inclusive diagonal).
+  // Usa a direção da carga atual; sem carga, usa a última direção de mira.
+  getGyroAimVector(){
+    if(this.isGyroCharging && this.gyroChargeDir){
+      const n=normalize(this.gyroChargeDir.x,this.gyroChargeDir.y);
+      if(n.x||n.y) return n;
+    }
+    const l=this.lastDir||{x:1,y:0};
+    const n=normalize(l.x,l.y);
+    return (n.x||n.y) ? n : {x:1,y:0};
+  }
+  // Guia de mira do Gyro: linha tracejada + seta na direção do arremesso.
+  // Sem isso o arremesso diagonal não tinha feedback (o sprite só olha pra esquerda/direita).
+  drawGyroAimGuide(ctx){
+    if(!this.isGyroCharging) return;
+    const dir=this.getGyroAimVector();
+    if(!dir || (!dir.x && !dir.y)) return;
+    const prog=this.getGyroChargeProgress();
+    const len=42 + prog*82;
+    const sx=this.x + dir.x*(this.w/2+6);
+    const sy=this.y + dir.y*(this.h/2+6);
+    const ex=sx + dir.x*len;
+    const ey=sy + dir.y*len;
+    const col = this.goldenSpin
+      ? (prog>=0.99 ? 'rgba(255,251,235,0.98)' : (prog>0.5 ? 'rgba(251,191,36,0.85)' : 'rgba(245,158,11,0.6)'))
+      : (prog>=0.99 ? 'rgba(255,255,255,0.95)' : (prog>0.5 ? 'rgba(226,232,240,0.78)' : 'rgba(203,213,225,0.5)'));
+    ctx.save();
+    ctx.strokeStyle=col;
+    ctx.lineWidth=1.6;
+    ctx.setLineDash([6,5]);
+    ctx.beginPath();
+    ctx.moveTo(sx,sy);
+    ctx.lineTo(ex,ey);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const ang=Math.atan2(dir.y,dir.x);
+    const a1=ang+Math.PI*0.82, a2=ang-Math.PI*0.82;
+    ctx.fillStyle=col;
+    ctx.beginPath();
+    ctx.moveTo(ex,ey);
+    ctx.lineTo(ex+Math.cos(a1)*9, ey+Math.sin(a1)*9);
+    ctx.lineTo(ex+Math.cos(a2)*9, ey+Math.sin(a2)*9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
   // Arremessa uma bola de aço (devolve o projétil ou null)
+  // Giro Áureo: solta as duas bolas em leque como brocas douradas (sem órbita/ricochete).
   releaseGyroCharge(){
     if(!this.isGyroCharging) return null;
     const prog=this.getGyroChargeProgress();
@@ -12775,38 +13362,61 @@ class Player {
     if(this.gyroBallsInHand<=0) return null;
     const w=this.weapon || WEAPON_BOLAS;
     const maxCharge = prog>=0.99;
+    const golden = !!this.goldenSpin;
     // dano pela carga
     const dmgTable=(w.chargeDamages && w.chargeDamages.length) ? w.chargeDamages : GYRO_BALLS_DAMAGES;
     const damage=dmgTable[Math.min(tier, dmgTable.length-1)];
-    // carga máxima: +60% alcance, bola maior, +1 quique
-    const range=(w.range||GYRO_BALLS_RANGE) * (maxCharge?1.6:1);
-    const size=(w.bulletSize||GYRO_BALLS_SIZE) * (maxCharge?1.35:1);
-    const ricochet=(w.ricochet||GYRO_BALLS_RICOCHET) + (maxCharge?1:0);
-    // se já tem uma bola no ar => a 2ª orbita o Gyro (duas steel balls)
-    const orbit = this.gyroBallsInFlight>0;
-    this.gyroBallsInHand--;
-    this.gyroBallsInFlight++;
+    // carga máxima: +60% alcance, bola maior
+    // Giro Áureo: +20% alcance e sem quique (a bola vira broca)
+    let range=(w.range||GYRO_BALLS_RANGE) * (maxCharge?1.6:1);
+    if(golden) range *= GIRO_AUREO.rangeMult;
+    const size=(w.bulletSize||GYRO_BALLS_SIZE) * (maxCharge?1.35:1) * (golden?1.1:1);
+    const ricochet=golden ? 0 : (w.ricochet||GYRO_BALLS_RICOCHET) + (maxCharge?1:0);
+    // se já tem uma bola no ar => a 2ª orbita o Gyro (steel balls normal)
+    const orbit = !golden && this.gyroBallsInFlight>0;
+    // Giro Áureo com as duas na mão: saem juntas, abertas em leque
+    const twoBalls = golden && this.gyroBallsInHand>=2;
+    const baseAng=Math.atan2(dir.y,dir.x);
+    const angles = twoBalls
+      ? [baseAng - GIRO_AUREO.spread/2, baseAng + GIRO_AUREO.spread/2]
+      : [baseAng];
     this.shootCooldown = (w.cooldown||GYRO_BALLS_COOLDOWN);
     this.lastDir.x=dir.x; this.lastDir.y=dir.y;
     if(dir.x!==0) this.facing=dir.x>0?1:-1;
     this.meleeAnim=140;
     this.meleeDir=dir;
-    const sx=this.x + dir.x*(this.w/2+10);
-    const sy=this.y + dir.y*(this.h/2+8);
-    const proj=new SteelBallProjectile(sx,sy,dir.x,dir.y,{
-      speed:w.bulletSpeed||GYRO_BALLS_SPEED,
-      range:range,
-      damage:damage,
-      size:size,
-      color:w.color||'#cbd5e1',
-      glow:w.glow||'rgba(203,213,225,0.35)',
-      ricochet:ricochet,
-      pierce:w.pierce||0,
-      orbit:orbit,
-      orbitAngle: orbit ? Math.PI : 0, // a 2ª bola entra oposta na órbita
-      maxCharge:maxCharge
-    });
-    return proj;
+    this.gyroExtraBall = null;
+    const created=[];
+    for(let i=0;i<angles.length;i++){
+      if(this.gyroBallsInHand<=0) break;
+      const a=angles[i];
+      const bd={x:Math.cos(a), y:Math.sin(a)};
+      const sx=this.x + bd.x*(this.w/2+10);
+      const sy=this.y + bd.y*(this.h/2+8);
+      this.gyroBallsInHand--;
+      this.gyroBallsInFlight++;
+      created.push(new SteelBallProjectile(sx,sy,bd.x,bd.y,{
+        speed:w.bulletSpeed||GYRO_BALLS_SPEED,
+        range:range,
+        damage:damage,
+        size:size,
+        color:golden ? '#fbbf24' : (w.color||'#cbd5e1'),
+        glow:golden ? 'rgba(251,191,36,0.42)' : (w.glow||'rgba(203,213,225,0.35)'),
+        ricochet:ricochet,
+        pierce:golden ? 999 : (w.pierce||0),
+        orbit:orbit,
+        orbitAngle: orbit ? Math.PI : 0, // a 2ª bola entra oposta na órbita
+        maxCharge:maxCharge,
+        golden:golden,
+        drill:golden,
+        explosionRadius: maxCharge ? GIRO_AUREO.maxExplosionRadius : GIRO_AUREO.explosionRadius,
+        explosionDamage: damage * (maxCharge ? GIRO_AUREO.maxExplosionPct : GIRO_AUREO.explosionPct),
+        markMs: maxCharge ? GIRO_AUREO.maxMarkMs : GIRO_AUREO.markMs
+      }));
+    }
+    if(!created.length) return null;
+    if(created.length>1) this.gyroExtraBall = created[1];
+    return created[0];
   }
   // Chamado quando a bola volta pra mão
   returnGyroBall(){
@@ -12982,8 +13592,13 @@ class Player {
     this.activeFist = fist;
     return fist;
   }
-  enableFlameTrail(){ this.hasFlameTrail = true; }
+  enableFlameTrail(){
+    if(this.hasFlameTrail) return false;
+    this.hasFlameTrail = true;
+    return true;
+  }
   enableNoclip(){
+    if(this.hasNoclip) return false;
     this.hasNoclip = true;
     const g = (typeof window!=='undefined' && window.game) ? window.game : null;
     if(g && g.showToast) g.showToast('◈ Noclip adquirido! Espinhos não causam dano.', 1800);
@@ -12991,8 +13606,10 @@ class Player {
       g.shake = Math.max(g.shake||0, 60);
       for(let k=0;k<14;k++) g.particles.push(new Particle(this.x, this.y, randRange(-1.4,1.4), randRange(-1.4,0.6), 320, '#7c5cff', 2));
     }
+    return true;
   }
   enableDillianShield(){
+    if(this.hasDillianShield) return false;
     this.hasDillianShield = true;
     this.dillianShieldAngle = Math.random()*Math.PI*2;
     if(!this.dillianShieldHitTimers) this.dillianShieldHitTimers = new Map();
@@ -13003,8 +13620,33 @@ class Player {
       g.shake = Math.max(g.shake||0, 70);
       for(let k=0;k<18;k++){ const ang=Math.random()*Math.PI*2; g.particles.push(new Particle(this.x, this.y, Math.cos(ang)*randRange(1.4,3.2), Math.sin(ang)*randRange(1.2,3.2), 360, '#cfe0ff', 2.2)); }
     }
+    return true;
+  }
+  enableAxeDash(){
+    if(this.hasAxeDash) return false;
+    this.hasAxeDash = true;
+    this.axeDashAngle = 0;
+    if(!this.axeDashHitTimers) this.axeDashHitTimers = new Map();
+    else this.axeDashHitTimers.clear();
+    const g = (typeof window!=='undefined' && window.game) ? window.game : null;
+    if(g && g.showToast) g.showToast('🪓 Machado para Chicaras! No dash, dois machados giram ao seu redor.', 2200);
+    if(g){
+      g.shake = Math.max(g.shake||0, 70);
+      for(let k=0;k<16;k++){ const ang=Math.random()*Math.PI*2; g.particles.push(new Particle(this.x, this.y, Math.cos(ang)*randRange(1.4,3.2), Math.sin(ang)*randRange(1.2,3.2), 340, '#fcd34d', 2.2)); }
+    }
+    return true;
+  }
+  getAxeDashPositions(){
+    const ang = this.axeDashAngle || 0;
+    const positions = [];
+    for(let i=0;i<AXE_DASH_COUNT;i++){
+      const a = ang + (i * Math.PI*2 / AXE_DASH_COUNT);
+      positions.push({ x: this.x + Math.cos(a)*AXE_DASH_RADIUS, y: this.y + Math.sin(a)*AXE_DASH_RADIUS, ang: a });
+    }
+    return positions;
   }
   enableJoestarTechnique(){
+    if(this.hasJoestarTechnique) return false;
     this.hasJoestarTechnique = true;
     this.joestarTimer = 0;
     this.joestarActive = false;
@@ -13017,6 +13659,7 @@ class Player {
       for(let k=0;k<10;k++) g.particles.push(new Particle(this.x, this.y, randRange(-1.2,1.2), randRange(-1.2,0.6), 260, '#7c3aed', 2));
       if(g.currentRoom) g.currentRoom.explosions.push({x:this.x,y:this.y,radius:10,life:300,max:300,isJoestar:true});
     }
+    return true;
   }
   triggerJoestarTechnique(){
     if(!this.hasJoestarTechnique) return false;
@@ -13060,6 +13703,9 @@ class Player {
     const ang = this.dillianShieldAngle || 0;
     return { x: this.x + Math.cos(ang)*DILLIAN_SHIELD_RADIUS, y: this.y + Math.sin(ang)*DILLIAN_SHIELD_RADIUS, ang };
   }
+  // Aspecto "Guardião de Dillian" (aspecto do Dillian): escudo orbital sem a passiva.
+  hasAspectShield(){ return !!(this.weapon && this.weapon._aspectEscudo); }
+  hasOrbitalShield(){ return !!(this.hasDillianShield || this.hasAspectShield()); }
   // ===================== CHICOTE DO INDIANA - Chapéu + Grapple =====================
   enableIndianaHat(){
     if(this.hasIndianaHat) return false;
@@ -13291,6 +13937,46 @@ class Player {
       if(this.chicoteWhipRef) this.chicoteWhipRef.dead=true;
     }
     return false;
+  }
+  // ===== Aspecto "Presa na Parede" (aspecto do Chicote) =====
+  // O projétil crava na parede e arrasta o jogador até ela.
+  startAspectPull(anchorX, anchorY){
+    if(this.aspectPull) return false;
+    this.aspectPull = { x: anchorX, y: anchorY, timer: 0 };
+    // breve proteção durante o trajeto (evita morrer sendo arrastado)
+    this.invulnTimer = Math.max(this.invulnTimer, 200);
+    return true;
+  }
+  cancelAspectPull(){
+    this.aspectPull = null;
+  }
+  updateAspectPull(dt, walls){
+    if(!this.aspectPull) return false;
+    const ap = this.aspectPull;
+    ap.timer += dt;
+    if(ap.timer > UPGRADE_VALUES.ASPECT_PULL_MAX_MS){ this.cancelAspectPull(); return false; }
+    const dx = ap.x - this.x, dy = ap.y - this.y;
+    const d = Math.hypot(dx,dy);
+    if(d < 16){ this.cancelAspectPull(); return true; }
+    const n = normalize(dx,dy);
+    // velocidade por segundo (igual ao puxão do Chicote) para não depender do FPS
+    const spd = UPGRADE_VALUES.ASPECT_PULL_SPEED * (dt/1000);
+    const nx = this.x + n.x*spd, ny = this.y + n.y*spd;
+    if(!this.checkWallCollision(nx, this.y, walls)) this.x = nx;
+    if(!this.checkWallCollision(this.x, ny, walls)) this.y = ny;
+    this.x=clamp(this.x, WALL_THICK+this.w/2, CANVAS_W-WALL_THICK-this.w/2);
+    this.y=clamp(this.y, WALL_THICK+this.h/2, CANVAS_H-WALL_THICK-this.h/2);
+    if(Math.random()<0.4){
+      const g=(typeof window!=='undefined' && window.game) ? window.game : null;
+      if(g && g.particles) g.particles.push(new Particle(this.x+randRange(-4,4), this.y+randRange(-4,4), randRange(-0.7,0.7), randRange(-0.7,0.3), 170, 'rgba(255,205,140,0.55)', 1.3));
+    }
+    return false;
+  }
+  // Aspecto "Retorno à Mão": o projétil voltou à mão e devolve parte da recarga
+  onAspectBulletReturned(){
+    if(this.shootCooldown > UPGRADE_VALUES.ASPECT_RETURN_COOLDOWN){
+      this.shootCooldown = UPGRADE_VALUES.ASPECT_RETURN_COOLDOWN;
+    }
   }
   heal(amount) {
     const before = this.hp;
@@ -13582,6 +14268,11 @@ class Player {
         // ainda processa heat/velocidade base mas depois sobrescreve
       }
     }
+    // ASPECTO "PRESA NA PAREDE" - projétil cravou na parede e puxa o jogador
+    if(this.aspectPull){
+      this.updateAspectPull(dt, walls);
+      this.dashTimer = 0;
+    }
     // metralhadora: controle de aquecimento e superaquecimento (com upgrades)
     const _heatPerShot = this.weapon && this.weapon._heatPerShot !== undefined ? this.weapon._heatPerShot : METRALHADORA_HEAT_PER_SHOT;
     const _heatMax = METRALHADORA_HEAT_MAX * (1 + (this.weapon && this.weapon._heatMaxBonus ? this.weapon._heatMaxBonus : 0));
@@ -13627,7 +14318,8 @@ class Player {
       this.speed = baseMove * 1.08;
     }
     // Gyro: enquanto carrega a bola de aço, fica mais lento (peso do preparo)
-    if(this.characterId==='gyro' && this.isGyroCharging){
+    // Giro Áureo remove a penalidade de velocidade
+    if(this.characterId==='gyro' && this.isGyroCharging && !this.goldenSpin){
       this.speed *= (1 - GYRO_CHARGE_SPEED_PENALTY);
     }
     // LASER REMOVIDA - velocidade
@@ -13675,6 +14367,8 @@ class Player {
       this.speed *= JL_SPEED_FACTOR; // ~2.67 vs 3.0 base
     } else if(this.characterId==='kinight'){
       this.speed *= KINIGHT_SPEED_FACTOR; // ~2.58 vs 3.0 base (tanque pesado)
+    } else if(this.characterId==='neutro'){
+      this.speed *= NEUTRO_SPEED_FACTOR; // ~3.18 vs 3.0 base (sem especial/exclusivo)
     }
     // ===== Técnica Secreta Joestar - bônus velocidade 5s quando ativo (item comum) =====
     if(this.hasJoestarTechnique && this.joestarActive && this.joestarTimer > 0){
@@ -13788,7 +14482,8 @@ class Player {
       this.luvaIsCharging=false;
     }
     // Escudo do Dillian - órbita Dream Shield
-    if(this.hasDillianShield){
+    // (o aspecto "Guardião de Dillian" usa o mesmo escudo orbital)
+    if(this.hasOrbitalShield()){
       this.dillianShieldAngle += DILLIAN_SHIELD_SPEED * dt;
       if(this.dillianShieldAngle > Math.PI*2) this.dillianShieldAngle -= Math.PI*2;
       if(this.dillianShieldHitTimers){
@@ -13800,11 +14495,29 @@ class Player {
       }
     }
 
+    if(this.hasAxeDash){
+      if(this.isDashing()){
+        this.axeDashAngle = (this.axeDashAngle + AXE_DASH_SPEED*dt) % (Math.PI*2);
+        if(this.axeDashHitTimers){
+          for(const [e, t] of this.axeDashHitTimers){
+            const nt = t - dt;
+            if(nt <= 0) this.axeDashHitTimers.delete(e);
+            else this.axeDashHitTimers.set(e, nt);
+          }
+        }
+      } else if(this.axeDashHitTimers && this.axeDashHitTimers.size){
+        this.axeDashHitTimers.clear();
+      }
+    }
+
     // CHICOTE - se está sendo puxado, ignora input movimento/dash (puxão força)
+    // o mesmo vale para o aspecto "Presa na Parede" (puxão do projétil ancorado)
     const isPullingChicote = !!this.isChicotePulling;
-    const move = isPullingChicote ? {x:0,y:0} : input.getMoveVector();
+    const isPullingAspect = !!this.aspectPull;
+    const isPulling = isPullingChicote || isPullingAspect;
+    const move = isPulling ? {x:0,y:0} : input.getMoveVector();
     let mx = move.x, my = move.y;
-    if (!isPullingChicote && (mx !== 0 || my !== 0)) {
+    if (!isPulling && (mx !== 0 || my !== 0)) {
       this.lastDir.x = mx; this.lastDir.y = my;
       this.facing = mx !== 0 ? (mx > 0 ? 1 : -1) : this.facing;
     }
@@ -13812,7 +14525,7 @@ class Player {
     if (shootVec) { this.lastDir.x = shootVec.x; this.lastDir.y = shootVec.y; }
 
     this.didDashThisFrame = false;
-    if (!isPullingChicote && input.isDashPressed() && this.dashCooldown <= 0 && this.dashTimer <= 0) {
+    if (!isPulling && input.isDashPressed() && this.dashCooldown <= 0 && this.dashTimer <= 0) {
       let dx = this.lastDir.x, dy = this.lastDir.y;
       const len = Math.hypot(dx, dy) || 1;
       dx /= len; dy /= len;
@@ -13823,10 +14536,15 @@ class Player {
       this.invulnTimer = Math.max(this.invulnTimer, DASH_INVULN);
       this.didDashThisFrame = true;
       this.dashStartPos = { x: this.x, y: this.y };
+      if(this.hasAxeDash){
+        this.axeDashAngle = 0;
+        if(this.axeDashHitTimers) this.axeDashHitTimers.clear();
+        else this.axeDashHitTimers = new Map();
+      }
     }
 
     let curVx = 0, curVy = 0;
-    if (isPullingChicote) { curVx = 0; curVy = 0; }
+    if (isPulling) { curVx = 0; curVy = 0; }
     else if (this.isDashing()) { curVx = this.vx; curVy = this.vy; }
     else { curVx = mx * this.speed; curVy = my * this.speed; }
 
@@ -13867,7 +14585,8 @@ class Player {
       if(this.gyroBallsInHand<=0) return false;
       if(this.isGyroCharging) return false;
     }
-    if(this.weapon && this.weapon.name==='METRALHADORA' && this.isOverheated) return false;
+    // Aspecto "Refrigeração" (aspecto da Metralhadora): nunca trava por superaquecimento
+    if(this.weapon && this.weapon.name==='METRALHADORA' && this.isOverheated && !this.weapon._aspectNoHeat) return false;
     if(this.weapon && this.weapon.isLuva){
       const hasRocketReady = this.luvaCharge >= this.luvaChargeMax - 0.5;
       if(hasRocketReady){
@@ -13902,9 +14621,156 @@ class Player {
     return this.shootCooldown <= 0;
   }
    // Retorna array de Bullets/Swings/Fists para permitir cone, melee e projéteis especiais
+  // Opções comuns de projétil: junta os atributos da arma atual + os ASPECTOS ativos.
+  // Centralizar aqui evita que cada chamada de Bullet esqueça de repassar um aspecto.
+  bulletOptions(overrides){
+    const w = this.weapon || {};
+    const opts = {
+      speed: w.bulletSpeed,
+      damage: w.damage,
+      range: w.range,
+      size: w.bulletSize,
+      color: w.color,
+      glow: w.glow || (w.name==='SHOTGUN' ? 'rgba(255,140,66,0.28)' : w.name==='RAIO' ? 'rgba(0,229,255,0.35)' : w.name==='BAZUCA' ? 'rgba(255,60,60,0.35)' : 'rgba(255,220,80,0.25)'),
+      pierce: !!w.pierce,
+      pierceCount: w.pierceCount ?? (w.pierce ? 999 : 0),
+      chain: w.chain||0,
+      isBazuca: !!w.isBazuca,
+      explosionRadius: w.explosionRadius ?? 96,
+      explosionDamage: w.explosionDamage ?? 4,
+      // ASPECTOS DE ARMAS
+      ghostWalls: !!w.ghostWalls,
+      ricochetWalls: w.ricochetWalls||0,
+      wallAnchor: !!w.wallAnchor,
+      returnToHand: !!w.returnToHand,
+      knockback: w.knockback||0,
+      aspectExplosion: !!w.aspectExplosion,
+      // NOVOS ASPECTOS
+      aspectHoming: !!w._aspectHoming,
+      aspectHomingRange: UPGRADE_VALUES.ASPECT_HOMING_RANGE,
+      aspectBlade: !!w._aspectBlade,
+      aspectBeam: !!w._aspectBeam
+    };
+    // Overrides pontuais (ex: projétil carregado da CARREGADA)
+    if(overrides) Object.assign(opts, overrides);
+    // Aspecto "Corte de Vento" (Espada): o projétil vira lâmina perfurante
+    if(opts.aspectBlade){
+      opts.pierce = true;
+      opts.pierceCount = UPGRADE_VALUES.ASPECT_BLADE_PIERCE;
+      opts.size = Math.max(opts.size||0, UPGRADE_VALUES.ASPECT_BLADE_SIZE);
+      opts.damage = (opts.damage||0) * UPGRADE_VALUES.ASPECT_BLADE_DAMAGE_FACTOR;
+      opts.color = '#d8ecff';
+      opts.glow = 'rgba(140,190,255,0.42)';
+    }
+    // Aspecto "Feixe Codificado" (Dev): o projétil vira feixe largo que atravessa parede
+    if(opts.aspectBeam){
+      opts.pierce = true;
+      opts.pierceCount = UPGRADE_VALUES.ASPECT_PIERCE_COUNT;
+      opts.size = UPGRADE_VALUES.ASPECT_BEAM_WIDTH;
+      opts.damage = (opts.damage||0) * UPGRADE_VALUES.ASPECT_BEAM_DAMAGE_FACTOR;
+      opts.ghostWalls = true;
+      opts.color = '#b8fffb';
+      opts.glow = 'rgba(26,127,191,0.45)';
+    }
+    return opts;
+  }
+  // Aspecto "Sobremesa" (aspecto do Dev): cada disparo ganha um mini raio teleguiado.
+  appendAspectExtras(bullets, dir, baseOpts){
+    const w = this.weapon;
+    if(w && w._aspectSobremesa){
+      const mini = this.createAspectMiniRay(dir);
+      if(mini) bullets.push(mini);
+    }
+    // Aspecto "Bifurcação" (aspecto do Dev): 2 raios laterais extras com 50% do dano
+    if(w && w._aspectBifurcacao){
+      const n = normalize(dir.x, dir.y);
+      const baseAngle = Math.atan2(n.y, n.x);
+      for(const side of [-1, 1]){
+        const ang = baseAngle + side * UPGRADE_VALUES.ASPECT_BIFURCACAO_ANGLE;
+        const opts = baseOpts ? { ...baseOpts } : this.bulletOptions();
+        opts.damage = (opts.damage||0) * UPGRADE_VALUES.ASPECT_BIFURCACAO_DAMAGE;
+        opts.range = (opts.range||300) * UPGRADE_VALUES.ASPECT_BIFURCACAO_RANGE;
+        opts.color = '#b8fffb';
+        opts.glow = 'rgba(122,242,255,0.35)';
+        const sx = this.x + Math.cos(ang)*(this.w/2+8);
+        const sy = this.y + Math.sin(ang)*(this.h/2+6);
+        bullets.push(new Bullet(sx, sy, Math.cos(ang), Math.sin(ang), 'player', opts));
+      }
+    }
+    // Aspecto "Foguete de Mão" (aspecto da Luva): a cada N tiros sai um foguete extra
+    if(w && w._aspectRocket){
+      this._aspectRocketShots = (this._aspectRocketShots||0) + 1;
+      if(this._aspectRocketShots % UPGRADE_VALUES.ASPECT_ROCKET_EVERY === 0){
+        const rocket = this.createAspectRocket(dir);
+        if(rocket) bullets.push(rocket);
+      }
+    }
+    return bullets;
+  }
+  // Foguete do aspecto "Foguete de Mão": rápido, perfura 1 inimigo e causa bastante dano.
+  createAspectRocket(dir){
+    const w = this.weapon;
+    if(!w || !w._aspectRocket) return null;
+    const n = normalize(dir.x, dir.y);
+    const opts = this.bulletOptions();
+    opts.speed = UPGRADE_VALUES.ASPECT_ROCKET_SPEED;
+    opts.damage = Math.max(UPGRADE_VALUES.ASPECT_ROCKET_DAMAGE, (w.damage||1) * 1.6);
+    opts.range = Math.max((w.range||300) * 1.15, 420);
+    opts.size = UPGRADE_VALUES.ASPECT_ROCKET_SIZE;
+    opts.color = '#ff8c42';
+    opts.glow = 'rgba(255,140,66,0.42)';
+    opts.pierce = true;
+    opts.pierceCount = 1;
+    opts.aspectRocket = true;
+    const sx = this.x + n.x*(this.w/2 + 10);
+    const sy = this.y + n.y*(this.h/2 + 8);
+    return new Bullet(sx, sy, n.x, n.y, 'player', opts);
+  }
+  // Mini raio do aspecto Sobremesa: mesmo comportamento do mini lazer do Dev,
+  // mas com dano próprio e sem depender do Lazer Codificado.
+  createAspectMiniRay(dir){
+    const w = this.weapon;
+    if(!w || !w._aspectSobremesa) return null;
+    let ndir = normalize(dir.x, dir.y);
+    try{
+      const game = (typeof window!=='undefined' && window.game) ? window.game : null;
+      const room = game && game.currentRoom ? game.currentRoom : null;
+      if(room && room.enemies && room.enemies.length){
+        let best=null, bestD=RAIO_MATEMATICO_MINI_HOMING_RANGE;
+        for(const e of room.enemies){
+          if(e.dead) continue;
+          const d = dist(this.x, this.y, e.x, e.y);
+          if (d < bestD){ best = e; bestD = d; }
+        }
+        if(best){
+          const tx = best.x - this.x, ty = best.y - this.y;
+          const tLen = Math.hypot(tx,ty)||1;
+          const mix = 0.55;
+          let mx = ndir.x*(1-mix) + (tx/tLen)*mix;
+          let my = ndir.y*(1-mix) + (ty/tLen)*mix;
+          const mLen=Math.hypot(mx,my)||1;
+          ndir = {x: mx/mLen, y: my/mLen};
+        }
+      }
+    }catch(e){}
+    const opts = this.bulletOptions();
+    opts.speed = (w.bulletSpeed || BULLET_SPEED) * RAIO_MATEMATICO_MINI_SPEED_FACTOR;
+    opts.damage = UPGRADE_VALUES.ASPECT_SOBREMESA_DAMAGE;
+    opts.range = Math.max(140, (w.range || BULLET_RANGE) * RAIO_MATEMATICO_MINI_RANGE_FACTOR);
+    opts.size = RAIO_MATEMATICO_MINI_SIZE;
+    opts.color = RAIO_MATEMATICO_MINI_COLOR;
+    opts.glow = RAIO_MATEMATICO_MINI_GLOW;
+    opts.pierce = false;
+    opts.pierceCount = 0;
+    opts.isMiniRay = true;
+    const sx = this.x + ndir.x*(this.w/2 + 8);
+    const sy = this.y + ndir.y*(this.h/2 + 6);
+    return new Bullet(sx, sy, ndir.x, ndir.y, 'player', opts);
+  }
   shoot(dir) {
     // aquecimento metralhadora (com upgrades)
-    if(this.weapon && this.weapon.name==='METRALHADORA'){
+    // Aspecto "Refrigeração" (aspecto da Metralhadora): nunca superaquece
+    if(this.weapon && this.weapon.name==='METRALHADORA' && !this.weapon._aspectNoHeat){
       const hpShot = this.weapon._heatPerShot !== undefined ? this.weapon._heatPerShot : METRALHADORA_HEAT_PER_SHOT;
       const hMax = METRALHADORA_HEAT_MAX * (1 + (this.weapon._heatMaxBonus||0));
       this.miniHeat += hpShot;
@@ -14096,34 +14962,37 @@ class Player {
     this.lastDir.x = dir.x; this.lastDir.y = dir.y;
     if (dir.x !== 0) this.facing = dir.x > 0 ? 1 : -1;
 
-    // melhoria tiro duplo: se arma principal NORMAL está melhorada, dispara dois projéteis lado a lado
-    if(this.weapon.name==='NORMAL' && this.hasDoubleShot){
+// Tiro duplo: melhoria da pistola OU aspecto "Tiro Duplo" (aspecto da Pistola)
+    const aspectDouble = !!this.weapon.aspectDoubleShot;
+    // Aspecto "Cone de Pelotas" (aspecto do Shotgun): cada tiro sai em cone
+    const aspectCone = !!this.weapon._aspectCone;
+    if((this.weapon.name==='NORMAL' && this.hasDoubleShot) || aspectDouble){
       const bullets=[];
       // vetor perpendicular para deslocamento lateral
       const perpX = -dir.y;
       const perpY = dir.x;
+      const off = aspectDouble ? UPGRADE_VALUES.ASPECT_DOUBLE_SHOT_SPREAD : DOUBLE_SHOT_OFFSET;
       for(let side=-1; side<=1; side+=2){
-        const sx = this.x + dir.x*(this.w/2+8) + perpX*DOUBLE_SHOT_OFFSET*side;
-        const sy = this.y + dir.y*(this.h/2+6) + perpY*DOUBLE_SHOT_OFFSET*side;
-        bullets.push(new Bullet(sx, sy, dir.x, dir.y, 'player', {
-          speed: this.weapon.bulletSpeed,
-          damage: this.weapon.damage,
-          range: this.weapon.range,
-          size: this.weapon.bulletSize,
-          color: this.weapon.color,
-          glow: this.weapon.glow || 'rgba(255,220,80,0.25)',
-          pierce: !!this.weapon.pierce,
-          pierceCount: this.weapon.pierceCount ?? (this.weapon.pierce ? 999 : 0),
-          chain: this.weapon.chain||0
-        }));
+        const sx = this.x + dir.x*(this.w/2+8) + perpX*off*side;
+        const sy = this.y + dir.y*(this.w/2+6) + perpY*off*side;
+        if(aspectCone){
+          // cada lado do tiro duplo vira um cone de 3
+          const baseAngle = Math.atan2(dir.y, dir.x);
+          for(let k=-1;k<=1;k++){
+            const ang = baseAngle + k*UPGRADE_VALUES.ASPECT_CONE_SPREAD;
+            bullets.push(new Bullet(sx, sy, Math.cos(ang), Math.sin(ang), 'player', this.bulletOptions()));
+          }
+        } else {
+          bullets.push(new Bullet(sx, sy, dir.x, dir.y, 'player', this.bulletOptions()));
+        }
       }
-      return bullets;
+      return this.appendAspectExtras(bullets, dir);
     }
 
     const bullets = [];
     const baseAngle = Math.atan2(dir.y, dir.x);
-    const count = this.weapon.count;
-    const spread = this.weapon.spread;
+    const count = (this.weapon.count||1) + (aspectCone ? UPGRADE_VALUES.ASPECT_CONE_EXTRA : 0);
+    const spread = this.weapon.spread || (aspectCone ? UPGRADE_VALUES.ASPECT_CONE_SPREAD : 0);
 
     for (let i=0;i<count;i++) {
       let ang = baseAngle;
@@ -14141,22 +15010,9 @@ class Player {
       // diferencia levemente posição inicial para shotgun
       const ox = count>1 ? randRange(-2,2) : 0;
       const oy = count>1 ? randRange(-2,2) : 0;
-      bullets.push(new Bullet(sx+ox, sy+oy, dx, dy, 'player', {
-        speed: this.weapon.bulletSpeed,
-        damage: this.weapon.damage,
-        range: this.weapon.range,
-        size: this.weapon.bulletSize,
-        color: this.weapon.color,
-        glow: this.weapon.glow || (this.weapon.name==='SHOTGUN' ? 'rgba(255,140,66,0.28)' : this.weapon.name==='RAIO' ? 'rgba(0,229,255,0.35)' : this.weapon.name==='BAZUCA' ? 'rgba(255,60,60,0.35)' : 'rgba(255,220,80,0.25)'),
-        pierce: !!this.weapon.pierce,
-        pierceCount: this.weapon.pierceCount ?? (this.weapon.pierce ? 999 : 0),
-        chain: this.weapon.chain||0,
-        isBazuca: !!this.weapon.isBazuca,
-        explosionRadius: this.weapon.explosionRadius ?? 96,
-        explosionDamage: this.weapon.explosionDamage ?? 4
-      }));
+      bullets.push(new Bullet(sx+ox, sy+oy, dx, dy, 'player', this.bulletOptions()));
     }
-    return bullets;
+    return this.appendAspectExtras(bullets, dir);
   }
 
   draw(ctx) {
@@ -14198,6 +15054,8 @@ class Player {
     }
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.fillRect(x+2, y + this.h - 4, this.w, 4);
+    // Gyro: guia de mira do arremesso (tracejado na direção, inclusive diagonal)
+    this.drawGyroAimGuide(ctx);
     if (this.isDashing()) {
       ctx.fillStyle = 'rgba(0,217,255,0.18)';
       ctx.fillRect(x - this.vx*1.2, y - this.vy*1.2 + bob, this.w, this.h);
@@ -14289,7 +15147,7 @@ class Player {
       }
     }
     // ===== Escudo do Dillian - Dream Shield orbitante =====
-    if(this.hasDillianShield){
+    if(this.hasOrbitalShield()){
       const shieldPos = this.getDillianShieldPos();
       const sx = shieldPos.x, sy = shieldPos.y + bob*0.5; // leve bob
       const pulseD = 0.5 + Math.sin(this.animTime*0.011)*0.32;
@@ -14325,6 +15183,41 @@ class Player {
       if(Math.random()<0.14){
         ctx.fillStyle='rgba(180,210,255,0.85)';
         ctx.fillRect(sx+randRange(-6,6), sy+randRange(-6,6),1,1);
+      }
+    }
+    // ===== Machado para Chicaras - machados orbitais durante o dash =====
+    if(this.hasAxeDash && this.isDashing()){
+      const axes = this.getAxeDashPositions();
+      const oy = bob*0.6;
+      ctx.strokeStyle='rgba(252,211,77,0.18)';
+      ctx.lineWidth=1; ctx.setLineDash([3,5]);
+      ctx.beginPath(); ctx.arc(this.x, this.y+oy, AXE_DASH_RADIUS,0,Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
+      for(const ax of axes){
+        const sx=ax.x, sy=ax.y+oy;
+        ctx.fillStyle='rgba(252,211,77,0.18)';
+        ctx.beginPath(); ctx.arc(sx, sy, AXE_DASH_SIZE*0.72, 0, Math.PI*2); ctx.fill();
+        ctx.save(); ctx.translate(sx, sy); ctx.rotate(ax.ang + Math.PI/2);
+        ctx.fillStyle='#6b3f1d';
+        ctx.fillRect(-1.5, -4, 3, 17);
+        ctx.fillStyle='#d6b36a';
+        ctx.fillRect(-2, 10, 4, 3);
+        ctx.fillStyle='#e2e8f0';
+        ctx.beginPath();
+        ctx.moveTo(0, -9);
+        ctx.lineTo(10, -6);
+        ctx.lineTo(12, 1);
+        ctx.lineTo(7, 4);
+        ctx.lineTo(0, 1);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle='#ffffff'; ctx.lineWidth=1; ctx.stroke();
+        ctx.fillStyle='#f59e0b';
+        ctx.beginPath(); ctx.arc(0, -7, 1.5, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+        if(Math.random()<0.14){
+          ctx.fillStyle='rgba(255,220,130,0.9)';
+          ctx.fillRect(sx+randRange(-5,5), sy+randRange(-5,5),1.4,1.4);
+        }
       }
     }
     // ===== Técnica Secreta Joestar - aura fuga dourada (JoJo) quando ativa =====
@@ -14685,8 +15578,11 @@ class Player {
       // Gyro - bola de aço girando na ponta do dedo indicador
       const prog = this.isGyroCharging ? this.getGyroChargeProgress() : 0;
       const spin = this.animTime*0.06;
-      const bx = x + 12 + (this.facing>0 ? 7 : -7);
-      const by = y + 12 + Math.sin(spin)*1.6;
+      // a bola na mão aponta para a mira (diagonal inclusiva)
+      const aim = this.getGyroAimVector();
+      const aimAng = Math.atan2(aim.y, aim.x);
+      const bx = x + 12 + Math.cos(aimAng)*7;
+      const by = y + 12 + Math.sin(aimAng)*7 + Math.sin(spin)*1.2;
       const r = 4 + (prog>0.85 ? 1.2 : 0);
       // halo
       ctx.fillStyle = prog>0.85 ? 'rgba(255,255,255,0.30)' : 'rgba(203,213,225,0.24)';
@@ -18980,6 +19876,15 @@ class Room {
         tryPlace(it);
       }
     }
+    // Machado para Chicaras - passivo incomum (machados orbitais durante o dash)
+    const axeChance = this.type==='treasure' ? 0.07 : 0.038;
+    if(rng() < axeChance && !this.isRare && !this.isMiniboss && !this.isBossStair && !this.isPartyHorde && this.items.length < 4){
+      const hasAxe = (typeof window!=='undefined' && window.game && window.game.player) ? window.game.player.hasAxeDash : false;
+      if(!hasAxe && !this.items.some(it=> it.type==='machado_chicaras')){
+        const it = new MachadoChicarasItem(randRange(140, CANVAS_W-140), randRange(100, CANVAS_H-100));
+        tryPlace(it);
+      }
+    }
     // Técnica Secreta Joestar - passivo comum (JoJo) - ao sofrer dano ganha velocidade 5s
     const joestarChance = this.type==='treasure' ? JOESTAR_SPAWN_TREASURE : JOESTAR_SPAWN_CHANCE;
     if(rng() < joestarChance && !this.isRare && !this.isMiniboss && !this.isBossStair && !this.isPartyHorde && this.items.length < 4){
@@ -20064,7 +20969,12 @@ const it = items[i];
               for(let k=0;k<10;k++) globalParticles.push(new Particle(e.x, e.y, randRange(-1.2,1.2), randRange(-1.2,0.6), 340, '#ffffff', 2));
             } else {
               const ang=Math.atan2(e.y - b.y, e.x - b.x);
-              e.x+=Math.cos(ang)*(b.pierce?4:8); e.y+=Math.sin(ang)*(b.pierce?4:8);
+              const kb = (b.pierce?4:8) + b.knockback*10;
+              e.x+=Math.cos(ang)*kb; e.y+=Math.sin(ang)*kb;
+              // ASPECTO "ONDA DE CHOQUE" (aspecto do Chicote)
+              if(b.knockback>0 && e.stunTimer!==undefined){
+                e.stunTimer = Math.max(e.stunTimer||0, 90);
+              }
               // glitch no hacker ao ser atingido
               for(let k=0;k<3;k++) globalParticles.push(new Particle(e.x, e.y, randRange(-1.2,1.2), randRange(-1,0.6), 160, '#ff0040',1.4));
             }
@@ -20107,7 +21017,12 @@ const it = items[i];
             }
           } else {
             const ang = Math.atan2(e.y - b.y, e.x - b.x);
-            e.x += Math.cos(ang)*(b.pierce?4:8); e.y += Math.sin(ang)*(b.pierce?4:8);
+            // ASPECTO "ONDA DE CHOQUE" (aspecto do Chicote): empurrão maior + atordoamento
+            const kb = (b.pierce?4:8) + b.knockback*10;
+            e.x += Math.cos(ang)*kb; e.y += Math.sin(ang)*kb;
+            if(b.knockback>0 && e.stunTimer!==undefined && e.type!=='miniboss' && e.type!=='stair_boss'){
+              e.stunTimer = Math.max(e.stunTimer||0, 90);
+            }
           }
           // cadeia elétrica (RAIO MUITO_RARA) - atinge alvos próximos com 50% dano
           if(b.chain>0){
@@ -20204,6 +21119,49 @@ const it = items[i];
           }
           // NÃO causa dano ao jogador (regra)
           b.dead=true;
+        }
+      }
+      // ASPECTO "CARGA EXPLOSIVA" (aspecto da Bazuca): o projétil explode ao acertar
+      if(b.aspectExplosion && !b.isBazuca && hitThisFrame && !b._aspectExploded){
+        b._aspectExploded = true;
+        const expR = UPGRADE_VALUES.ASPECT_EXPLOSION_RADIUS;
+        const expD = UPGRADE_VALUES.ASPECT_EXPLOSION_DAMAGE;
+        this.explosions.push({x:b.x, y:b.y, radius: 14, life: 360, max: 360, isBazuca:true, radiusTarget: expR});
+        for(let k=0;k<20;k++){ const ang=Math.random()*Math.PI*2, sp=randRange(2.2,5.6); const col=['#ff6a00','#ffcc00','#ff8c42'][randInt(0,2)]; globalParticles.push(new Particle(b.x,b.y, Math.cos(ang)*sp, Math.sin(ang)*sp, randRange(260,460), col, randInt(2,5))); }
+        for(let k=0;k<8;k++) globalParticles.push(new Particle(b.x,b.y, randRange(-1.4,1.4), randRange(-1.4,0.5), 320, 'rgba(255,255,255,0.85)', 2));
+        for(const other of this.enemies){
+          if(other.dead) continue;
+          if(other.type==='stair_boss'){
+            if(this.isBossStair && !this.bossFightStarted && !this.bossStairDefeated) continue;
+            const dHead=dist(b.x,b.y, other.x, other.y);
+            if(dHead < expR && other.canDamageHead()){
+              const falloff = 1 - (dHead/expR)*0.5;
+              const died=other.takeDamage(expD*falloff);
+              for(let k=0;k<4;k++) globalParticles.push(new Particle(other.x, other.y, randRange(-1.6,1.6), randRange(-1.2,0.5), 240, '#ff8c42', 2));
+              if(died){ for(let k=0;k<10;k++){ const a2=Math.random()*Math.PI*2; globalParticles.push(new Particle(other.x, other.y, Math.cos(a2)*randRange(1.2,3.4), Math.sin(a2)*randRange(1,2.6), 300, '#ff6a00', 2.6)); } }
+            }
+            for(const hand of other.getHands()){
+              if(hand.dead || hand.invulnerable) continue;
+              const dHand=dist(b.x,b.y, hand.x, hand.y);
+              if(dHand < expR){
+                const falloff = 1 - (dHand/expR)*0.5;
+                const died=hand.takeDamage(expD*falloff);
+                for(let k=0;k<4;k++) globalParticles.push(new Particle(hand.x, hand.y, randRange(-1.4,1.4), randRange(-1,0.4), 240, '#ff8c42', 2));
+                if(died){ for(let k=0;k<8;k++){ const a2=Math.random()*Math.PI*2; globalParticles.push(new Particle(hand.x, hand.y, Math.cos(a2)*randRange(1,2.8), Math.sin(a2)*randRange(0.8,2.2), 280, '#ffd700', 2.4)); } }
+              }
+            }
+            continue;
+          }
+          const d=dist(b.x,b.y, other.x, other.y);
+          if(d < expR){
+            const falloff = 1 - (d/expR)*0.5;
+            const died=other.takeDamage(expD*falloff);
+            const ang=Math.atan2(other.y-b.y, other.x-b.x) || Math.random()*Math.PI*2;
+            other.x+=Math.cos(ang)*(5 + falloff*8);
+            other.y+=Math.sin(ang)*(5 + falloff*8);
+            for(let k=0;k<4;k++) globalParticles.push(new Particle(other.x, other.y, randRange(-1.6,1.6), randRange(-1.4,0.6), 240, '#ff8c42', 2));
+            if(died){ for(let k=0;k<10;k++){ const a2=Math.random()*Math.PI*2; globalParticles.push(new Particle(other.x, other.y, Math.cos(a2)*randRange(1.2,3.2), Math.sin(a2)*randRange(1,2.4), 300, '#ff6a00', 2.4)); } }
+          }
         }
       }
       // efeito visual extra para raio perfurante ao acertar
@@ -21441,6 +22399,7 @@ if(e.canDamageHead()){
       else if(ex.isLaserHoming) targetR=20;
       else if(ex.isChicoteExplosion) targetR=CHICOTE_EXPLOSION_RADIUS;
       else if(ex.isBastaoWave) targetR=JG_BASTAO_WAVE_RADIUS;
+      else if(ex.isGiroAureo) targetR=ex.radiusTarget || GIRO_AUREO.explosionRadius;
       else if(ex.isChicoteGift) targetR=36;
       else if(ex.isChicoteHat) targetR=30;
       const r = 14 + (1-alpha)* (targetR - 14);
@@ -21898,6 +22857,25 @@ if(e.canDamageHead()){
           }
           ctx.fillStyle=`rgba(250,204,21,${alpha*0.92})`; ctx.font='10px monospace'; ctx.textAlign='center';
           ctx.fillText('★', ex.x, ex.y+4); ctx.textAlign='left';
+        }
+      } else if(ex.isGiroAureo){
+        // Giro Áureo: explosão dourada da broca (anel + miolo + estrelas de giro)
+        ctx.strokeStyle=`rgba(251,191,36,${alpha*0.72})`;
+        ctx.lineWidth=3.6;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle=`rgba(251,191,36,${alpha*0.18})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle=`rgba(255,251,235,${alpha*0.55})`;
+        ctx.lineWidth=1.8;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.68, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle=`rgba(254,243,199,${alpha*0.42})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.30, 0, Math.PI*2); ctx.fill();
+        if(alpha>0.35){
+          ctx.strokeStyle=`rgba(255,255,255,${alpha*0.45})`;
+          ctx.lineWidth=1.2; ctx.setLineDash([5,4]);
+          ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.86, 0, Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+          ctx.fillStyle=`rgba(251,191,36,${alpha*0.92})`; ctx.font='10px monospace'; ctx.textAlign='center';
+          ctx.fillText('✦', ex.x, ex.y+4); ctx.textAlign='left';
         }
       } else if(ex.isChicoteGift){
         ctx.strokeStyle=`rgba(210,166,121,${alpha*0.62})`;
@@ -22415,6 +23393,7 @@ class Game {
     this.fists = []; // punhos foguete ativos
     this.bastaoProjectiles = []; // JG - bastões arremessados (sem duplicação, máximo 1 ativo)
     this.steelBalls = []; // GYRO - bolas de aço arremessadas (máx 2 no ar)
+    this.goldenMarks = []; // GYRO - marcas de giro do Giro Áureo (dano por tick)
     this.lazerBeams = []; // LAZER CODIFICADO - feixes Brimstone retangulares ondulados
     this.chicoteWhips = []; // CHICOTE DO INDIANA - chicotes ativos (grapple parede)
     this.particles = [];
@@ -22454,6 +23433,12 @@ class Game {
     this.pauseScreen = document.getElementById('pauseScreen');
     this.settingsScreen = document.getElementById('settingsScreen');
     this.gameContainer = document.getElementById('gameContainer');
+    this.transitionFx = document.getElementById('transitionFx');
+    this.transitionLabel = document.getElementById('transitionLabel');
+    this.transitionBar = document.querySelector('#transitionFx .tf-bar span');
+    this._screenTransitioning = false;
+    this._screenTransitionToken = 0;
+    this._startingGame = false;
     this.toast = document.getElementById('toast');
     this.swapHint = document.getElementById('swapHint');
     this.nameInput = document.getElementById('playerNameInput');
@@ -22648,17 +23633,47 @@ class Game {
       this.canvas.addEventListener('mouseleave', ()=>{ this._hudMouse.x=-1; this._hudMouse.y=-1; });
     }
   }
-  showCharacterSelect(){
-    if(this.characterScreen){
-      this.characterScreen.classList.add('active');
-      this.menuScreen.classList.remove('active');
+  prefersReducedMotion(){
+    try{
+      return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    }catch(_){ return false; }
+  }
+  switchScreen(from, to, direction='forward'){
+    if(!to || to === from) return;
+    const duration = 560;
+    if(this.prefersReducedMotion() || !from){
+      if(from) from.classList.remove('active');
+      to.classList.add('active');
+      return;
     }
+    if(this._screenTransitioning) return;
+    this._screenTransitioning = true;
+    const token = ++this._screenTransitionToken;
+    const enterClass = direction === 'forward' ? 'screen-enter-right' : 'screen-enter-left';
+    const leaveClass = direction === 'forward' ? 'screen-leave-left' : 'screen-leave-right';
+    to.classList.add('active', enterClass);
+    from.classList.add(leaveClass);
+    setTimeout(() => {
+      if(token !== this._screenTransitionToken) return;
+      from.classList.remove('active', leaveClass);
+      to.classList.remove(enterClass);
+      this._screenTransitioning = false;
+    }, duration);
+  }
+  cancelScreenTransition(){
+    this._screenTransitionToken++;
+    this._screenTransitioning = false;
+    document.querySelectorAll('.screen').forEach(s => {
+      s.classList.remove('screen-enter-right', 'screen-enter-left', 'screen-leave-left', 'screen-leave-right');
+    });
+  }
+  showCharacterSelect(){
+    if(!this.characterScreen || this.characterScreen.classList.contains('active')) return;
+    this.switchScreen(this.menuScreen, this.characterScreen, 'forward');
   }
   hideCharacterSelect(){
-    if(this.characterScreen){
-      this.characterScreen.classList.remove('active');
-      this.menuScreen.classList.add('active');
-    }
+    if(!this.characterScreen || !this.characterScreen.classList.contains('active')) return;
+    this.switchScreen(this.characterScreen, this.menuScreen, 'back');
   }
   // ===== CONFIGURAÇÕES =====
   // Liga os botões A-/A/A+/A++ ao Settings e mantém o painel em dia a cada mudança.
@@ -22896,6 +23911,9 @@ class Game {
     if(p.hasDoubleShot) passives.push('✦ Tiro Duplo (NORMAL x2)');
     if(p.hasNoclip) passives.push('◈ Noclip (imune a espinhos)');
     if(p.hasDillianShield) passives.push('🛡️ Escudo do Dillian (Dream Shield orbitante)');
+    if(p.hasAxeDash) passives.push('🪓 Machado para Chicaras (2 machados giram no dash)');
+    if(p.hasGatoAntivirus) passives.push('🐱 Gato Antivírus (caça automática)');
+    if(p.hasIoiPassive) passives.push('🪀 Passivo IO-IO (ao levar dano, orbitais)');
     if(p.hasJoestarTechnique){
       if(p.joestarActive && p.joestarTimer>0) passives.push(`💨 Técnica Secreta Joestar (ATIVO ${(p.joestarTimer/1000).toFixed(1)}s +${JOESTAR_SPEED_BONUS.toFixed(2)} vel)`);
       else passives.push('💨 Técnica Secreta Joestar (ao sofrer dano +vel 5s)');
@@ -22905,6 +23923,7 @@ class Game {
     else if(p.hasBastao && p.characterId==='jg') passives.push('🏏 Com bastão (rápido)');
     if(p.characterId==='gyro'){
       passives.push(`🟢 Bolas de Aço (${p.gyroBallsInHand}/${GYRO_BALLS_MAX} na mão)`);
+      if(p.goldenSpin) passives.push('✦ Giro Áureo ativo (brocas perfurantes)');
       if(p.isGyroCharging) passives.push(`🟢 Carregando ${Math.round(p.getGyroChargeProgress()*100)}%`);
     }
     if(passives.length){
@@ -22984,6 +24003,7 @@ class Game {
       if(this.player._hasSwiftBoots) txt+=' 💨';
       if(this.player.hasNoclip) txt+=' ◈';
       if(this.player.hasDillianShield) txt+=' 🛡️';
+      if(this.player.hasAxeDash) txt+=' 🪓';
       wEl.textContent=txt;
     }
     const ene=document.getElementById('pauseEnemies');
@@ -23002,6 +24022,9 @@ class Game {
     if(this.player.hasDoubleShot) items.push({icon:'✦', name:'Tiro Duplo', desc:'NORMAL dispara 2 projéteis lado a lado', badge:'MELHORIA', color:'#5a8fd4'});
     if(this.player.hasNoclip) items.push({icon:'◈', name:'Noclip', desc:'Atravessa espinhos sem dano (incomum)', badge:'PASSIVO', color:'#7c5cff'});
     if(this.player.hasDillianShield) items.push({icon:'🛡️', name:'Escudo do Dillian', desc:'Um escudo para um cavaleiro paciente — orbita, causa pouco dano e bloqueia projéteis (Dream Shield)', badge:'PASSIVO', color:'#cfe0ff'});
+    if(this.player.hasAxeDash) items.push({icon:'🪓', name:'Machado para Chicaras', desc:'Passivo incomum — durante o dash, dois machados orbitam o personagem e cortam inimigos', badge:'PASSIVO', color:'#fcd34d'});
+    if(this.player.hasGatoAntivirus) items.push({icon:'🐱', name:'Gato Antivírus', desc:'Companheiro azul persegue e ataca inimigos automaticamente', badge:'PASSIVO', color:'#3b82f6'});
+    if(this.player.hasIoiPassive) items.push({icon:'🪀', name:'Passivo IO-IO', desc:'Ao sofrer dano, invoca io-ios que orbitam e cortam inimigos', badge:'PASSIVO', color:'#e53935'});
     if(this.player.hasJoestarTechnique) items.push({icon:'💨', name:'Técnica Secreta Joestar', desc:`Passivo comum JoJo - ao sofrer dano ganha +${JOESTAR_SPEED_BONUS.toFixed(2)} velocidade por 5s (fuga)`, badge:'COMUM', color:'#ffd700'});
     // Especial equipado
     if(this.player.equippedSpecial){
@@ -23017,7 +24040,9 @@ class Game {
         const maxLvl=def.maxLevel||1;
         const lvlStr=maxLvl>1?` Nv${lvl}/${maxLvl}`:'';
         const r=RARITY[def.rarity];
-        items.push({icon:'★', name:def.name+lvlStr, desc:def.desc, badge:def.rarity, color:r?r.color:'#d1d5db'});
+        // Aspectos de armas ganham marcador próprio (◆) para diferenciar das melhorias da arma
+        const isAspect = def.category===ASPECT_CATEGORY;
+        items.push({icon:isAspect?'◆':'★', name:def.name+lvlStr+(isAspect?' (Aspecto)':''), desc:def.desc, badge:isAspect?'ASPECT':def.rarity, color:r?r.color:'#d1d5db'});
       }
     }
     // All-level upgrades que estão em upgradeLevels mas não em obtainedUpgrades (fallback)
@@ -23027,7 +24052,8 @@ class Game {
         const def=UPGRADE_MAP.get(id);
         if(!def) continue;
         const maxLvl=def.maxLevel||1;
-        items.push({icon:'★', name:def.name+` Nv${lvl}/${maxLvl}`, desc:def.desc, badge:def.rarity, color:(RARITY[def.rarity]||{}).color||'#d1d5db'});
+        const isAspect = def.category===ASPECT_CATEGORY;
+        items.push({icon:isAspect?'◆':'★', name:def.name+` Nv${lvl}/${maxLvl}`+(isAspect?' (Aspecto)':''), desc:def.desc, badge:isAspect?'ASPECT':def.rarity, color:(RARITY[def.rarity]||{}).color||'#d1d5db'});
       }
     }
     if(countEl) countEl.textContent=`${items.length} ${items.length===1?'item':'itens'}`;
@@ -23156,6 +24182,7 @@ class Game {
   }
 
   goMenu(){
+    this.cancelScreenTransition();
     this.state='MENU';
     this._transitionToken++;        // cancela advanceFloor/enterHackerRoom pendentes
     this.floorTransitioning=false;
@@ -23179,7 +24206,53 @@ class Game {
   }
   resizeCanvas(){ const dpr=Math.min(window.devicePixelRatio||1,2); }
 
+  playStartTransition(onMid, onDone){
+    const fx = this.transitionFx;
+    if(!fx || this.prefersReducedMotion()){
+      try{ onMid(); }
+      finally{ if(onDone) onDone(); }
+      return;
+    }
+    const launching = this.characterScreen && this.characterScreen.classList.contains('active')
+      ? this.characterScreen : null;
+    if(launching) launching.classList.add('screen-launch');
+    const def = getCharacterDef(this.selectedCharacterId);
+    if(this.transitionLabel){
+      this.transitionLabel.textContent = def
+        ? `CARREGANDO ${def.displayName.toUpperCase()}`
+        : 'INICIANDO PROTOCOLO';
+    }
+    fx.classList.remove('closing');
+    fx.classList.add('active');
+    setTimeout(() => {
+      try{ onMid(); }
+      catch(err){ console.error(err); }
+    }, 360);
+    setTimeout(() => {
+      fx.classList.add('closing');
+      setTimeout(() => {
+        fx.classList.remove('active', 'closing');
+        if(launching) launching.classList.remove('screen-launch');
+        if(onDone) onDone();
+      }, 480);
+    }, 860);
+  }
   startGame(characterId=null){
+    if(this._startingGame) return;
+    const fromMenu = !!(this.menuScreen && this.menuScreen.classList.contains('active'))
+      || !!(this.characterScreen && this.characterScreen.classList.contains('active'));
+    if(!fromMenu){
+      this._startGameNow(characterId);
+      return;
+    }
+    this._startingGame = true;
+    this.playStartTransition(
+      () => this._startGameNow(characterId),
+      () => { this._startingGame = false; }
+    );
+  }
+  _startGameNow(characterId=null){
+    this.cancelScreenTransition();
     // Modular: aceita characterId do seletor; fallback para seleção anterior ou JL padrão
     const chosen = characterId || this.selectedCharacterId || 'jl';
     const def = getCharacterDef(chosen);
@@ -23215,6 +24288,10 @@ class Game {
     this.player.dillianShieldAngle = 0;
     if(this.player.dillianShieldHitTimers) this.player.dillianShieldHitTimers.clear();
     else this.player.dillianShieldHitTimers = new Map();
+    this.player.hasAxeDash = false;
+    this.player.axeDashAngle = 0;
+    if(this.player.axeDashHitTimers) this.player.axeDashHitTimers.clear();
+    else this.player.axeDashHitTimers = new Map();
     this.player.hasJoestarTechnique = false;
     this.player.joestarTimer = 0;
     this.player.joestarActive = false;
@@ -23264,7 +24341,8 @@ class Game {
       this.player.gyroChargeTier=0;
       this.player.gyroMaxChargeReady=false;
     }
-    this.bullets=[]; this.meleeSwings=[]; this.fists=[]; this.bastaoProjectiles=[]; this.steelBalls=[]; this.lazerBeams=[]; this.chicoteWhips=[]; this.particles=[]; this.allies=[]; this.gatoAntivirus=[]; this.oliPieces=[]; this.oliPawns=[]; this.ioiOrbits=[];
+    this.bullets=[]; this.meleeSwings=[]; this.fists=[]; this.bastaoProjectiles=[]; this.steelBalls=[]; this.goldenMarks=[]; this.lazerBeams=[]; this.chicoteWhips=[]; this.particles=[]; this.allies=[]; this.gatoAntivirus=[]; this.oliPieces=[]; this.oliPawns=[]; this.ioiOrbits=[];
+    this.player.goldenSpin=false; this.player.gyroExtraBall=null;
     // DISQUETE DA VIDA: run nova zera os continues e o histórico de sala
     this.player.continues = 0;
     this.lastRoom = null;
@@ -23347,8 +24425,9 @@ class Game {
     // DISQUETE DA VIDA: continues carry entre atos, mas o histórico de sala não (novo mapa)
     this.lastRoom = null;
     this.bullets = [];
-    this.bastaoProjectiles=[]; this.steelBalls=[]; this.meleeSwings=[]; this.fists=[]; this.lazerBeams=[]; this.chicoteWhips=[];
+    this.bastaoProjectiles=[]; this.steelBalls=[]; this.goldenMarks=[]; this.meleeSwings=[]; this.fists=[]; this.lazerBeams=[]; this.chicoteWhips=[];
     this.particles = [];
+    this.player.gyroExtraBall=null;
     this.allies = []; this.gatoAntivirus=[]; this.oliPieces = []; this.oliPawns = []; // aliados, gato e xadrez são por andar, limpa ao trocar de andar (gato respawnará se passiva ativa)
     this.ioiOrbits = []; // io-ios são por sala, limpa ao trocar de andar
     // Corrige bug da luva presa ao trocar de andar: limpa estado completo
@@ -23419,7 +24498,7 @@ class Game {
       this.roomsExplored++;
       this.player.x=CANVAS_W/2; this.player.y=CANVAS_H/2+40;
       this.player.vx=0; this.player.vy=0;
-      this.bullets=[]; this.meleeSwings=[]; this.fists=[]; this.bastaoProjectiles=[]; this.steelBalls=[]; this.lazerBeams=[]; this.chicoteWhips=[]; this.particles=[];
+      this.bullets=[]; this.meleeSwings=[]; this.fists=[]; this.bastaoProjectiles=[]; this.steelBalls=[]; this.goldenMarks=[]; this.lazerBeams=[]; this.chicoteWhips=[]; this.particles=[];
       // JG: o bastão em voo foi descartado no teleporte -> devolve pra mão
       // (evita renascer sem bastão: sem ataque, lento e laranja)
       if(this.player.characterId==='jg'){
@@ -23432,6 +24511,7 @@ class Game {
         this.player.gyroBallsInHand=GYRO_BALLS_MAX;
         this.player.gyroBallsInFlight=0;
         this.player.isGyroCharging=false; this.player.gyroChargeTime=0;
+        this.player.gyroExtraBall=null;
       }
       this.transitionCooldown=600;
       this._hackerTransition=false;
@@ -23719,26 +24799,53 @@ class Game {
   grantAllUpgradesAndPassives(){
     const p = this.player;
     if(!p) return {upgrades:0, passives:0};
+
+    // 1) Passivos primeiro: cada enable* retorna false se o efeito ja existe.
+    // Assim BORZUK pode ser usado varias vezes sem reativar/duplicar efeitos.
+    let passives=0;
+    const give=(fn)=>{ try{ if(typeof p[fn]==='function' && p[fn]()) passives++; }catch(_){} };
+    give('enableFlameTrail');
+    if(p._hasSwiftBoots!==true){ p._hasSwiftBoots=true; p.speed=(p.speed||0)+0.75; passives++; }
+    give('enableDoubleShot');
+    give('enableNoclip');
+    give('enableDillianShield');
+    give('enableAxeDash');
+    give('enableJoestarTechnique');
+    give('enableIoiPassive');
+    if(p.hasGatoAntivirus!==true){ p.hasGatoAntivirus=true; passives++; }
+
+    // 2) Remove aspectos que duplicariam um passivo ja concedido.
+    // O caso critico e o Gato: passivo + aspecto criavam DOIS gatos ao mesmo tempo.
+    const redundantAspects = [];
+    if(p.hasGatoAntivirus) redundantAspects.push({id:'aspect_rara_gato', flag:'_aspectGato'});
+    const redundantIds = new Set(redundantAspects.map(a=>a.id));
+    const dropUpgrade=(id)=>{
+      if(p.obtainedUpgrades) p.obtainedUpgrades.delete(id);
+      if(p.upgradeLevels) p.upgradeLevels.delete(id);
+      if(p.weaponUpgrades){
+        for(const key of Object.keys(p.weaponUpgrades)){
+          const arr=p.weaponUpgrades[key];
+          if(Array.isArray(arr)) p.weaponUpgrades[key]=arr.filter(x=>x!==id);
+        }
+      }
+    };
+    for(const a of redundantAspects){
+      dropUpgrade(a.id);
+      for(const w of [p.primaryWeapon, p.secondaryWeapon, p.weapon]){
+        if(w && a.flag in w) w[a.flag]=false;
+      }
+    }
+
+    // 3) Melhorias: repete addUpgrade enquanto canAddUpgrade aceitar (sai no maxLevel)
     let upgrades=0;
-    // 1) Melhorias: repete addUpgrade enquanto canAddUpgrade aceitar (sai no maxLevel)
     for(const def of UPGRADE_DEFS){
+      if(redundantIds.has(def.id)) continue;
       let guard=0;
       while(p.canAddUpgrade(def.id) && guard++ < 12){
         if(p.addUpgrade(def.id)) upgrades++;
         else break;
       }
     }
-    // 2) Passivos: cada enable* é idempotente (retorna false se já tiver)
-    let passives=0;
-    const give=(fn)=>{ try{ if(typeof p[fn]==='function' && p[fn]()) passives++; }catch(_){} };
-    if(p.hasFlameTrail!==true && typeof p.enableFlameTrail==='function'){ p.enableFlameTrail(); passives++; }
-    if(p._hasSwiftBoots!==true){ p._hasSwiftBoots=true; p.speed=(p.speed||0)+0.75; passives++; }
-    give('enableDoubleShot');
-    give('enableNoclip');
-    give('enableDillianShield');
-    give('enableJoestarTechnique');
-    give('enableIoiPassive');
-    if(p.hasGatoAntivirus!==true){ p.hasGatoAntivirus=true; passives++; }
     return {upgrades, passives};
   }
 
@@ -23820,12 +24927,12 @@ class Game {
     if(p.isRayMatematicoCharging) p.cancelRayMatematicoCharge();
     p.activeFists = []; p.activeFist = null; p.bastaoProjectile = null;
     this.bullets = []; this.meleeSwings = []; this.fists = [];
-    this.bastaoProjectiles = []; this.steelBalls = []; this.lazerBeams = []; this.chicoteWhips = [];
+    this.bastaoProjectiles = []; this.steelBalls = []; this.goldenMarks = []; this.lazerBeams = []; this.chicoteWhips = [];
     // JG: se morreu com o bastão arremessado, ele volta pra mão ao renascer
     // (sem isto o JG renasce sem bastão: não ataca, fica lento e laranja)
     if(p.characterId==='jg'){ p.hasBastao = true; p.isBastaoCharging = false; p.bastaoChargeTime = 0; }
     // Gyro: se morreu com a bola no ar, ela volta pra mão ao renascer
-    if(p.characterId==='gyro'){ p.gyroBallsInHand = GYRO_BALLS_MAX; p.gyroBallsInFlight = 0; p.isGyroCharging = false; p.gyroChargeTime = 0; }
+    if(p.characterId==='gyro'){ p.gyroBallsInHand = GYRO_BALLS_MAX; p.gyroBallsInFlight = 0; p.isGyroCharging = false; p.gyroChargeTime = 0; p.gyroExtraBall = null; }
     if(this.motosserraZone) this.motosserraZone.active = false;
     if(this.motosserraSideZones) for(const z of this.motosserraSideZones) z.active=false;
     p.motosserraActive = false;
@@ -24026,6 +25133,169 @@ class Game {
       for(let k=0;k<3;k++) this.particles.push(new Particle(x+randRange(-4,4), y+randRange(-4,4), randRange(-0.6,0.6), randRange(-1.4,-0.3), 340, '#ff6a00', 2));
     }
     for(let k=0;k<6;k++) this.particles.push(new Particle(end.x, end.y, randRange(-1.2,1.2), randRange(-1.2,0.2), 360, '#ffcc00', 3));
+  }
+
+  // ===== ASPECTO "GATO ANTIVÍRUS" (aspecto do Gato) =====
+  // Garante um gato companheiro (caça automática) mesmo sem a passiva especial.
+  updateAspectGato(){
+    const p = this.player;
+    if(!p) return;
+    const hasAspectGato = !!(p.weapon && p.weapon._aspectGato);
+    const wantCats = (p.hasGatoAntivirus ? 1 : 0) + (hasAspectGato ? 1 : 0);
+    if(!this.gatoAntivirus) this.gatoAntivirus=[];
+    if(this.gatoAntivirus.length < wantCats){
+      // invoca gato perto do jogador (sem colidir parede)
+      for(let n=this.gatoAntivirus.length; n<wantCats; n++){
+        const isAspectCat = !p.hasGatoAntivirus;
+        let sx=p.x + randRange(-28,28), sy=p.y + randRange(-28,28), tries=0;
+        const wallsG=this.currentRoom?this.currentRoom.walls:[];
+        while(tries<12){
+          let onWall=false;
+          for(const w of wallsG) if(rectCollide(sx-13,sy-13,26,26,w.x,w.y,w.w,w.h)) {onWall=true; break;}
+          if(!onWall) break;
+          sx=p.x + randRange(-40,40); sy=p.y + randRange(-40,40); tries++;
+        }
+        sx=clamp(sx, WALL_THICK+20, CANVAS_W-WALL_THICK-20);
+        sy=clamp(sy, WALL_THICK+20, CANVAS_H-WALL_THICK-20);
+        const cat=new GatoAntivirus(sx,sy,p);
+        if(isAspectCat) cat.damage = GATO_ANTIVIRUS_DAMAGE * UPGRADE_VALUES.ASPECT_GATO_DAMAGE_FACTOR;
+        this.gatoAntivirus.push(cat);
+        for(let k=0;k<16;k++){ const ang=Math.random()*Math.PI*2; this.particles.push(new Particle(sx,sy, Math.cos(ang)*randRange(1.4,3.4), Math.sin(ang)*randRange(1.4,3.4), 420, '#3b82f6', 2.2)); }
+        for(let k=0;k<6;k++) this.particles.push(new Particle(sx,sy, randRange(-1,1), randRange(-1,0.6), 300, '#ffffff', 1.6));
+        if(this.showToast) this.showToast(isAspectCat ? '🐱 GATO ANTIVÍRUS (aspecto)! Caça automática.' : '🐱 GATO ANTIVÍRUS passivo ativo! Caça automática.', 1700);
+      }
+    } else if(this.gatoAntivirus.length > wantCats){
+      // Remove gatos excedentes (ex: BORZUK tirou o aspecto duplicado ou trocou de arma)
+      const removed = this.gatoAntivirus.splice(wantCats);
+      for(const cat of removed){
+        for(let k=0;k<10;k++) this.particles.push(new Particle(cat.x,cat.y, randRange(-1.4,1.4), randRange(-1.2,0.6), 280, '#3b82f6', 1.8));
+      }
+    }
+  }
+  // ===== ASPECTO "ÓRBITA DE IO-IO" (aspecto do JL) =====
+  // Garante um io-io sempre orbitando o jogador enquanto o aspecto estiver equipado.
+  updateAspectIoiOrbit(){
+    const p = this.player;
+    const temAspecto = !!(p && p.weapon && p.weapon._aspectIoi);
+    if(!temAspecto){
+      // perdeu o aspecto (trocou de arma): remove o io-io permanente
+      const old = this._aspectIoiOrbit;
+      if(old && this.ioiOrbits){
+        const i = this.ioiOrbits.indexOf(old);
+        if(i>=0) this.ioiOrbits.splice(i,1);
+        for(let k=0;k<8;k++) this.particles.push(new Particle(old.x, old.y, randRange(-1.2,1.2), randRange(-1.2,0.6), 240, '#e53935', 1.6));
+      }
+      this._aspectIoiOrbit = null;
+      return;
+    }
+    if(!this.ioiOrbits) this.ioiOrbits = [];
+    let oi = this._aspectIoiOrbit;
+    if(!oi || oi.dead || this.ioiOrbits.indexOf(oi)===-1){
+      oi = new IoiOrbit(p, Math.random()*Math.PI*2);
+      oi.damage = UPGRADE_VALUES.ASPECT_IOI_DAMAGE;
+      oi.radius = UPGRADE_VALUES.ASPECT_IOI_RADIUS;
+      oi.life = 1e9; oi.maxLife = 1e9;
+      this.ioiOrbits.push(oi);
+      this._aspectIoiOrbit = oi;
+      for(let k=0;k<10;k++){ const ang=Math.random()*Math.PI*2; this.particles.push(new Particle(p.x, p.y, Math.cos(ang)*randRange(1.2,3), Math.sin(ang)*randRange(1.2,3), 300, '#e53935', 2)); }
+      if(this.showToast) this.showToast('🌀 Io-io em órbita!', 1400);
+    }
+  }
+  // ===== ASPECTO "GARRA DO INDIANA" (aspecto do Chicote) =====
+  // O projétil que crava na parede explode no ponto da âncora: dano em área + atordoamento.
+  spawnAspectAnchorBlast(x, y){
+    const room = this.currentRoom;
+    if(!room) return;
+    const R = UPGRADE_VALUES.ASPECT_GARRA_RADIUS;
+    const D = UPGRADE_VALUES.ASPECT_GARRA_DAMAGE;
+    const S = UPGRADE_VALUES.ASPECT_GARRA_STUN;
+    if(room.explosions) room.explosions.push({x, y, radius: 14, life: 380, max: 380, isBazuca:true, radiusTarget: R});
+    for(let k=0;k<22;k++){
+      const ang = Math.random()*Math.PI*2, sp = randRange(2.2,6);
+      this.particles.push(new Particle(x, y, Math.cos(ang)*sp, Math.sin(ang)*sp, randRange(260,460), ['#ff8c42','#ffcc00','#ff3b30'][randInt(0,2)], randInt(2,4)));
+    }
+    for(let k=0;k<8;k++) this.particles.push(new Particle(x, y, randRange(-1.4,1.4), randRange(-1.4,0.5), 320, 'rgba(255,255,255,0.85)', 2));
+    for(const e of room.enemies){
+      if(e.dead) continue;
+      if(e.type==='stair_boss'){
+        for(const hand of e.getHands()){
+          if(hand.dead || hand.invulnerable) continue;
+          if(dist(x, y, hand.x, hand.y) < R){
+            hand.takeDamage(D);
+            hand.hitFlash = 110;
+            if(hand.stunTimer!==undefined) hand.stunTimer = Math.max(hand.stunTimer||0, S);
+          }
+        }
+        continue;
+      }
+      const d = dist(x, y, e.x, e.y);
+      if(d < R){
+        const falloff = 1 - (d/R)*0.5;
+        e.takeDamage(D*falloff);
+        e.hitFlash = 110;
+        const ang = Math.atan2(e.y-y, e.x-x) || Math.random()*Math.PI*2;
+        e.x += Math.cos(ang)*(6 + falloff*10);
+        e.y += Math.sin(ang)*(6 + falloff*10);
+        if(e.stunTimer!==undefined && e.type!=='miniboss') e.stunTimer = Math.max(e.stunTimer||0, S);
+        this.keepEnemyInsideRoom(e, room);
+      }
+    }
+    this.shake = Math.max(this.shake, 58);
+  }
+  // ===== ASPECTO "ONDA DE RETORNO" (aspecto do Bastão) =====
+  // Quando o projétil volta para a mão, solta uma onda radial: dano + empurrão + atordoamento.
+  spawnAspectReturnWave(x, y){
+    const room = this.currentRoom;
+    if(!room) return;
+    const R = UPGRADE_VALUES.ASPECT_RETURN_WAVE_RADIUS;
+    const D = UPGRADE_VALUES.ASPECT_RETURN_WAVE_DAMAGE;
+    const S = UPGRADE_VALUES.ASPECT_RETURN_WAVE_STUN;
+    const P = UPGRADE_VALUES.ASPECT_RETURN_WAVE_PUSH;
+    if(room.explosions) room.explosions.push({x, y, radius: 14, life: 420, max: 420, isBastaoWave:true});
+    for(let k=0;k<16;k++){
+      const ang = Math.random()*Math.PI*2, sp = randRange(1.6,4.4);
+      this.particles.push(new Particle(x, y, Math.cos(ang)*sp, Math.sin(ang)*sp, randRange(220,380), ['#facc15','#fff3c4','#ffffff'][randInt(0,2)], randInt(1.8,3)));
+    }
+    for(const e of room.enemies){
+      if(e.dead) continue;
+      if(e.type==='stair_boss'){
+        for(const hand of e.getHands()){
+          if(hand.dead || hand.invulnerable) continue;
+          if(dist(x, y, hand.x, hand.y) < R){
+            hand.takeDamage(D);
+            hand.hitFlash = 110;
+            if(hand.stunTimer!==undefined) hand.stunTimer = Math.max(hand.stunTimer||0, S);
+          }
+        }
+        continue;
+      }
+      const d = dist(x, y, e.x, e.y);
+      if(d < R){
+        const falloff = 1 - (d/R)*0.5;
+        e.takeDamage(D*falloff);
+        e.hitFlash = 110;
+        e.stunVisual = true;
+        const ang = Math.atan2(e.y-y, e.x-x) || Math.random()*Math.PI*2;
+        e.x += Math.cos(ang)*(P*falloff);
+        e.y += Math.sin(ang)*(P*falloff);
+        if(e.stunTimer!==undefined && e.type!=='miniboss') e.stunTimer = Math.max(e.stunTimer||0, S);
+        this.keepEnemyInsideRoom(e, room);
+      }
+    }
+    this.shake = Math.max(this.shake, 34);
+  }
+  // evita que o empurrão do jogador/onda jogue o inimigo para fora da sala ou dentro da parede
+  keepEnemyInsideRoom(e, room){
+    if(!e || !room) return;
+    const halfW = (e.w||24)/2, halfH = (e.h||24)/2;
+    for(const w of room.walls){
+      if(rectCollide(e.x-halfW, e.y-halfH, e.w||24, e.h||24, w.x, w.y, w.w, w.h)){
+        e.x -= Math.sign(e.x - (w.x + w.w/2) || 1) * 2;
+        e.y -= Math.sign(e.y - (w.y + w.h/2) || 1) * 2;
+      }
+    }
+    e.x = clamp(e.x, WALL_THICK + halfW, CANVAS_W - WALL_THICK - halfW);
+    e.y = clamp(e.y, WALL_THICK + halfH, CANVAS_H - WALL_THICK - halfH);
   }
 
   // encontra arma no chão próxima dentro do alcance de troca
@@ -24677,35 +25947,8 @@ class Game {
     }
     // === GATO ANTIVÍRUS AZUL (passiva normal) - companheiro persistente ===
     // Passiva: ao coletar GatoAntivirusPickup, hasGatoAntivirus=true e gato fica para sempre (não é especial, não usa E)
-    if(this.player.hasGatoAntivirus){
-      if(!this.gatoAntivirus || this.gatoAntivirus.length===0){
-        // invoca gato perto do jogador (sem colidir parede)
-        let sx=this.player.x + randRange(-28,28), sy=this.player.y + randRange(-28,28), tries=0;
-        const wallsG=this.currentRoom?this.currentRoom.walls:[];
-        while(tries<12){
-          let onWall=false;
-          for(const w of wallsG) if(rectCollide(sx-13,sy-13,26,26,w.x,w.y,w.w,w.h)) {onWall=true; break;}
-          if(!onWall) break;
-          sx=this.player.x + randRange(-40,40); sy=this.player.y + randRange(-40,40); tries++;
-        }
-        sx=clamp(sx, WALL_THICK+20, CANVAS_W-WALL_THICK-20);
-        sy=clamp(sy, WALL_THICK+20, CANVAS_H-WALL_THICK-20);
-        const cat=new GatoAntivirus(sx,sy,this.player);
-        if(!this.gatoAntivirus) this.gatoAntivirus=[];
-        this.gatoAntivirus.push(cat);
-        for(let k=0;k<16;k++){ const ang=Math.random()*Math.PI*2; this.particles.push(new Particle(sx,sy, Math.cos(ang)*randRange(1.4,3.4), Math.sin(ang)*randRange(1.4,3.4), 420, '#3b82f6', 2.2)); }
-        for(let k=0;k<6;k++) this.particles.push(new Particle(sx,sy, randRange(-1,1), randRange(-1,0.6), 300, '#ffffff', 1.6));
-        if(this.showToast) this.showToast('🐱 GATO ANTIVÍRUS passivo ativo! Caça automática.', 1700);
-      }
-    } else {
-      // Se perdeu a passiva (ex: novo jogo) mas gato existe -> remove com efeito
-      if(this.gatoAntivirus && this.gatoAntivirus.length>0){
-        for(const cat of this.gatoAntivirus){
-          for(let k=0;k<10;k++) this.particles.push(new Particle(cat.x,cat.y, randRange(-1.4,1.4), randRange(-1.2,0.6), 280, '#3b82f6', 1.8));
-        }
-        this.gatoAntivirus=[];
-      }
-    }
+    // Aspecto "Gato Antivírus" (aspecto do Gato): garante um gato companheiro mesmo sem a passiva.
+    this.updateAspectGato();
     // Atualiza gatos ativos (IA: detectar -> ir -> atacar+stun -> voltar -> 2s sem atacar)
     for(let i=(this.gatoAntivirus||[]).length-1;i>=0;i--){
       const cat=this.gatoAntivirus[i];
@@ -24714,6 +25957,8 @@ class Game {
     }
     // Oli - peças de xadrez (Torre/Bispo/Rainha/Rei) - cada uma com mecânica única, reconhece Oli como dono
     // IO-IO (passivo do JL) - io-ios orbitais: giram em volta do jogador causando dano por contato
+    // ASPECTO "ÓRBITA DE IO-IO" (aspecto do JL): mantém um io-io permanente orbitando o jogador
+    this.updateAspectIoiOrbit();
     for(let i=this.ioiOrbits.length-1;i>=0;i--){
       const oi=this.ioiOrbits[i];
       const alive = oi.update(dt, this.currentRoom.enemies, walls, this.particles);
@@ -25058,18 +26303,30 @@ class Game {
       const gyroThrow=()=>{
         const progBefore=this.player.getGyroChargeProgress();
         const result=this.player.releaseGyroCharge();
-        if(result instanceof SteelBallProjectile){
+        const shots=[];
+        if(result instanceof SteelBallProjectile) shots.push(result);
+        if(this.player.gyroExtraBall instanceof SteelBallProjectile) shots.push(this.player.gyroExtraBall);
+        this.player.gyroExtraBall=null;
+        if(shots.length){
           if(!this.steelBalls) this.steelBalls=[];
-          this.steelBalls.push(result);
           const tier=this.player.getGyroBallTier(progBefore);
           const isMax=progBefore>=0.99;
-          for(let i=0;i<8;i++) this.particles.push(new Particle(this.player.x+result.dirX*6, this.player.y+result.dirY*6, result.dirX*randRange(1.4,3)+randRange(-0.6,0.6), result.dirY*randRange(1.4,3)+randRange(-0.6,0.6), 220, '#cbd5e1',2));
-          for(let k=0;k<6;k++) this.particles.push(new Particle(this.player.x, this.player.y, randRange(-1.4,1.4), randRange(-1.4,0.4), 220, '#ffffff',2));
+          const golden=!!result.golden;
+          const shotCol=golden?'#fbbf24':'#cbd5e1';
+          for(const shot of shots){
+            this.steelBalls.push(shot);
+            for(let i=0;i<8;i++) this.particles.push(new Particle(this.player.x+shot.dirX*6, this.player.y+shot.dirY*6, shot.dirX*randRange(1.4,3)+randRange(-0.6,0.6), shot.dirY*randRange(1.4,3)+randRange(-0.6,0.6), 220, shotCol,2));
+          }
+          for(let k=0;k<6;k++) this.particles.push(new Particle(this.player.x, this.player.y, randRange(-1.4,1.4), randRange(-1.4,0.4), 220, golden?'#fef3c7':'#ffffff',2));
           this.shake=isMax?92:72;
           const tierName=['toque','carga 1','carga 2','CARGA MÁX.'][tier] || 'toque';
-          this.showToast(result.isOrbiting
-            ? `🟢 SEGUNDA BOLA! Orbita o Gyro (${result.damage.toFixed(1)} dano)`
-            : `🟢 BOLA DE AÇO ARREMESSADA! ${tierName} (${result.damage.toFixed(1)} dano)`, 1100);
+          if(golden){
+            this.showToast(`✦ GIRO ÁUREO! ${shots.length} broca${shots.length>1?'s':''} dourada${shots.length>1?'s':''}! ${tierName} (${result.damage.toFixed(1)} dano)`, 1200);
+          } else {
+            this.showToast(result.isOrbiting
+              ? `🟢 SEGUNDA BOLA! Orbita o Gyro (${result.damage.toFixed(1)} dano)`
+              : `🟢 BOLA DE AÇO ARREMESSADA! ${tierName} (${result.damage.toFixed(1)} dano)`, 1100);
+          }
         }
       };
       if(shootVec){
@@ -25418,7 +26675,29 @@ class Game {
     const enemyNewBullets=[];
     // Nota: enemy bullets serão adicionadas via Room.update -> enemyBulletsOut, mas também precisamos tratar bullets já existentes como enemy
     for(const b of this.bullets){
-      b.update(dt, walls);
+      b.update(dt, walls, this.player);
+      // ASPECTO "PRESA NA PAREDE": o projétil cravou -> puxa o jogador até ele
+      if(b.anchored){
+        b.anchored = false;
+        // ASPECTO "GARRA DO INDIANA" (aspecto do Chicote): a âncora explode ao cravar
+        if(this.player && this.player.weapon && this.player.weapon._aspectGarra){
+          this.spawnAspectAnchorBlast(b.anchorX, b.anchorY);
+        }
+        if(this.player && !this.player.aspectPull && this.player.startAspectPull(b.anchorX, b.anchorY)){
+          this.shake = Math.max(this.shake, 22);
+          for(let k=0;k<10;k++) globalParticles.push(new Particle(b.anchorX, b.anchorY, randRange(-1.6,1.6), randRange(-1.4,0.6), 260, 'rgba(255,205,140,0.9)', 1.8));
+          this.showToast('🧲 Âncora na parede!', 900);
+        }
+      }
+      // ASPECTO "RETORNO À MÃO": o projétil voltou -> devolve parte da recarga
+      if(b.returnedToHand){
+        b.returnedToHand = false;
+        if(this.player) this.player.onAspectBulletReturned();
+        // ASPECTO "ONDA DE RETORNO" (aspecto do Bastão): a volta solta uma onda
+        if(this.player && this.player.weapon && this.player.weapon._aspectReturnWave){
+          this.spawnAspectReturnWave(this.player.x, this.player.y);
+        }
+      }
     }
     // CHICOTE - chicotes ativos (grapple parede + vento)
     for(let i=this.chicoteWhips.length-1;i>=0;i--){
@@ -25442,7 +26721,8 @@ class Game {
     if(this.chicoteWhips.length===0 && this.player.chicoteWhipRef) this.player.chicoteWhipRef=null;
 
     // ===== ESCUDO DO DILLIAN - Dream Shield orbitante =====
-    if(this.player.hasDillianShield){
+    // (o aspecto "Guardião de Dillian" reutiliza o mesmo escudo)
+    if(this.player.hasOrbitalShield()){
       const shieldPos = this.player.getDillianShieldPos();
       // Bloqueia projéteis inimigos (defende)
       for(let i=this.bullets.length-1;i>=0;i--){
@@ -25497,6 +26777,44 @@ class Game {
             const ang=Math.atan2(e.y - shieldPos.y, e.x - shieldPos.x);
             e.x+=Math.cos(ang)*5; e.y+=Math.sin(ang)*5;
             if(died) for(let k=0;k<8;k++){ const ang2=Math.random()*Math.PI*2; this.particles.push(new Particle(e.x,e.y, Math.cos(ang2)*randRange(1,2.5), Math.sin(ang2)*randRange(1,2.5),260,'#cfe0ff',2)); }
+          }
+        }
+      }
+    }
+
+    // ===== MACHADO PARA CHICARAS - dano orbital durante o dash =====
+    if(this.player.hasAxeDash && this.player.isDashing()){
+      if(!this.player.axeDashHitTimers) this.player.axeDashHitTimers = new Map();
+      const step = AXE_DASH_SPEED * Math.min(dt, 40);
+      const hitTarget = (target, tx, ty, hx, hy, radius) => {
+        if(target.dead || target.invulnerable) return;
+        const t = this.player.axeDashHitTimers.get(target) || 0;
+        if(t > 0) return;
+        if(dist(hx, hy, tx, ty) > radius) return;
+        const died = target.takeDamage(AXE_DASH_DAMAGE);
+        this.player.axeDashHitTimers.set(target, AXE_DASH_COOLDOWN);
+        target.hitFlash = 110;
+        this.shake = Math.max(this.shake, 22);
+        for(let k=0;k<5;k++) this.particles.push(new Particle(tx, ty, randRange(-1.4,1.4), randRange(-1.4,0.6), 220, '#fcd34d', 1.8));
+        if(died){ for(let k=0;k<8;k++){ const ang=Math.random()*Math.PI*2; this.particles.push(new Particle(tx, ty, Math.cos(ang)*randRange(1,2.6), Math.sin(ang)*randRange(1,2.6), 280, '#fcd34d', 2)); } }
+      };
+      for(const ax of this.player.getAxeDashPositions()){
+        for(let s=0;s<=4;s++){
+          const a = ax.ang - step*s/4;
+          const hx = this.player.x + Math.cos(a)*AXE_DASH_RADIUS;
+          const hy = this.player.y + Math.sin(a)*AXE_DASH_RADIUS;
+          for(const e of this.currentRoom.enemies){
+            if(e.dead) continue;
+            if(e.type==='hacker' && !e.battleStarted) continue;
+            if(e.type==='stair_boss'){
+              for(const hand of e.getHands()){
+                if(hand.dead || hand.invulnerable) continue;
+                hitTarget(hand, hand.x, hand.y, hx, hy, AXE_DASH_SIZE*0.7 + hand.w*0.42);
+              }
+              if(e.canDamageHead()) hitTarget(e, e.x, e.y, hx, hy, AXE_DASH_SIZE*0.7 + e.w*0.42);
+              continue;
+            }
+            hitTarget(e, e.x, e.y, hx, hy, AXE_DASH_SIZE*0.7 + Math.max(e.w,e.h)*0.42);
           }
         }
       }
@@ -25901,6 +27219,10 @@ class Game {
       for(let i=this.steelBalls.length-1;i>=0;i--){
         const sb=this.steelBalls[i];
         const alive=sb.update(dt, this.player, this.currentRoom.walls, this.particles);
+        if(sb.pendingExplosion){
+          this.detonateGiroAureo(sb);
+          sb.pendingExplosion=false;
+        }
         // colisão com inimigos (bola de aço causa dano ao encostar)
         for(const e of this.currentRoom.enemies){
           if(e.dead) continue;
@@ -25919,13 +27241,15 @@ class Game {
             const died=target.takeDamage(sb.damage);
             sb.hitEnemies.add(e);
             sb.hitsLeft--;
-            for(let k=0;k<6;k++) this.particles.push(new Particle(target.x,target.y, randRange(-1.5,1.5), randRange(-1.5,0.5), 180, '#cbd5e1', 2));
+            const hitCol=sb.golden?'#fbbf24':'#cbd5e1';
+            for(let k=0;k<(sb.golden?9:6);k++) this.particles.push(new Particle(target.x,target.y, randRange(-1.5,1.5), randRange(-1.5,0.5), 180, hitCol, 2));
             const ang=Math.atan2(target.y - sb.y, target.x - sb.x);
             target.x+=Math.cos(ang)*16; target.y+=Math.sin(ang)*16;
             target.hitFlash=Math.max(target.hitFlash||0, 160);
             if(target.stunTimer!==undefined) target.stunTimer=Math.max(target.stunTimer||0, 180);
+            if(sb.golden && !died) this.applyGoldenMark(target, sb);
             if(died){
-              for(let k=0;k<10;k++){ const ang2=Math.random()*Math.PI*2; this.particles.push(new Particle(target.x,target.y, Math.cos(ang2)*randRange(1.4,3), Math.sin(ang2)*randRange(1.2,3), 280, '#cbd5e1', 2)); }
+              for(let k=0;k<10;k++){ const ang2=Math.random()*Math.PI*2; this.particles.push(new Particle(target.x,target.y, Math.cos(ang2)*randRange(1.4,3), Math.sin(ang2)*randRange(1.2,3), 280, hitCol, 2)); }
             }
             // bola com perfuração avança sem morrer; sem perfuração continua voando (ricochete)
           }
@@ -25955,11 +27279,36 @@ class Game {
           // bola voltou pra mão do Gyro
           if(this.player.characterId==='gyro'){
             this.player.returnGyroBall();
-            this.showToast('🟢 Bola de aço retornou!', 900);
-            for(let k=0;k<8;k++) this.particles.push(new Particle(this.player.x,this.player.y, randRange(-1.2,1.2), randRange(-1.2,0.4), 200, '#cbd5e1', 1.8));
+            this.showToast(sb.golden?'✦ Broca dourada retornou!':'🟢 Bola de aço retornou!', 900);
+            const retCol=sb.golden?'#fbbf24':'#cbd5e1';
+            for(let k=0;k<8;k++) this.particles.push(new Particle(this.player.x,this.player.y, randRange(-1.2,1.2), randRange(-1.2,0.4), 200, retCol, 1.8));
           }
           this.steelBalls.splice(i,1);
         }
+      }
+    }
+
+    // ===== GYRO - MARCAS DE GIRO (Giro Áureo) =====
+    if(this.goldenMarks && this.goldenMarks.length){
+      for(let i=this.goldenMarks.length-1;i>=0;i--){
+        const m=this.goldenMarks[i];
+        const t=m.target;
+        if(!t || t.dead){ this.goldenMarks.splice(i,1); continue; }
+        m.remaining-=dt;
+        m.tickTimer-=dt;
+        let guard=0;
+        while(m.tickTimer<=0 && guard<8){
+          guard++;
+          m.tickTimer += m.tickMs;
+          if(t.dead || t.invulnerable) continue;
+          const died=t.takeDamage(m.damage);
+          t.hitFlash=Math.max(t.hitFlash||0, 90);
+          if(Math.random()<0.5){
+            this.particles.push(new Particle(t.x+randRange(-7,7), t.y+randRange(-7,7), randRange(-0.6,0.6), randRange(-1.0,-0.2), 160, '#fbbf24', 1.6));
+          }
+          if(died) break;
+        }
+        if(t.dead || m.remaining<=0) this.goldenMarks.splice(i,1);
       }
     }
 
@@ -26147,6 +27496,75 @@ class Game {
     }catch(e){ console.error('Game update error', e); }
   }
 
+  // Giro Áureo: marca de giro aplicada por uma broca dourada
+  applyGoldenMark(target, sb){
+    if(!target || target.dead) return;
+    if(!this.goldenMarks) this.goldenMarks=[];
+    const dmg = (sb.damage||0) * GIRO_AUREO.tickPct;
+    const dur = sb.markMs || GIRO_AUREO.markMs;
+    let mark = this.goldenMarks.find(m=>m.target===target);
+    if(!mark){
+      mark = {
+        target: target,
+        damage: dmg,
+        remaining: dur,
+        total: dur,
+        tickTimer: GIRO_AUREO.tickMs,
+        tickMs: GIRO_AUREO.tickMs
+      };
+      this.goldenMarks.push(mark);
+    } else {
+      mark.damage = Math.max(mark.damage, dmg);
+      mark.remaining = Math.max(mark.remaining, dur);
+      mark.total = Math.max(mark.total, dur);
+    }
+    for(let k=0;k<5;k++){
+      this.particles.push(new Particle(target.x+randRange(-6,6), target.y+randRange(-6,6), randRange(-0.8,0.8), randRange(-1.1,-0.2), 200, k%2?'#fbbf24':'#fef3c7', 1.7));
+    }
+  }
+
+  // Giro Áureo: explosão da broca dourada ao fim do alcance/parede
+  detonateGiroAureo(sb){
+    const room=this.currentRoom;
+    if(!room || !room.enemies) return;
+    const radius = sb.explosionRadius || GIRO_AUREO.explosionRadius;
+    const dmg = sb.explosionDamage || ((sb.damage||0) * GIRO_AUREO.explosionPct);
+    const hitSet = new Set();
+    const hitTarget = (t)=>{
+      if(!t || t.dead || hitSet.has(t)) return;
+      hitSet.add(t);
+      if(t.invulnerable) return;
+      const died = t.takeDamage(dmg);
+      t.hitFlash = Math.max(t.hitFlash||0, 160);
+      if(Math.random()<0.5){
+        this.particles.push(new Particle(t.x+randRange(-8,8), t.y+randRange(-8,8), randRange(-1.2,1.2), randRange(-1.4,-0.3), 220, '#fbbf24', 2));
+      }
+      if(died){
+        for(let k=0;k<10;k++){
+          const ang=Math.random()*Math.PI*2;
+          this.particles.push(new Particle(t.x,t.y, Math.cos(ang)*randRange(1.4,3), Math.sin(ang)*randRange(1.2,3), 280, k%2?'#fbbf24':'#fef3c7', 2));
+        }
+      }
+    };
+    for(const e of room.enemies){
+      if(e.dead) continue;
+      if(e.type==='stair_boss'){
+        if(!e.leftHand.dead && dist(sb.x,sb.y,e.leftHand.x,e.leftHand.y) <= radius + Math.max(e.leftHand.w,e.leftHand.h)/2) hitTarget(e.leftHand);
+        if(!e.rightHand.dead && dist(sb.x,sb.y,e.rightHand.x,e.rightHand.y) <= radius + Math.max(e.rightHand.w,e.rightHand.h)/2) hitTarget(e.rightHand);
+        if(e.canDamageHead() && dist(sb.x,sb.y,e.x,e.y) <= radius + Math.max(e.w,e.h)/2) hitTarget(e);
+      } else {
+        if(dist(sb.x,sb.y,e.x,e.y) <= radius + Math.max(e.w,e.h)/2) hitTarget(e);
+      }
+    }
+    if(room.explosions) room.explosions.push({x:sb.x, y:sb.y, radius:12, life:420, max:420, isGiroAureo:true, radiusTarget:radius});
+    this.shake=Math.max(this.shake||0, 70);
+    for(let k=0;k<22;k++){
+      const ang=Math.random()*Math.PI*2;
+      const sp=randRange(1.6,4.4);
+      this.particles.push(new Particle(sb.x,sb.y, Math.cos(ang)*sp, Math.sin(ang)*sp, randRange(260,480), k%2?'#fbbf24':'#fef3c7', randRange(1.8,3)));
+    }
+  }
+
   draw(){
     const ctx=this.ctx;
     let _saved=false;
@@ -26157,6 +27575,25 @@ class Game {
     try{ ctx.fillStyle=theme.bg; ctx.fillRect(0,0,CANVAS_W,CANVAS_H); }catch(e){}
     if((this.state==='PLAYING' || this.state==='PAUSED') && this.currentRoom && this.player){
       try{ this.currentRoom.draw(ctx, true, this); }catch(e){ console.error('Room draw error', e); try{ ctx.fillStyle=theme.bg; ctx.fillRect(0,0,CANVAS_W,CANVAS_H); }catch(_){} }
+      // Giro Áureo: anel de marca de giro nos inimigos marcados
+      try{
+        for(const m of (this.goldenMarks||[])){
+          const t=m.target;
+          if(!t || t.dead) continue;
+          const p=clamp(m.remaining/(m.total||GIRO_AUREO.markMs),0,1);
+          const base=(t.w?Math.max(t.w,t.h):16)*0.55;
+          const rr=base+4+Math.sin(Date.now()*0.02)*2;
+          ctx.save();
+          ctx.strokeStyle=`rgba(251,191,36,${0.35+p*0.45})`;
+          ctx.lineWidth=1.8;
+          ctx.setLineDash([4,3]);
+          ctx.beginPath(); ctx.arc(t.x,t.y,rr,0,Math.PI*2); ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle=`rgba(254,243,199,${0.08+p*0.10})`;
+          ctx.beginPath(); ctx.arc(t.x,t.y,rr,0,Math.PI*2); ctx.fill();
+          ctx.restore();
+        }
+      }catch(e){}
       try{ for(const b of this.bullets) b.draw(ctx); }catch(e){ console.error('Bullet draw error', e); }
       try{ for(const whip of this.chicoteWhips) whip.draw(ctx, this.player); }catch(e){ console.error('Chicote draw error', e); }
       try{ for(const lb of (this.lazerBeams||[])) lb.draw(ctx); }catch(e){ console.error('LazerBeam draw error', e); }
@@ -26381,14 +27818,19 @@ class Game {
                strong: prog>=0.99, strongColor:'#b8fffb', ticks:true };
     }
     if(wn==='BOLAS'){
+      const golden = !!p.goldenSpin;
       if(p.isGyroCharging){
         const prog = p.getGyroChargeProgress();
+        if(golden){
+          return { pct: prog, color: prog>=0.99 ? '#fffbeb' : prog>0.5 ? '#fbbf24' : '#f59e0b',
+                   label: prog>=0.99 ? 'ÁUREO!' : 'áureo', strong: prog>=0.99, strongColor:'#fbbf24' };
+        }
         return { pct: prog, color: prog>=0.99 ? '#ffffff' : prog>0.5 ? '#e2e8f0' : '#94a3b8',
                  label: prog>=0.99 ? 'PRONTO!' : 'carga', strong: prog>=0.99, strongColor:'#e2e8f0' };
       }
       const balls = p.gyroBallsInHand||0;
-      return { pct: balls>0 ? 1 : 0.08, color: balls>0 ? '#cbd5e1' : '#475569',
-               label: balls>0 ? `${balls} bola${balls>1?'s':''}` : 'sem bolas' };
+      return { pct: balls>0 ? 1 : 0.08, color: balls>0 ? (golden?'#fbbf24':'#cbd5e1') : '#475569',
+               label: balls>0 ? `${balls} bola${balls>1?'s':''}${golden?' ✦':''}` : 'sem bolas' };
     }
     if(wn==='MOTOSSERRA'){
       const pct = p.getMotosserraChargePct();
@@ -26464,6 +27906,7 @@ class Game {
     if(p._hasSwiftBoots) extras.push('💨');
     if(p.hasNoclip) extras.push('◈');
     if(p.hasDillianShield) extras.push('🛡');
+    if(p.hasAxeDash) extras.push('🪓');
     if(p.hasDoubleShot) extras.push('x2');
     if(p.hasGatoAntivirus) extras.push('🐱');
     if(p.hasJoestarTechnique) extras.push('✴');
@@ -26878,7 +28321,9 @@ class Game {
         const def = UPGRADE_MAP.get(uid); if(!def) continue;
         const r = RARITY[def.rarity];
         const lvl = p.upgradeLevels.get(uid) || 1, maxLv = def.maxLevel || 1;
-        const label = `${def.name}${maxLv>1?` ${lvl}/${maxLv}`:''}`;
+        // Aspectos de armas (◆) são melhorias copiadas de outra arma: marcador à parte
+        const isAspect = def.category===ASPECT_CATEGORY;
+        const label = `${isAspect?'◆ ':''}${def.name}${maxLv>1?` ${lvl}/${maxLv}`:''}`;
         const bw = ctx.measureText(label).width + 10*k;
         // inativa = vale para outra arma: esmaece mas continua listada
         const compat = def.compatible || [def.weapon];
