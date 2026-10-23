@@ -3856,6 +3856,13 @@ const GYRO_BALLS_ORBIT_TIME = 1200;     // ms orbitando o Gyro (2ª bola)
 const GYRO_BALLS_ORBIT_RADIUS = 34;     // raio da órbita dupla
 const GYRO_BALLS_ORBIT_SPEED = 0.011;   // rad/frame da órbita
 const GYRO_CHARGE_SPEED_PENALTY = 0.35; // -35% velocidade enquanto carrega
+// SOBRECARGA DOURADA - 2ª barra após a carga prateada cheia. Libera a corrente:
+// 1ª bola ancora no alcance máximo; a 2ª bate nela e a âncora persegue o alvo.
+const GYRO_GOLDEN_CHARGE_TIME = 850;    // ms extras de sobrecarga depois da carga cheia
+const GYRO_GOLDEN_FAST_MULT = 0.60;     // sobrecarga fica 40% mais rápida no Giro Áureo
+const GYRO_GOLDEN_HOLD_TIME = 9000;     // segurança: âncora retorna sozinha
+const GYRO_GOLDEN_DAMAGE_MULT = 1.45;   // dano da âncora ao acertar o alvo
+const GYRO_GOLDEN_RETURN_MULT = 1.35;   // velocidade de retorno da âncora
 // GIRO ÁUREO (especial do Gyro) - por 7s o arremesso vira broca dourada perfurante
 const GIRO_AUREO = {
   duration: 7000,
@@ -4436,6 +4443,9 @@ function applyCharacterToPlayer(player, characterId){
   player.gyroChargeDir = null;
   player.gyroChargeTier = 0;
   player.gyroMaxChargeReady = false;
+  player.gyroGoldenChargeTime = 0;
+  player.gyroGoldenReady = false;
+  player.gyroGoldenAnchor = null;
   player.goldenSpin = false;
   player.gyroExtraBall = null;
   // Reseta contaminação de outros personagens
@@ -9803,7 +9813,7 @@ class SteelBallProjectile {
     this.size=opts.size||GYRO_BALLS_SIZE;
     this.color=opts.color||'#cbd5e1';
     this.glow=opts.glow||'rgba(203,213,225,0.35)';
-    this.maxRicochet=opts.ricochet||GYRO_BALLS_RICOCHET;
+    this.maxRicochet=opts.ricochet!==undefined?opts.ricochet:GYRO_BALLS_RICOCHET;
     this.ricochetsLeft=this.maxRicochet;
     this.pierce=opts.pierce||0;
     this.hitsLeft=(opts.pierce||0)+1;       // quantos inimigos ainda podem ser atingidos
@@ -9825,6 +9835,23 @@ class SteelBallProjectile {
     this.spin=0;
     this.trail=[];
     this.life=6000; // tempo máximo antes de forçar o retorno
+    // Corrente dourada (sobrecarga): 'anchor' espera parada; 'link' conecta nela.
+    this.role=opts.role||null;
+    this.linkTarget=opts.linkTarget||null;
+    this.homingTarget=null;
+    this.holdTimer=opts.holdTimer||GYRO_GOLDEN_HOLD_TIME;
+    this.chainTriggered=false;
+    this.isGoldenAnchor=false;
+    this.isChainLink=false;
+  }
+  beginHoming(target){
+    if(!target || target.dead) return false;
+    this.mode='homing';
+    this.homingTarget=target;
+    this.hitsLeft=Math.max(1, this.hitsLeft);
+    this.chainTriggered=true;
+    this.holdTimer=1200;
+    return true;
   }
   update(dt, player, walls, particles){
     this.life-=dt;
@@ -9847,6 +9874,39 @@ class SteelBallProjectile {
       if(this.orbitTimer<=0) this.mode='return';
       if(particles && Math.random()<0.28){
         particles.push(new Particle(this.x,this.y, randRange(-0.5,0.5), randRange(-0.5,0.5), 150, 'rgba(203,213,225,0.8)', 1.5));
+      }
+      return !this.dead;
+    }
+
+    // ---- ÂNCORA: parada no alcance máximo, aguardando a 2ª bola ----
+    if(this.mode==='hold'){
+      this.holdTimer-=dt;
+      if(particles && Math.random()<0.42){
+        const a=randRange(0,Math.PI*2), r=this.size+randRange(3,9);
+        particles.push(new Particle(this.x+Math.cos(a)*r, this.y+Math.sin(a)*r, Math.cos(a)*0.35, Math.sin(a)*0.35, 220, Math.random()<0.5?'#fbbf24':'#fef3c7', 1.5));
+      }
+      if(this.holdTimer<=0) this.mode='return';
+      return !this.dead;
+    }
+
+    // ---- PERSEGUIÇÃO: a âncora atingida voa até o inimigo mais próximo ----
+    if(this.mode==='homing'){
+      this.holdTimer-=dt;
+      if(this.holdTimer<=0){ this.mode='return'; return !this.dead; }
+      const target=this.homingTarget;
+      if(!target || target.dead){ this.mode='return'; return !this.dead; }
+      let dx=target.x-this.x, dy=target.y-this.y;
+      const d=Math.hypot(dx,dy)||1;
+      this.dirX=dx/d; this.dirY=dy/d;
+      const step=this.speed*1.65;
+      if(d<=step+this.size+2){
+        this.x=target.x; this.y=target.y;
+      } else {
+        this.x+=this.dirX*step; this.y+=this.dirY*step;
+      }
+      this.traveled+=step;
+      if(particles && Math.random()<0.75){
+        particles.push(new Particle(this.x+randRange(-4,4), this.y+randRange(-4,4), randRange(-0.8,0.8), randRange(-0.8,0.8), 230, Math.random()<0.5?'#fbbf24':'#fef3c7', 1.9));
       }
       return !this.dead;
     }
@@ -9882,6 +9942,7 @@ class SteelBallProjectile {
         }
       } else {
         for(const w of walls){
+          if(this.role==='link') break; // a bola de conexão atravessa paredes até a âncora
           if(circleRectCollide(this.x,this.y,this.size+2,w.x,w.y,w.w,w.h)){
             // normal da parede (ponto mais próximo) para refletir o vetor
             const cx=clamp(this.x,w.x,w.x+w.w);
@@ -9890,6 +9951,14 @@ class SteelBallProjectile {
             const len=Math.hypot(nx,ny);
             if(len<0.0001){ nx=-this.dirX; ny=-this.dirY; }
             else { nx/=len; ny/=len; }
+            if(this.role==='anchor'){
+              this.x+=nx*(this.size+3); this.y+=ny*(this.size+3);
+              this.mode='hold';
+              if(particles){
+                for(let k=0;k<10;k++) particles.push(new Particle(this.x,this.y, randRange(-1.5,1.5), randRange(-1.5,1.5), 220, k%2?'#fbbf24':'#fef3c7', 1.9));
+              }
+              break;
+            }
             const dot=this.dirX*nx+this.dirY*ny;
             this.dirX-=2*dot*nx; this.dirY-=2*dot*ny;
             // empurra pra fora da parede
@@ -9902,7 +9971,10 @@ class SteelBallProjectile {
             break;
           }
         }
-        if(this.mode==='fly' && this.traveled>=this.maxRange){ this.mode='return'; }
+        if(this.mode==='fly' && this.traveled>=this.maxRange){
+          if(this.role==='anchor') this.mode='hold';
+          else this.mode='return';
+        }
         if(this.x<-24||this.x>CANVAS_W+24||this.y<-24||this.y>CANVAS_H+24){ this.mode='return'; }
         if(particles && Math.random()<0.30){
           particles.push(new Particle(this.x+randRange(-3,3), this.y+randRange(-3,3), randRange(-0.5,0.5), randRange(-0.5,0.5), 160, 'rgba(203,213,225,0.7)', 1.5));
@@ -9925,7 +9997,8 @@ class SteelBallProjectile {
         return false;
       }
       const n=normalize(toPx,toPy);
-      const retSpeed=this.speed*(this.golden?GIRO_AUREO.returnMult:1.2);
+      const returnMult = this.role==='anchor' ? GYRO_GOLDEN_RETURN_MULT : (this.golden?GIRO_AUREO.returnMult:1.2);
+      const retSpeed=this.speed*returnMult;
       this.x+=n.x*retSpeed; this.y+=n.y*retSpeed;
       this.dirX=n.x; this.dirY=n.y;
     }
@@ -9978,6 +10051,20 @@ class SteelBallProjectile {
       ctx.setLineDash([3,3]);
       ctx.beginPath(); ctx.arc(this.x,this.y,this.size+7,0,Math.PI*2); ctx.stroke();
       ctx.setLineDash([]);
+    }
+    if(this.mode==='hold' || this.mode==='homing'){
+      const pulse=0.5+Math.sin((this.holdTimer + this.spin*260)/90)*0.5;
+      ctx.strokeStyle=`rgba(255,217,74,${0.38+pulse*0.42})`;
+      ctx.lineWidth=1.6;
+      ctx.setLineDash([4,4]);
+      ctx.beginPath(); ctx.arc(this.x,this.y,this.size+9+pulse*3,0,Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
+      if(this.mode==='hold'){
+        const frac=clamp(this.holdTimer/GYRO_GOLDEN_HOLD_TIME,0,1);
+        ctx.strokeStyle='rgba(255,217,74,0.8)';
+        ctx.lineWidth=2;
+        ctx.beginPath(); ctx.arc(this.x,this.y,this.size+15,-Math.PI/2,-Math.PI/2+Math.PI*2*frac); ctx.stroke();
+      }
     }
   }
   getRect(){ return {x:this.x-this.size,y:this.y-this.size,w:this.size*2,h:this.size*2}; }
@@ -12200,6 +12287,9 @@ class Player {
     this.gyroChargeDir = null;
     this.gyroChargeTier = 0;
     this.gyroMaxChargeReady = false;
+    this.gyroGoldenChargeTime = 0;
+    this.gyroGoldenReady = false;
+    this.gyroGoldenAnchor = null;
     // JL - Farmar Aura (área durativa)
     this.farmarAuraActive = false;
     this.farmarAuraRadius = FARMAR_AURA_RADIUS;
@@ -13279,6 +13369,8 @@ class Player {
     this.gyroChargeDir={x:dir.x,y:dir.y};
     this.gyroChargeTier=0;
     this.gyroMaxChargeReady=false;
+    this.gyroGoldenChargeTime=0;
+    this.gyroGoldenReady=false;
     return true;
   }
   updateGyroCharge(dt, dir){
@@ -13287,7 +13379,14 @@ class Player {
     if(dir){ this.gyroChargeDir.x=dir.x; this.gyroChargeDir.y=dir.y; }
     const prog=clamp(this.gyroChargeTime/this.getGyroChargeTime(),0,1);
     this.gyroChargeTier=this.getGyroBallTier(prog);
-    if(prog>=0.99) this.gyroMaxChargeReady=true;
+    if(prog>=0.99){
+      this.gyroMaxChargeReady=true;
+      this.gyroGoldenChargeTime += dt;
+      if(this.gyroGoldenChargeTime >= this.getGyroGoldenChargeTime()) this.gyroGoldenReady=true;
+    } else {
+      this.gyroGoldenChargeTime=0;
+      this.gyroGoldenReady=false;
+    }
   }
   cancelGyroCharge(){
     this.isGyroCharging=false;
@@ -13295,6 +13394,8 @@ class Player {
     this.gyroChargeDir=null;
     this.gyroChargeTier=0;
     this.gyroMaxChargeReady=false;
+    this.gyroGoldenChargeTime=0;
+    this.gyroGoldenReady=false;
   }
   getGyroChargeTime(){
     const w=this.weapon;
@@ -13304,6 +13405,18 @@ class Player {
   getGyroChargeProgress(){
     if(!this.isGyroCharging) return 0;
     return clamp(this.gyroChargeTime/this.getGyroChargeTime(),0,1);
+  }
+  getGyroGoldenChargeTime(){
+    return GYRO_GOLDEN_CHARGE_TIME * (this.goldenSpin ? GYRO_GOLDEN_FAST_MULT : 1);
+  }
+  getGyroGoldenProgress(){
+    if(!this.isGyroCharging) return 0;
+    if(this.getGyroChargeProgress() < 0.99) return 0;
+    return clamp(this.gyroGoldenChargeTime/this.getGyroGoldenChargeTime(),0,1);
+  }
+  getGyroGoldenAnchor(){
+    const a=this.gyroGoldenAnchor;
+    return (a && !a.dead && a.mode==='hold') ? a : null;
   }
   // Direção de mira do Gyro (qualquer ângulo, inclusive diagonal).
   // Usa a direção da carga atual; sem carga, usa a última direção de mira.
@@ -13323,14 +13436,17 @@ class Player {
     const dir=this.getGyroAimVector();
     if(!dir || (!dir.x && !dir.y)) return;
     const prog=this.getGyroChargeProgress();
-    const len=42 + prog*82;
+    const goldReady=!!this.gyroGoldenReady && !this.goldenSpin;
+    const len=42 + prog*82 + (goldReady?24:0);
     const sx=this.x + dir.x*(this.w/2+6);
     const sy=this.y + dir.y*(this.h/2+6);
     const ex=sx + dir.x*len;
     const ey=sy + dir.y*len;
-    const col = this.goldenSpin
-      ? (prog>=0.99 ? 'rgba(255,251,235,0.98)' : (prog>0.5 ? 'rgba(251,191,36,0.85)' : 'rgba(245,158,11,0.6)'))
-      : (prog>=0.99 ? 'rgba(255,255,255,0.95)' : (prog>0.5 ? 'rgba(226,232,240,0.78)' : 'rgba(203,213,225,0.5)'));
+    const col = goldReady
+      ? 'rgba(255,217,74,0.98)'
+      : this.goldenSpin
+        ? (prog>=0.99 ? 'rgba(255,251,235,0.98)' : (prog>0.5 ? 'rgba(251,191,36,0.85)' : 'rgba(245,158,11,0.6)'))
+        : (prog>=0.99 ? 'rgba(255,255,255,0.95)' : (prog>0.5 ? 'rgba(226,232,240,0.78)' : 'rgba(203,213,225,0.5)'));
     ctx.save();
     ctx.strokeStyle=col;
     ctx.lineWidth=1.6;
@@ -13358,9 +13474,21 @@ class Player {
     const prog=this.getGyroChargeProgress();
     const tier=this.getGyroBallTier(prog);
     const dir=normalize(this.gyroChargeDir.x,this.gyroChargeDir.y);
+    const goldenReady=!!this.gyroGoldenReady;
+    const anchor=this.getGyroGoldenAnchor();
     this.cancelGyroCharge();
     if(this.gyroBallsInHand<=0) return null;
     const w=this.weapon || WEAPON_BOLAS;
+    this.shootCooldown = (w.cooldown||GYRO_BALLS_COOLDOWN);
+    this.lastDir.x=dir.x; this.lastDir.y=dir.y;
+    if(dir.x!==0) this.facing=dir.x>0?1:-1;
+    this.meleeAnim=140;
+    this.meleeDir=dir;
+    this.gyroExtraBall = null;
+    // Corrente dourada: a 2ª bola é lançada contra a âncora parada.
+    if(anchor) return this.createGyroChainLink(anchor, dir, w);
+    // Sobrecarga cheia: a 1ª bola voa até o alcance máximo e ancora.
+    if(goldenReady && !this.goldenSpin) return this.createGyroGoldenAnchor(dir, tier, w);
     const maxCharge = prog>=0.99;
     const golden = !!this.goldenSpin;
     // dano pela carga
@@ -13380,12 +13508,6 @@ class Player {
     const angles = twoBalls
       ? [baseAng - GIRO_AUREO.spread/2, baseAng + GIRO_AUREO.spread/2]
       : [baseAng];
-    this.shootCooldown = (w.cooldown||GYRO_BALLS_COOLDOWN);
-    this.lastDir.x=dir.x; this.lastDir.y=dir.y;
-    if(dir.x!==0) this.facing=dir.x>0?1:-1;
-    this.meleeAnim=140;
-    this.meleeDir=dir;
-    this.gyroExtraBall = null;
     const created=[];
     for(let i=0;i<angles.length;i++){
       if(this.gyroBallsInHand<=0) break;
@@ -13417,6 +13539,62 @@ class Player {
     if(!created.length) return null;
     if(created.length>1) this.gyroExtraBall = created[1];
     return created[0];
+  }
+  createGyroGoldenAnchor(dir, tier, w){
+    const dmgTable=(w.chargeDamages && w.chargeDamages.length) ? w.chargeDamages : GYRO_BALLS_DAMAGES;
+    const baseDamage=dmgTable[Math.min(tier, dmgTable.length-1)];
+    const sx=this.x + dir.x*(this.w/2+10);
+    const sy=this.y + dir.y*(this.h/2+8);
+    this.gyroBallsInHand--;
+    this.gyroBallsInFlight++;
+    const anchor=new SteelBallProjectile(sx,sy,dir.x,dir.y,{
+      speed:(w.bulletSpeed||GYRO_BALLS_SPEED)*1.05,
+      range:(w.range||GYRO_BALLS_RANGE)*1.6,
+      damage:baseDamage*GYRO_GOLDEN_DAMAGE_MULT,
+      size:(w.bulletSize||GYRO_BALLS_SIZE)*1.45,
+      color:'#fbbf24',
+      glow:'rgba(251,191,36,0.48)',
+      ricochet:0,
+      pierce:0,
+      maxCharge:true,
+      golden:true,
+      drill:false,
+      role:'anchor',
+      holdTimer:GYRO_GOLDEN_HOLD_TIME
+    });
+    anchor.hitsLeft=0;
+    anchor.life=GYRO_GOLDEN_HOLD_TIME+2000;
+    anchor.isGoldenAnchor=true;
+    this.gyroGoldenAnchor=anchor;
+    return anchor;
+  }
+  createGyroChainLink(anchor, dir, w){
+    let dx=anchor.x-this.x, dy=anchor.y-this.y;
+    let d=Math.hypot(dx,dy);
+    if(d<0.001){ dx=dir.x; dy=dir.y; d=1; }
+    const n={x:dx/d,y:dy/d};
+    const sx=this.x + n.x*(this.w/2+10);
+    const sy=this.y + n.y*(this.h/2+8);
+    this.gyroBallsInHand--;
+    this.gyroBallsInFlight++;
+    const link=new SteelBallProjectile(sx,sy,n.x,n.y,{
+      speed:Math.max((w.bulletSpeed||GYRO_BALLS_SPEED)*1.45, 16),
+      range:d+140,
+      damage:0,
+      size:(w.bulletSize||GYRO_BALLS_SIZE)*1.1,
+      color:'#fde68a',
+      glow:'rgba(251,191,36,0.55)',
+      ricochet:0,
+      pierce:0,
+      maxCharge:true,
+      golden:true,
+      drill:false,
+      role:'link',
+      linkTarget:anchor
+    });
+    link.hitsLeft=0;
+    link.isChainLink=true;
+    return link;
   }
   // Chamado quando a bola volta pra mão
   returnGyroBall(){
@@ -16718,12 +16896,27 @@ class Player {
         ctx.fillRect(bx+1+(bw-2)*0.35, by, 1, bh);
         ctx.fillRect(bx+1+(bw-2)*0.70, by, 1, bh);
         if(prog>0.85){ ctx.strokeStyle='rgba(203,213,225,0.65)'; ctx.lineWidth=1; ctx.strokeRect(bx,by,bw,bh); }
-        ctx.fillStyle='rgba(255,255,255,0.9)'; ctx.font='5px monospace'; ctx.textAlign='center';
+        const goldProg=this.getGyroGoldenProgress();
+        if(!this.goldenSpin && prog>=0.99){
+          const gy=by+bh+1, gh=2.5;
+          ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(bx,gy,bw,gh);
+          ctx.fillStyle='rgba(251,191,36,0.18)'; ctx.fillRect(bx+0.5,gy+0.5,bw-1,gh-1);
+          if(goldProg>0){
+            ctx.fillStyle=this.gyroGoldenReady?'#fbbf24':'#f59e0b';
+            ctx.fillRect(bx+0.5,gy+0.5,(bw-1)*goldProg,gh-1);
+          }
+          if(this.gyroGoldenReady && Math.floor(this.animTime/60)%2===0){
+            ctx.strokeStyle='rgba(255,217,74,0.9)'; ctx.lineWidth=1; ctx.strokeRect(bx-0.5,gy-0.5,bw+1,gh+1);
+          }
+        }
+        ctx.fillStyle=this.gyroGoldenReady&&!this.goldenSpin?'#fbbf24':'rgba(255,255,255,0.9)';
+        ctx.font='5px monospace'; ctx.textAlign='center';
         const dmgTable=(this.weapon&&this.weapon.chargeDamages&&this.weapon.chargeDamages.length)?this.weapon.chargeDamages:GYRO_BALLS_DAMAGES;
         const dmg=(dmgTable[tier]||1).toFixed(1);
-        ctx.fillText(prog>=0.99?`BOLA MÁX. ${dmg}`:`bola ${dmg}`, this.x, by-2); ctx.textAlign='left';
-        if(prog>0.6 && Math.random()<0.35){
-          ctx.fillStyle=prog>0.85?'#ffffff':'#cbd5e1';
+        const chargeLabel=this.gyroGoldenReady&&!this.goldenSpin?'COMBO DOURADO!':prog>=0.99?`BOLA MÁX. ${dmg}`:`bola ${dmg}`;
+        ctx.fillText(chargeLabel, this.x, by-2); ctx.textAlign='left';
+        if((prog>0.6 || goldProg>0) && Math.random()<0.35){
+          ctx.fillStyle=this.gyroGoldenReady?'#fbbf24':prog>0.85?'#ffffff':'#cbd5e1';
           const px=this.x + randRange(-9,9);
           const py=y + randRange(-5,2)+bob;
           ctx.fillRect(px,py,1,1);
@@ -23472,7 +23665,6 @@ class Game {
     this._chipsRevealT=0;
     this._chipsFade=1;
     this._hudMouse={x:-1,y:-1};
-    this.initMenuEnemyDemo();
 
     this.bindUI();
     this.resizeCanvas();
@@ -23660,253 +23852,6 @@ class Game {
     try{
       return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     }catch(_){ return false; }
-  }
-  initMenuEnemyDemo(){
-    this.menuEnemyCanvas = document.getElementById('menuEnemyFx');
-    if(!this.menuEnemyCanvas){ this.menuEnemyCtx = null; this.menuEnemy = null; return; }
-    this.menuEnemyCtx = this.menuEnemyCanvas.getContext('2d');
-    this.menuEnemy = {
-      enemy: null,
-      phase: 'fight',
-      timer: 0,
-      shot: null,
-      shotTimer: 280,
-      particles: [],
-      flash: 0,
-      ring: 0,
-      kills: 0,
-      tick: 0,
-      shake: 0
-    };
-    this.spawnMenuEnemy();
-    this.drawMenuEnemyDemo();
-  }
-  spawnMenuEnemy(){
-    const m = this.menuEnemy;
-    if(!m) return;
-    const enemy = new Kamikaze(244, 164);
-    enemy.w = enemy.h = 44;
-    enemy.maxHp = 3;
-    enemy.hp = 3;
-    enemy.variation = [null, 'tank', 'elite', 'brute'][m.kills % 4] || null;
-    enemy.anim = 0;
-    m.enemy = enemy;
-    m.phase = 'fight';
-    m.timer = 0;
-    m.shot = null;
-    m.shotTimer = 280;
-    m.ring = 0;
-  }
-  hitMenuEnemy(){
-    const m = this.menuEnemy;
-    const enemy = m && m.enemy;
-    if(!enemy || m.phase !== 'fight') return;
-    m.shot = null;
-    m.shotTimer = 340;
-    m.flash = 130;
-    m.shake = 5;
-    enemy.takeDamage(1);
-    const death = enemy.dead;
-    const count = death ? 30 : 9;
-    const colors = death ? ['#ff3b30','#ffd94a','#ffffff','#00d9ff'] : ['#ffffff','#8ff6ff','#ffb4a8'];
-    for(let i=0;i<count;i++){
-      m.particles.push(new Particle(
-        enemy.x + randRange(-10, 10),
-        enemy.y + randRange(-10, 10),
-        randRange(-3.4, 3.4),
-        randRange(-3.4, 1.8),
-        randRange(260, 720),
-        colors[Math.floor(Math.random() * colors.length)],
-        randRange(1.5, death ? 4.2 : 3),
-        0.94
-      ));
-    }
-    if(death){
-      m.phase = 'defeat';
-      m.timer = 1050;
-      m.ring = 0;
-      m.kills++;
-    }
-  }
-  updateMenuEnemyDemo(dt){
-    if(!this.menuEnemyCtx || !this.menuEnemyCanvas) return;
-    if(!this.menuScreen || !this.menuScreen.classList.contains('active')) return;
-    if(this.menuEnemyCanvas.offsetWidth === 0) return;
-    const m = this.menuEnemy;
-    if(!m) return;
-    if(this.prefersReducedMotion()){
-      this.drawMenuEnemyDemo();
-      return;
-    }
-    m.tick += dt;
-    m.flash = Math.max(0, m.flash - dt);
-    m.shake = Math.max(0, m.shake - dt * 0.03);
-    m.ring += dt;
-    m.particles = m.particles.filter(p => p.update(dt));
-    const enemy = m.enemy;
-    if(enemy && m.phase === 'fight'){
-      enemy.anim += dt;
-      if(enemy.hitFlash > 0) enemy.hitFlash -= dt;
-      enemy.y = 164 + Math.sin(m.tick * 0.0024) * 6;
-      m.shotTimer -= dt;
-      if(!m.shot && m.shotTimer <= 0){
-        m.shot = { x: 40, y: enemy.y + randRange(-7, 7) };
-      }
-      if(m.shot){
-        m.shot.x += dt * 0.46;
-        if(m.shot.x >= enemy.x - enemy.w * 0.5) this.hitMenuEnemy();
-      }
-    } else if(m.phase === 'defeat'){
-      m.timer -= dt;
-      if(m.timer <= 0){
-        m.phase = 'respawn';
-        m.timer = 520;
-      }
-    } else if(m.phase === 'respawn'){
-      m.timer -= dt;
-      if(m.timer <= 0) this.spawnMenuEnemy();
-    }
-    this.drawMenuEnemyDemo();
-  }
-  drawMenuEnemyDemo(){
-    const ctx = this.menuEnemyCtx;
-    const canvas = this.menuEnemyCanvas;
-    const m = this.menuEnemy;
-    if(!ctx || !canvas || !m) return;
-    const W = canvas.width;
-    const H = canvas.height;
-    ctx.clearRect(0, 0, W, H);
-    ctx.save();
-    if(m.shake > 0) ctx.translate(randRange(-m.shake, m.shake), randRange(-m.shake, m.shake));
-
-    ctx.fillStyle = 'rgba(5,7,12,0.34)';
-    ctx.fillRect(18, 18, W - 36, H - 36);
-
-    ctx.strokeStyle = 'rgba(0,217,255,0.07)';
-    ctx.lineWidth = 1;
-    for(let gx = 36; gx < W - 30; gx += 24){
-      ctx.beginPath(); ctx.moveTo(gx, 24); ctx.lineTo(gx, H - 24); ctx.stroke();
-    }
-    for(let gy = 36; gy < H - 30; gy += 24){
-      ctx.beginPath(); ctx.moveTo(24, gy); ctx.lineTo(W - 24, gy); ctx.stroke();
-    }
-
-    ctx.strokeStyle = 'rgba(0,217,255,0.28)';
-    ctx.beginPath();
-    ctx.moveTo(30, 246); ctx.lineTo(W - 30, 246);
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(255,59,48,0.16)';
-    ctx.beginPath();
-    ctx.moveTo(30, 251); ctx.lineTo(W - 30, 251);
-    ctx.stroke();
-
-    ctx.strokeStyle = 'rgba(0,217,255,0.55)';
-    ctx.lineWidth = 2;
-    const corners = [[20,20,1,1],[W-20,20,-1,1],[20,H-20,1,-1],[W-20,H-20,-1,-1]];
-    for(const [cx,cy,dx,dy] of corners){
-      ctx.beginPath();
-      ctx.moveTo(cx + dx * 18, cy);
-      ctx.lineTo(cx, cy);
-      ctx.lineTo(cx, cy + dy * 18);
-      ctx.stroke();
-    }
-
-    ctx.font = '8px "Press Start 2P", monospace';
-    ctx.textAlign = 'left';
-    ctx.fillStyle = 'rgba(143,246,255,0.72)';
-    ctx.fillText('SIMULAÇÃO // COMBATE', 34, 45);
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.fillText('TREINO AUTÔNOMO', 34, 62);
-
-    const enemy = m.enemy;
-    if(enemy && m.phase === 'fight'){
-      const scanY = 74 + ((m.tick * 0.055) % 158);
-      ctx.fillStyle = 'rgba(0,217,255,0.055)';
-      ctx.fillRect(34, scanY, W - 68, 2);
-
-      ctx.strokeStyle = 'rgba(0,217,255,0.48)';
-      ctx.lineWidth = 1;
-      const cs = 22;
-      ctx.beginPath();
-      ctx.moveTo(enemy.x - cs, enemy.y - cs + 7); ctx.lineTo(enemy.x - cs, enemy.y - cs); ctx.lineTo(enemy.x - cs + 7, enemy.y - cs);
-      ctx.moveTo(enemy.x + cs - 7, enemy.y - cs); ctx.lineTo(enemy.x + cs, enemy.y - cs); ctx.lineTo(enemy.x + cs, enemy.y - cs + 7);
-      ctx.moveTo(enemy.x - cs, enemy.y + cs - 7); ctx.lineTo(enemy.x - cs, enemy.y + cs); ctx.lineTo(enemy.x - cs + 7, enemy.y + cs);
-      ctx.moveTo(enemy.x + cs - 7, enemy.y + cs); ctx.lineTo(enemy.x + cs, enemy.y + cs); ctx.lineTo(enemy.x + cs, enemy.y + cs - 7);
-      ctx.stroke();
-
-      ctx.fillStyle = 'rgba(255,59,48,0.8)';
-      ctx.font = '7px "Press Start 2P", monospace';
-      ctx.fillText('ALVO', enemy.x - 13, enemy.y - 34);
-      ctx.fillStyle = 'rgba(0,0,0,0.65)';
-      ctx.fillRect(enemy.x - 23, enemy.y - 29, 46, 4);
-      ctx.fillStyle = '#ff3b30';
-      ctx.fillRect(enemy.x - 23, enemy.y - 29, 46 * clamp(enemy.hp / enemy.maxHp, 0, 1), 4);
-    }
-
-    const turretY = m.shot ? m.shot.y : 164;
-    ctx.save();
-    ctx.shadowColor = 'rgba(0,217,255,0.9)';
-    ctx.shadowBlur = 14;
-    ctx.fillStyle = 'rgba(0,217,255,0.16)';
-    ctx.beginPath(); ctx.arc(40, turretY, 16, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#8ff6ff';
-    ctx.fillRect(34, turretY - 7, 12, 14);
-    ctx.fillStyle = '#043142';
-    ctx.fillRect(38, turretY - 3, 4, 6);
-    ctx.restore();
-
-    if(m.shot){
-      const sx = m.shot.x, sy = m.shot.y;
-      ctx.save();
-      ctx.shadowColor = '#00d9ff';
-      ctx.shadowBlur = 16;
-      ctx.strokeStyle = 'rgba(0,217,255,0.38)';
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(sx - 28, sy); ctx.lineTo(sx, sy); ctx.stroke();
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(sx - 3, sy - 2, 7, 4);
-      ctx.restore();
-    }
-
-    if(enemy && m.phase === 'fight'){
-      ctx.save();
-      ctx.shadowColor = 'rgba(255,59,48,0.42)';
-      ctx.shadowBlur = 18;
-      enemy.draw(ctx);
-      ctx.restore();
-    }
-
-    for(const p of m.particles) p.draw(ctx);
-
-    if(m.flash > 0){
-      ctx.fillStyle = `rgba(255,255,255,${0.24 * (m.flash / 130)})`;
-      ctx.fillRect(24, 24, W - 48, H - 48);
-    }
-
-    if(m.phase === 'defeat'){
-      const p = clamp(m.ring / 420, 0, 1);
-      const e = m.enemy;
-      const ex = e ? e.x : 244;
-      const ey = e ? e.y : 164;
-      ctx.strokeStyle = `rgba(255,217,74,${1 - p})`;
-      ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(ex, ey, 12 + p * 46, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = `rgba(255,217,74,${1 - p})`;
-      ctx.font = '10px "Press Start 2P", monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText('ELIMINADO', W / 2, 226);
-      ctx.textAlign = 'left';
-    }
-
-    ctx.font = '7px "Press Start 2P", monospace';
-    ctx.fillStyle = m.phase === 'defeat' ? '#ffd94a' : 'rgba(143,246,255,0.68)';
-    const status = m.phase === 'defeat' ? 'ALVO NEUTRALIZADO' : m.phase === 'respawn' ? 'NOVO ALVO...' : 'LOOP ATIVO';
-    ctx.fillText(status, 34, 286);
-    ctx.textAlign = 'right';
-    ctx.fillStyle = 'rgba(255,255,255,0.38)';
-    ctx.fillText(`KILLS ${String(m.kills).padStart(2, '0')}`, W - 34, 286);
-    ctx.textAlign = 'left';
-    ctx.restore();
   }
   switchScreen(from, to, direction='forward'){
     if(!to || to === from) return;
@@ -24610,6 +24555,9 @@ class Game {
       this.player.gyroChargeDir=null;
       this.player.gyroChargeTier=0;
       this.player.gyroMaxChargeReady=false;
+      this.player.gyroGoldenChargeTime=0;
+      this.player.gyroGoldenReady=false;
+      this.player.gyroGoldenAnchor=null;
     }
     this.bullets=[]; this.meleeSwings=[]; this.fists=[]; this.bastaoProjectiles=[]; this.steelBalls=[]; this.goldenMarks=[]; this.lazerBeams=[]; this.chicoteWhips=[]; this.particles=[]; this.allies=[]; this.gatoAntivirus=[]; this.oliPieces=[]; this.oliPawns=[]; this.ioiOrbits=[];
     this.player.goldenSpin=false; this.player.gyroExtraBall=null;
@@ -24698,6 +24646,9 @@ class Game {
     this.bastaoProjectiles=[]; this.steelBalls=[]; this.goldenMarks=[]; this.meleeSwings=[]; this.fists=[]; this.lazerBeams=[]; this.chicoteWhips=[];
     this.particles = [];
     this.player.gyroExtraBall=null;
+    this.player.gyroGoldenAnchor=null;
+    this.player.gyroGoldenChargeTime=0;
+    this.player.gyroGoldenReady=false;
     this.allies = []; this.gatoAntivirus=[]; this.oliPieces = []; this.oliPawns = []; // aliados, gato e xadrez são por andar, limpa ao trocar de andar (gato respawnará se passiva ativa)
     this.ioiOrbits = []; // io-ios são por sala, limpa ao trocar de andar
     // Corrige bug da luva presa ao trocar de andar: limpa estado completo
@@ -24782,6 +24733,9 @@ class Game {
         this.player.gyroBallsInFlight=0;
         this.player.isGyroCharging=false; this.player.gyroChargeTime=0;
         this.player.gyroExtraBall=null;
+        this.player.gyroGoldenChargeTime=0;
+        this.player.gyroGoldenReady=false;
+        this.player.gyroGoldenAnchor=null;
       }
       this.transitionCooldown=600;
       this._hackerTransition=false;
@@ -25202,7 +25156,7 @@ class Game {
     // (sem isto o JG renasce sem bastão: não ataca, fica lento e laranja)
     if(p.characterId==='jg'){ p.hasBastao = true; p.isBastaoCharging = false; p.bastaoChargeTime = 0; }
     // Gyro: se morreu com a bola no ar, ela volta pra mão ao renascer
-    if(p.characterId==='gyro'){ p.gyroBallsInHand = GYRO_BALLS_MAX; p.gyroBallsInFlight = 0; p.isGyroCharging = false; p.gyroChargeTime = 0; p.gyroExtraBall = null; }
+    if(p.characterId==='gyro'){ p.gyroBallsInHand = GYRO_BALLS_MAX; p.gyroBallsInFlight = 0; p.isGyroCharging = false; p.gyroChargeTime = 0; p.gyroExtraBall = null; p.gyroGoldenChargeTime = 0; p.gyroGoldenReady = false; p.gyroGoldenAnchor = null; }
     if(this.motosserraZone) this.motosserraZone.active = false;
     if(this.motosserraSideZones) for(const z of this.motosserraSideZones) z.active=false;
     p.motosserraActive = false;
@@ -25344,6 +25298,9 @@ class Game {
         if(this.player.characterId==='gyro'){
           this.player.gyroBallsInHand = GYRO_BALLS_MAX;
           this.player.gyroBallsInFlight = 0;
+          this.player.gyroGoldenAnchor = null;
+          this.player.gyroGoldenChargeTime = 0;
+          this.player.gyroGoldenReady = false;
           if(this.player.isGyroCharging) this.player.cancelGyroCharge();
         }
         // Garante que estados de carga não fiquem presos
@@ -26574,11 +26531,15 @@ class Game {
           for(let k=0;k<6;k++) this.particles.push(new Particle(this.player.x, this.player.y, randRange(-1.4,1.4), randRange(-1.4,0.4), 220, golden?'#fef3c7':'#ffffff',2));
           this.shake=isMax?92:72;
           const tierName=['toque','carga 1','carga 2','CARGA MÁX.'][tier] || 'toque';
-          if(golden){
+          if(result.role==='anchor'){
+            this.showToast(`✦ BOLA ÂNCORA! Ela para no alcance máx. — carregue de novo para lançar a 2ª bola!`, 1600);
+          } else if(result.role==='link'){
+            this.showToast('✦ 2ª BOLA LANÇADA! Ela vai bater na âncora e mirar o inimigo mais próximo!', 1500);
+          } else if(golden){
             this.showToast(`✦ GIRO ÁUREO! ${shots.length} broca${shots.length>1?'s':''} dourada${shots.length>1?'s':''}! ${tierName} (${result.damage.toFixed(1)} dano)`, 1200);
           } else {
             this.showToast(result.isOrbiting
-              ? `🟢 SEGUNDA BOLA! Orbita o Ryro (${result.damage.toFixed(1)} dano)`
+              ? `🟢 SEGUNDA BOLA! Orbita o Gyro (${result.damage.toFixed(1)} dano)`
               : `🟢 BOLA DE AÇO ARREMESSADA! ${tierName} (${result.damage.toFixed(1)} dano)`, 1100);
           }
         }
@@ -27480,6 +27441,8 @@ class Game {
         // colisão com inimigos (bola de aço causa dano ao encostar)
         for(const e of this.currentRoom.enemies){
           if(e.dead) continue;
+          if(sb.role==='anchor' && sb.mode!=='homing') continue; // âncora só fere na investida
+          if(sb.role==='link') continue; // a bola de conexão não causa dano
           if(sb.hitEnemies.has(e)) continue;
           if(sb.hitsLeft<=0) continue; // já bateu em todos que podia
           let hit=false;
@@ -27501,9 +27464,18 @@ class Game {
             target.x+=Math.cos(ang)*16; target.y+=Math.sin(ang)*16;
             target.hitFlash=Math.max(target.hitFlash||0, 160);
             if(target.stunTimer!==undefined) target.stunTimer=Math.max(target.stunTimer||0, 180);
-            if(sb.golden && !died) this.applyGoldenMark(target, sb);
+            if(sb.golden && sb.drill && !died) this.applyGoldenMark(target, sb);
             if(died){
               for(let k=0;k<10;k++){ const ang2=Math.random()*Math.PI*2; this.particles.push(new Particle(target.x,target.y, Math.cos(ang2)*randRange(1.4,3), Math.sin(ang2)*randRange(1.2,3), 280, hitCol, 2)); }
+            }
+            if(sb.role==='anchor' && sb.mode==='homing'){
+              sb.mode='return';
+              sb.hitsLeft=0;
+              this.shake=Math.max(this.shake||0, 55);
+              for(let k=0;k<16;k++){
+                const ang2=Math.random()*Math.PI*2;
+                this.particles.push(new Particle(target.x,target.y, Math.cos(ang2)*randRange(1.5,3.4), Math.sin(ang2)*randRange(1.2,2.8), 320, k%2?'#fbbf24':'#fef3c7', 2.4));
+              }
             }
             // bola com perfuração avança sem morrer; sem perfuração continua voando (ricochete)
           }
@@ -27533,11 +27505,21 @@ class Game {
           // bola voltou pra mão do Gyro
           if(this.player.characterId==='gyro'){
             this.player.returnGyroBall();
-            this.showToast(sb.golden?'✦ Broca dourada retornou!':'🟢 Bola de aço retornou!', 900);
+            const msg = sb.role==='anchor' ? '✦ Bola âncora retornou!' : sb.role==='link' ? '✦ Bola de conexão retornou!' : (sb.golden?'✦ Broca dourada retornou!':'🟢 Bola de aço retornou!');
+            this.showToast(msg, 900);
             const retCol=sb.golden?'#fbbf24':'#cbd5e1';
             for(let k=0;k<8;k++) this.particles.push(new Particle(this.player.x,this.player.y, randRange(-1.2,1.2), randRange(-1.2,0.4), 200, retCol, 1.8));
           }
+          if(this.player.gyroGoldenAnchor===sb) this.player.gyroGoldenAnchor=null;
           this.steelBalls.splice(i,1);
+        }
+      }
+      // Corrente dourada: a bola de conexão tocou na âncora parada.
+      const anchors=this.steelBalls.filter(sb=>sb.role==='anchor' && sb.mode==='hold' && !sb.chainTriggered);
+      if(anchors.length){
+        for(const anchor of anchors){
+          const link=this.steelBalls.find(sb=>sb.role==='link' && sb.mode==='fly' && !sb.dead && dist(sb.x,sb.y,anchor.x,anchor.y) < sb.size+anchor.size+8);
+          if(link) this.triggerGyroBallChain(anchor, link);
         }
       }
     }
@@ -27748,6 +27730,33 @@ class Game {
 
     this.input.update();
     }catch(e){ console.error('Game update error', e); }
+  }
+
+  // Corrente dourada: a bola de conexão toca a âncora e ela investe no alvo mais próximo.
+  triggerGyroBallChain(anchor, link){
+    if(!anchor || !link || anchor.chainTriggered) return;
+    anchor.chainTriggered=true;
+    link.mode='return';
+    link.hitsLeft=0;
+    const mx=(anchor.x+link.x)/2, my=(anchor.y+link.y)/2;
+    this.shake=Math.max(this.shake||0, 42);
+    for(let k=0;k<22;k++){
+      const a=randRange(0,Math.PI*2);
+      this.particles.push(new Particle(mx,my, Math.cos(a)*randRange(0.8,3.2), Math.sin(a)*randRange(0.8,3.2), randRange(220,420), k%2?'#fbbf24':'#ffffff', randRange(1.5,2.8)));
+    }
+    let nearest=null, best=Infinity;
+    for(const e of this.currentRoom.enemies){
+      if(e.dead) continue;
+      if(e.type==='hacker' && !e.battleStarted) continue;
+      const d=dist(anchor.x,anchor.y,e.x,e.y);
+      if(d<best){ best=d; nearest=e; }
+    }
+    if(nearest && anchor.beginHoming(nearest)){
+      this.showToast('✦ CORRENTE! A âncora mira o alvo mais próximo!', 1300);
+    } else {
+      anchor.mode='return';
+      this.showToast('✦ Bola âncora retorna — sem alvo.', 900);
+    }
   }
 
   // Giro Áureo: marca de giro aplicada por uma broca dourada
@@ -28073,14 +28082,24 @@ class Game {
     }
     if(wn==='BOLAS'){
       const golden = !!p.goldenSpin;
+      const anchorActive = !!p.getGyroGoldenAnchor();
       if(p.isGyroCharging){
         const prog = p.getGyroChargeProgress();
         if(golden){
           return { pct: prog, color: prog>=0.99 ? '#fffbeb' : prog>0.5 ? '#fbbf24' : '#f59e0b',
                    label: prog>=0.99 ? 'ÁUREO!' : 'áureo', strong: prog>=0.99, strongColor:'#fbbf24' };
         }
+        const goldProg = p.getGyroGoldenProgress();
+        const goldReady = !!p.gyroGoldenReady;
+        const label = goldReady ? 'COMBO!' : prog>=0.99 ? 'DOURADA' : 'carga';
         return { pct: prog, color: prog>=0.99 ? '#ffffff' : prog>0.5 ? '#e2e8f0' : '#94a3b8',
-                 label: prog>=0.99 ? 'PRONTO!' : 'carga', strong: prog>=0.99, strongColor:'#e2e8f0' };
+                 label, strong: goldReady, strongColor:'#fbbf24',
+                 showGolden:true, goldenPct:goldProg, goldenReady:goldReady };
+      }
+      if(anchorActive){
+        const balls = p.gyroBallsInHand||0;
+        return { pct: 1, color:'#fbbf24', label: balls>0 ? '2ª BOLA!' : 'AGUARDE',
+                 strong: balls>0, strongColor:'#fbbf24', showGolden:true, goldenPct:1, goldenReady:true };
       }
       const balls = p.gyroBallsInHand||0;
       return { pct: balls>0 ? 1 : 0.08, color: balls>0 ? (golden?'#fbbf24':'#cbd5e1') : '#475569',
@@ -28272,6 +28291,20 @@ class Game {
       if(state.ticks){
         ctx.fillStyle = 'rgba(0,0,0,0.35)';
         for(let i=1;i<4;i++) ctx.fillRect(bx + bw*(i/4), by, 1, 5);
+      }
+      if(state.showGolden){
+        const gy = by + 6.5, gh = 2.5;
+        roundRectPath(ctx, bx, gy, bw, gh, 1.25);
+        ctx.fillStyle = 'rgba(251,191,36,0.14)'; ctx.fill();
+        const gp = clamp(state.goldenPct||0, 0, 1);
+        if(gp > 0){
+          roundRectPath(ctx, bx, gy, bw * gp, gh, 1.25);
+          ctx.fillStyle = state.goldenReady ? '#fbbf24' : '#f59e0b'; ctx.fill();
+        }
+        if(state.goldenReady){
+          ctx.strokeStyle = 'rgba(255,217,74,0.75)'; ctx.lineWidth = 1;
+          roundRectPath(ctx, bx-0.5, gy-0.5, bw+1, gh+1, 1.5); ctx.stroke();
+        }
       }
       ctx.font = hudFont(5); ctx.textAlign = 'right';
       ctx.fillStyle = state.strong ? (state.strongColor || '#ffffff') : 'rgba(255,255,255,0.88)';
@@ -28786,7 +28819,6 @@ class Game {
     const dt=Math.min(34, Math.max(0, t - this.lastTime) || 16);
     this.lastTime=t;
     this.update(dt);
-    this.updateMenuEnemyDemo(dt);
     this.draw();
     requestAnimationFrame((nt)=>this.loop(nt));
   }

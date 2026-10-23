@@ -2772,27 +2772,6 @@ details > summary { cursor: pointer; min-height: 2.75em; display: flex; align-it
   70%      { opacity: 0.35; transform: translateY(-22px) scale(1); }
 }
 
-/* --- Loop de combate decorativo (inimigo real derrotado no menu) ---------- */
-.menu-enemy-fx {
-  position: absolute;
-  top: 50%;
-  right: clamp(0.5rem, 2.5vw, 2.8rem);
-  width: min(22vw, 330px);
-  height: auto;
-  aspect-ratio: 360 / 320;
-  transform: translateY(-50%);
-  opacity: 0.88;
-  filter: drop-shadow(0 0 24px rgba(0,217,255,0.16));
-  pointer-events: none;
-  z-index: 2;
-}
-@media (max-width: 1120px) {
-  .menu-enemy-fx { display: none; }
-}
-@media (max-height: 620px) and (min-width: 1121px) {
-  .menu-enemy-fx { width: min(19vw, 270px); opacity: 0.72; }
-}
-
 /* --- Kicker de status ----------------------------------------------------- */
 #menuScreen .menu-kicker {
   display: inline-flex;
