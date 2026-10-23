@@ -3828,7 +3828,7 @@ const WEAPON_BOLAS = {
   cooldown: 300,             // intervalo entre arremessos
   range: 380,                // alcance do arremesso
   damage: 1.0,               // dano no toque rápido (sem carga)
-  chargeTime: 900,           // ms para carga máxima
+  chargeTime: 850,           // ms para carga máxima
   chargeDamages: [1.0, 2.2, 3.6, 5.0], // dano por nível de carga
   bulletSpeed: 10.5,         // velocidade do arremesso
   bulletSize: 8,             // raio da bola
@@ -3844,7 +3844,7 @@ const WEAPON_BOLAS = {
 };
 // Constantes balanceáveis GYRO (fácil edição)
 const GYRO_BALLS_MAX = 2;               // duas bolas de aço
-const GYRO_BALLS_CHARGE_TIME = 900;     // ms até carga máxima
+const GYRO_BALLS_CHARGE_TIME = 850;     // ms até carga máxima
 const GYRO_BALLS_COOLDOWN = 300;        // cooldown entre arremessos
 const GYRO_BALLS_DAMAGES = [1.0, 2.2, 3.6, 5.0]; // dano por tier de carga
 const GYRO_BALLS_CHARGE_TIERS = [0, 0.35, 0.70, 0.99]; // limites dos tiers de carga
@@ -3855,18 +3855,21 @@ const GYRO_BALLS_RICOCHET = 2;          // quiques em parede
 const GYRO_BALLS_ORBIT_TIME = 1200;     // ms orbitando o Gyro (2ª bola)
 const GYRO_BALLS_ORBIT_RADIUS = 34;     // raio da órbita dupla
 const GYRO_BALLS_ORBIT_SPEED = 0.011;   // rad/frame da órbita
-const GYRO_CHARGE_SPEED_PENALTY = 0.35; // -35% velocidade enquanto carrega
+const GYRO_CHARGE_SPEED_PENALTY = 0.30; // -30% velocidade enquanto carrega
 // SOBRECARGA DOURADA - 2ª barra após a carga prateada cheia. Libera a corrente:
-// 1ª bola ancora no alcance máximo; a 2ª bate nela e a âncora persegue o alvo.
-const GYRO_GOLDEN_CHARGE_TIME = 850;    // ms extras de sobrecarga depois da carga cheia
+// 1ª bola causa dano, ancora no alcance máximo; a 2ª bate nela e a âncora
+// persegue o alvo, ricocheteando entre inimigos próximos antes de voltar.
+const GYRO_GOLDEN_CHARGE_TIME = 1050;   // ms extras de sobrecarga depois da carga cheia
 const GYRO_GOLDEN_FAST_MULT = 0.60;     // sobrecarga fica 40% mais rápida no Giro Áureo
-const GYRO_GOLDEN_HOLD_TIME = 9000;     // segurança: âncora retorna sozinha
-const GYRO_GOLDEN_DAMAGE_MULT = 1.45;   // dano da âncora ao acertar o alvo
-const GYRO_GOLDEN_RETURN_MULT = 1.35;   // velocidade de retorno da âncora
+const GYRO_GOLDEN_HOLD_TIME = 7500;     // segurança: âncora retorna sozinha
+const GYRO_GOLDEN_DAMAGE_MULT = 1.25;   // dano da âncora ao acertar o alvo
+const GYRO_GOLDEN_RETURN_MULT = 1.50;   // velocidade de retorno da âncora
+const GYRO_GOLDEN_MAX_BOUNCES = 2;      // ricochetes entre inimigos na perseguição
+const GYRO_GOLDEN_BOUNCE_RANGE = 260;   // alcance para achar o próximo inimigo
 // GIRO ÁUREO (especial do Gyro) - por 7s o arremesso vira broca dourada perfurante
 const GIRO_AUREO = {
   duration: 7000,
-  cooldown: 20000,
+  cooldown: 22000,
   chargeMult: 0.45,          // carga 55% mais rápida
   rangeMult: 1.20,           // +20% alcance
   tickPct: 0.08,             // 8% do dano de impacto por tick
@@ -9841,6 +9844,7 @@ class SteelBallProjectile {
     this.homingTarget=null;
     this.holdTimer=opts.holdTimer||GYRO_GOLDEN_HOLD_TIME;
     this.chainTriggered=false;
+    this.chainBounces=0;
     this.isGoldenAnchor=false;
     this.isChainLink=false;
   }
@@ -13562,7 +13566,7 @@ class Player {
       role:'anchor',
       holdTimer:GYRO_GOLDEN_HOLD_TIME
     });
-    anchor.hitsLeft=0;
+    anchor.hitsLeft=999; // fere quantos inimigos atravessar no voo
     anchor.life=GYRO_GOLDEN_HOLD_TIME+2000;
     anchor.isGoldenAnchor=true;
     this.gyroGoldenAnchor=anchor;
@@ -25368,7 +25372,8 @@ class Game {
     const p = this.player;
     if(!p) return;
     const hasAspectGato = !!(p.weapon && p.weapon._aspectGato);
-    const wantCats = (p.hasGatoAntivirus ? 1 : 0) + (hasAspectGato ? 1 : 0);
+    // Passiva e aspecto são a MESMA fonte de companheiro: nunca invoca dois gatos.
+    const wantCats = (p.hasGatoAntivirus || hasAspectGato) ? 1 : 0;
     if(!this.gatoAntivirus) this.gatoAntivirus=[];
     if(this.gatoAntivirus.length < wantCats){
       // invoca gato perto do jogador (sem colidir parede)
@@ -25397,6 +25402,10 @@ class Game {
       for(const cat of removed){
         for(let k=0;k<10;k++) this.particles.push(new Particle(cat.x,cat.y, randRange(-1.4,1.4), randRange(-1.2,0.6), 280, '#3b82f6', 1.8));
       }
+    }
+    // Se a passiva for obtida depois do aspecto, o gato existente recupera o dano total.
+    if(p.hasGatoAntivirus){
+      for(const cat of this.gatoAntivirus) cat.damage = GATO_ANTIVIRUS_DAMAGE;
     }
   }
   // ===== ASPECTO "ÓRBITA DE IO-IO" (aspecto do JL) =====
@@ -26532,7 +26541,7 @@ class Game {
           this.shake=isMax?92:72;
           const tierName=['toque','carga 1','carga 2','CARGA MÁX.'][tier] || 'toque';
           if(result.role==='anchor'){
-            this.showToast(`✦ BOLA ÂNCORA! Ela para no alcance máx. — carregue de novo para lançar a 2ª bola!`, 1600);
+            this.showToast(`✦ BOLA ÂNCORA! Ela causa dano e para no alcance máx. — carregue de novo para lançar a 2ª bola!`, 1600);
           } else if(result.role==='link'){
             this.showToast('✦ 2ª BOLA LANÇADA! Ela vai bater na âncora e mirar o inimigo mais próximo!', 1500);
           } else if(golden){
@@ -27441,7 +27450,7 @@ class Game {
         // colisão com inimigos (bola de aço causa dano ao encostar)
         for(const e of this.currentRoom.enemies){
           if(e.dead) continue;
-          if(sb.role==='anchor' && sb.mode!=='homing') continue; // âncora só fere na investida
+          if(sb.role==='anchor' && sb.mode==='hold') continue; // parada aguardando a 2ª bola não fere
           if(sb.role==='link') continue; // a bola de conexão não causa dano
           if(sb.hitEnemies.has(e)) continue;
           if(sb.hitsLeft<=0) continue; // já bateu em todos que podia
@@ -27469,13 +27478,21 @@ class Game {
               for(let k=0;k<10;k++){ const ang2=Math.random()*Math.PI*2; this.particles.push(new Particle(target.x,target.y, Math.cos(ang2)*randRange(1.4,3), Math.sin(ang2)*randRange(1.2,3), 280, hitCol, 2)); }
             }
             if(sb.role==='anchor' && sb.mode==='homing'){
-              sb.mode='return';
-              sb.hitsLeft=0;
               this.shake=Math.max(this.shake||0, 55);
               for(let k=0;k<16;k++){
                 const ang2=Math.random()*Math.PI*2;
                 this.particles.push(new Particle(target.x,target.y, Math.cos(ang2)*randRange(1.5,3.4), Math.sin(ang2)*randRange(1.2,2.8), 320, k%2?'#fbbf24':'#fef3c7', 2.4));
               }
+              const next=this.findGyroBounceTarget(sb);
+              if(next && sb.chainBounces<GYRO_GOLDEN_MAX_BOUNCES){
+                sb.chainBounces++;
+                sb.beginHoming(next);
+                this.showToast(`✦ RICOCHETE DOURADO! (${sb.chainBounces}/${GYRO_GOLDEN_MAX_BOUNCES})`, 900);
+              } else {
+                sb.mode='return';
+                sb.hitsLeft=0;
+              }
+              break; // não processa outros inimigos neste frame
             }
             // bola com perfuração avança sem morrer; sem perfuração continua voando (ricochete)
           }
@@ -27732,6 +27749,19 @@ class Game {
     }catch(e){ console.error('Game update error', e); }
   }
 
+  // Próximo alvo do ricochete dourado (perto da âncora e ainda não atingido).
+  findGyroBounceTarget(sb){
+    let nearest=null, best=GYRO_GOLDEN_BOUNCE_RANGE;
+    for(const e of this.currentRoom.enemies){
+      if(e.dead || e.invulnerable) continue;
+      if(sb.hitEnemies.has(e)) continue;
+      if(e.type==='hacker' && !e.battleStarted) continue;
+      const d=dist(sb.x,sb.y,e.x,e.y);
+      if(d<best){ best=d; nearest=e; }
+    }
+    return nearest;
+  }
+
   // Corrente dourada: a bola de conexão toca a âncora e ela investe no alvo mais próximo.
   triggerGyroBallChain(anchor, link){
     if(!anchor || !link || anchor.chainTriggered) return;
@@ -27750,6 +27780,10 @@ class Game {
       if(e.type==='hacker' && !e.battleStarted) continue;
       const d=dist(anchor.x,anchor.y,e.x,e.y);
       if(d<best){ best=d; nearest=e; }
+    }
+    if(nearest){
+      anchor.hitEnemies.clear(); // a investida guiada pode ferir de novo
+      anchor.chainBounces=0;
     }
     if(nearest && anchor.beginHoming(nearest)){
       this.showToast('✦ CORRENTE! A âncora mira o alvo mais próximo!', 1300);
