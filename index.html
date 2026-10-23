@@ -42,6 +42,7 @@
         <div class="menu-particles">
           <span></span><span></span><span></span><span></span><span></span><span></span>
         </div>
+        <canvas id="menuEnemyFx" class="menu-enemy-fx" width="360" height="320" aria-hidden="true"></canvas>
       </div>
       <div class="menu-content">
         <div class="menu-kicker"><span class="menu-kicker-dot"></span> SISTEMA ONLINE <b>// v6.1</b></div>
@@ -268,9 +269,9 @@
             </div>
             <span class="char-badge dev">DEV • ÓCULOS • LAZER</span>
           </div>
-          <div class="char-card gyro-card" data-char="gyro" tabindex="0" role="button" aria-label="Selecionar Gyro">
+          <div class="char-card gyro-card" data-char="gyro" tabindex="0" role="button" aria-label="Selecionar Ryro">
             <div class="char-icon" style="color:#22c55e">🟢</div>
-            <div class="char-name">Gyro</div>
+            <div class="char-name">Ryro</div>
             <div class="char-hearts"><span style="color:#ff3b30">♥ ♥ ♥</span> <span style="color:#8a8198;font-size:0.8125rem">3 corações</span></div>
             <div class="char-weapon"><span style="color:#cbd5e1; text-shadow:0 0 6px rgba(203,213,225,0.6)">⚪</span> Bolas de Aço • Casaco + boné</div>
             <p class="char-desc">🟢 <b>Bolas de Aço [Segure]</b>: carrega o arremesso • Dano sobe com a carga (<b>1 → 2.2 → 3.6 → 5</b>) • A 1ª bola <b>ricocheteia</b> e <b>volta</b> pra mão • A 2ª bola <b>orbita</b> você • <b style="color:#22c55e">Arma exclusiva</b> • <b>Sem especiais</b>.</p>
@@ -279,7 +280,7 @@
               <span style="font-family:system-ui,sans-serif; font-size:0.8125rem; font-weight:800; color:#cbd5e1; background:rgba(203,213,225,0.12); border:1px solid rgba(203,213,225,0.22); padding:3px 6px; border-radius:999px;">CARGA 4 NÍVEIS</span>
               <span style="font-family:system-ui,sans-serif; font-size:0.8125rem; font-weight:800; color:#fbbf24; background:rgba(251,191,36,0.12); border:1px solid rgba(251,191,36,0.22); padding:3px 6px; border-radius:999px;">RICOCHETE</span>
             </div>
-            <span class="char-badge gyro">GYRO • BOLAS DE AÇO</span>
+            <span class="char-badge gyro">RYRO • BOLAS DE AÇO</span>
           </div>
         </div>
         <div class="character-footer">
@@ -390,7 +391,7 @@
                   <span class="cc-title">Especial [E]</span>
                   <span class="cc-keys"><span class="key wide">E</span></span>
                 </div>
-                <p class="cc-desc">Ativa o item especial equipado: <b>Espada Flamejante</b> (explosão 120px) • <b>Escudo</b> (absorve 1 dano por 5s) • <b>Flecha Stand</b> (sorteia efeito) • <b>Giro Áureo</b> do Gyro (7s de bolas douradas perfurantes com marcas explosivas).</p>
+                <p class="cc-desc">Ativa o item especial equipado: <b>Espada Flamejante</b> (explosão 120px) • <b>Escudo</b> (absorve 1 dano por 5s) • <b>Flecha Stand</b> (sorteia efeito) • <b>Giro Áureo</b> do Ryro (7s de bolas douradas perfurantes com marcas explosivas).</p>
                 <span class="cc-hint">Habilidades próprias como <b>67 Aura</b> e <b>Xadrez</b> também usam [E] • Cooldown na HUD</span>
               </div>
               <div class="control-card accent-cyan">
@@ -595,12 +596,12 @@
                 <p class="arsenal-desc">3 ♥ • Óculos e jaleco branco • <b style="color:#7af2ff">Lazer Codificado</b> retângulo reto <b>Brimstone</b> com <b>ondulações</b> • <b>Segure até 100%</b> • Dano moderado (2.2) • Alcance médio-longo (400) • <b style="color:#ffd8a8">Sobremesa</b> mini a cada 10%.</p>
               </div>
               <div class="arsenal-card" style="border-color:rgba(34,197,94,0.28)">
-                <div class="arsenal-head"><span class="arsenal-name" style="color:#22c55e">Gyro 🟢</span><span class="rarity-badge incomum">3 ♥</span></div>
+                <div class="arsenal-head"><span class="arsenal-name" style="color:#22c55e">Ryro 🟢</span><span class="rarity-badge incomum">3 ♥</span></div>
                 <div class="arsenal-stats"><span>BOLAS</span><span>2 na mão</span><span>GIRO ÁUREO</span></div>
                 <p class="arsenal-desc">3 ♥ • <b>Duas Bolas de Aço</b> exclusivas • Segure para carregar e solte para arremessar • Quica nas paredes e volta para a mão • <b style="color:#fbbf24">[E] Giro Áureo</b> por <b>7s</b>: arremesso em leque, bolas perfurantes e marcas que explodem.</p>
               </div>
             </div>
-            <p class="section-note">Seleção em menu próprio (1 JG • 2 Kinight • 3 JL • 4 Neutro • 5 Oli • 6 Ash • 7 Dev • 8 Gyro). Estrutura modular: novo personagem = adicionar entrada em <code>CHARACTER_DEFS</code> + hook + peça em <code>OliXadrez</code>.</p>
+            <p class="section-note">Seleção em menu próprio (1 JG • 2 Kinight • 3 JL • 4 Neutro • 5 Oli • 6 Ash • 7 Dev • 8 Ryro). Estrutura modular: novo personagem = adicionar entrada em <code>CHARACTER_DEFS</code> + hook + peça em <code>OliXadrez</code>.</p>
           </details>
 
           <!-- ARSENAL -->

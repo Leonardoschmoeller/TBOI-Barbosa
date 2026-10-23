@@ -4305,7 +4305,7 @@ const CHARACTER_DEFS = {
   },
   gyro: {
     id: 'gyro',
-    displayName: 'Gyro',
+    displayName: 'Ryro',
     icon: '🟢', // só um círculo verde
     color: '#22c55e',
     bg: 'rgba(34,197,94,0.16)',
@@ -23472,6 +23472,7 @@ class Game {
     this._chipsRevealT=0;
     this._chipsFade=1;
     this._hudMouse={x:-1,y:-1};
+    this.initMenuEnemyDemo();
 
     this.bindUI();
     this.resizeCanvas();
@@ -23659,6 +23660,253 @@ class Game {
     try{
       return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     }catch(_){ return false; }
+  }
+  initMenuEnemyDemo(){
+    this.menuEnemyCanvas = document.getElementById('menuEnemyFx');
+    if(!this.menuEnemyCanvas){ this.menuEnemyCtx = null; this.menuEnemy = null; return; }
+    this.menuEnemyCtx = this.menuEnemyCanvas.getContext('2d');
+    this.menuEnemy = {
+      enemy: null,
+      phase: 'fight',
+      timer: 0,
+      shot: null,
+      shotTimer: 280,
+      particles: [],
+      flash: 0,
+      ring: 0,
+      kills: 0,
+      tick: 0,
+      shake: 0
+    };
+    this.spawnMenuEnemy();
+    this.drawMenuEnemyDemo();
+  }
+  spawnMenuEnemy(){
+    const m = this.menuEnemy;
+    if(!m) return;
+    const enemy = new Kamikaze(244, 164);
+    enemy.w = enemy.h = 44;
+    enemy.maxHp = 3;
+    enemy.hp = 3;
+    enemy.variation = [null, 'tank', 'elite', 'brute'][m.kills % 4] || null;
+    enemy.anim = 0;
+    m.enemy = enemy;
+    m.phase = 'fight';
+    m.timer = 0;
+    m.shot = null;
+    m.shotTimer = 280;
+    m.ring = 0;
+  }
+  hitMenuEnemy(){
+    const m = this.menuEnemy;
+    const enemy = m && m.enemy;
+    if(!enemy || m.phase !== 'fight') return;
+    m.shot = null;
+    m.shotTimer = 340;
+    m.flash = 130;
+    m.shake = 5;
+    enemy.takeDamage(1);
+    const death = enemy.dead;
+    const count = death ? 30 : 9;
+    const colors = death ? ['#ff3b30','#ffd94a','#ffffff','#00d9ff'] : ['#ffffff','#8ff6ff','#ffb4a8'];
+    for(let i=0;i<count;i++){
+      m.particles.push(new Particle(
+        enemy.x + randRange(-10, 10),
+        enemy.y + randRange(-10, 10),
+        randRange(-3.4, 3.4),
+        randRange(-3.4, 1.8),
+        randRange(260, 720),
+        colors[Math.floor(Math.random() * colors.length)],
+        randRange(1.5, death ? 4.2 : 3),
+        0.94
+      ));
+    }
+    if(death){
+      m.phase = 'defeat';
+      m.timer = 1050;
+      m.ring = 0;
+      m.kills++;
+    }
+  }
+  updateMenuEnemyDemo(dt){
+    if(!this.menuEnemyCtx || !this.menuEnemyCanvas) return;
+    if(!this.menuScreen || !this.menuScreen.classList.contains('active')) return;
+    if(this.menuEnemyCanvas.offsetWidth === 0) return;
+    const m = this.menuEnemy;
+    if(!m) return;
+    if(this.prefersReducedMotion()){
+      this.drawMenuEnemyDemo();
+      return;
+    }
+    m.tick += dt;
+    m.flash = Math.max(0, m.flash - dt);
+    m.shake = Math.max(0, m.shake - dt * 0.03);
+    m.ring += dt;
+    m.particles = m.particles.filter(p => p.update(dt));
+    const enemy = m.enemy;
+    if(enemy && m.phase === 'fight'){
+      enemy.anim += dt;
+      if(enemy.hitFlash > 0) enemy.hitFlash -= dt;
+      enemy.y = 164 + Math.sin(m.tick * 0.0024) * 6;
+      m.shotTimer -= dt;
+      if(!m.shot && m.shotTimer <= 0){
+        m.shot = { x: 40, y: enemy.y + randRange(-7, 7) };
+      }
+      if(m.shot){
+        m.shot.x += dt * 0.46;
+        if(m.shot.x >= enemy.x - enemy.w * 0.5) this.hitMenuEnemy();
+      }
+    } else if(m.phase === 'defeat'){
+      m.timer -= dt;
+      if(m.timer <= 0){
+        m.phase = 'respawn';
+        m.timer = 520;
+      }
+    } else if(m.phase === 'respawn'){
+      m.timer -= dt;
+      if(m.timer <= 0) this.spawnMenuEnemy();
+    }
+    this.drawMenuEnemyDemo();
+  }
+  drawMenuEnemyDemo(){
+    const ctx = this.menuEnemyCtx;
+    const canvas = this.menuEnemyCanvas;
+    const m = this.menuEnemy;
+    if(!ctx || !canvas || !m) return;
+    const W = canvas.width;
+    const H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    ctx.save();
+    if(m.shake > 0) ctx.translate(randRange(-m.shake, m.shake), randRange(-m.shake, m.shake));
+
+    ctx.fillStyle = 'rgba(5,7,12,0.34)';
+    ctx.fillRect(18, 18, W - 36, H - 36);
+
+    ctx.strokeStyle = 'rgba(0,217,255,0.07)';
+    ctx.lineWidth = 1;
+    for(let gx = 36; gx < W - 30; gx += 24){
+      ctx.beginPath(); ctx.moveTo(gx, 24); ctx.lineTo(gx, H - 24); ctx.stroke();
+    }
+    for(let gy = 36; gy < H - 30; gy += 24){
+      ctx.beginPath(); ctx.moveTo(24, gy); ctx.lineTo(W - 24, gy); ctx.stroke();
+    }
+
+    ctx.strokeStyle = 'rgba(0,217,255,0.28)';
+    ctx.beginPath();
+    ctx.moveTo(30, 246); ctx.lineTo(W - 30, 246);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,59,48,0.16)';
+    ctx.beginPath();
+    ctx.moveTo(30, 251); ctx.lineTo(W - 30, 251);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(0,217,255,0.55)';
+    ctx.lineWidth = 2;
+    const corners = [[20,20,1,1],[W-20,20,-1,1],[20,H-20,1,-1],[W-20,H-20,-1,-1]];
+    for(const [cx,cy,dx,dy] of corners){
+      ctx.beginPath();
+      ctx.moveTo(cx + dx * 18, cy);
+      ctx.lineTo(cx, cy);
+      ctx.lineTo(cx, cy + dy * 18);
+      ctx.stroke();
+    }
+
+    ctx.font = '8px "Press Start 2P", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(143,246,255,0.72)';
+    ctx.fillText('SIMULAÇÃO // COMBATE', 34, 45);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillText('TREINO AUTÔNOMO', 34, 62);
+
+    const enemy = m.enemy;
+    if(enemy && m.phase === 'fight'){
+      const scanY = 74 + ((m.tick * 0.055) % 158);
+      ctx.fillStyle = 'rgba(0,217,255,0.055)';
+      ctx.fillRect(34, scanY, W - 68, 2);
+
+      ctx.strokeStyle = 'rgba(0,217,255,0.48)';
+      ctx.lineWidth = 1;
+      const cs = 22;
+      ctx.beginPath();
+      ctx.moveTo(enemy.x - cs, enemy.y - cs + 7); ctx.lineTo(enemy.x - cs, enemy.y - cs); ctx.lineTo(enemy.x - cs + 7, enemy.y - cs);
+      ctx.moveTo(enemy.x + cs - 7, enemy.y - cs); ctx.lineTo(enemy.x + cs, enemy.y - cs); ctx.lineTo(enemy.x + cs, enemy.y - cs + 7);
+      ctx.moveTo(enemy.x - cs, enemy.y + cs - 7); ctx.lineTo(enemy.x - cs, enemy.y + cs); ctx.lineTo(enemy.x - cs + 7, enemy.y + cs);
+      ctx.moveTo(enemy.x + cs - 7, enemy.y + cs); ctx.lineTo(enemy.x + cs, enemy.y + cs); ctx.lineTo(enemy.x + cs, enemy.y + cs - 7);
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(255,59,48,0.8)';
+      ctx.font = '7px "Press Start 2P", monospace';
+      ctx.fillText('ALVO', enemy.x - 13, enemy.y - 34);
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(enemy.x - 23, enemy.y - 29, 46, 4);
+      ctx.fillStyle = '#ff3b30';
+      ctx.fillRect(enemy.x - 23, enemy.y - 29, 46 * clamp(enemy.hp / enemy.maxHp, 0, 1), 4);
+    }
+
+    const turretY = m.shot ? m.shot.y : 164;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,217,255,0.9)';
+    ctx.shadowBlur = 14;
+    ctx.fillStyle = 'rgba(0,217,255,0.16)';
+    ctx.beginPath(); ctx.arc(40, turretY, 16, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#8ff6ff';
+    ctx.fillRect(34, turretY - 7, 12, 14);
+    ctx.fillStyle = '#043142';
+    ctx.fillRect(38, turretY - 3, 4, 6);
+    ctx.restore();
+
+    if(m.shot){
+      const sx = m.shot.x, sy = m.shot.y;
+      ctx.save();
+      ctx.shadowColor = '#00d9ff';
+      ctx.shadowBlur = 16;
+      ctx.strokeStyle = 'rgba(0,217,255,0.38)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(sx - 28, sy); ctx.lineTo(sx, sy); ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(sx - 3, sy - 2, 7, 4);
+      ctx.restore();
+    }
+
+    if(enemy && m.phase === 'fight'){
+      ctx.save();
+      ctx.shadowColor = 'rgba(255,59,48,0.42)';
+      ctx.shadowBlur = 18;
+      enemy.draw(ctx);
+      ctx.restore();
+    }
+
+    for(const p of m.particles) p.draw(ctx);
+
+    if(m.flash > 0){
+      ctx.fillStyle = `rgba(255,255,255,${0.24 * (m.flash / 130)})`;
+      ctx.fillRect(24, 24, W - 48, H - 48);
+    }
+
+    if(m.phase === 'defeat'){
+      const p = clamp(m.ring / 420, 0, 1);
+      const e = m.enemy;
+      const ex = e ? e.x : 244;
+      const ey = e ? e.y : 164;
+      ctx.strokeStyle = `rgba(255,217,74,${1 - p})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(ex, ey, 12 + p * 46, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = `rgba(255,217,74,${1 - p})`;
+      ctx.font = '10px "Press Start 2P", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('ELIMINADO', W / 2, 226);
+      ctx.textAlign = 'left';
+    }
+
+    ctx.font = '7px "Press Start 2P", monospace';
+    ctx.fillStyle = m.phase === 'defeat' ? '#ffd94a' : 'rgba(143,246,255,0.68)';
+    const status = m.phase === 'defeat' ? 'ALVO NEUTRALIZADO' : m.phase === 'respawn' ? 'NOVO ALVO...' : 'LOOP ATIVO';
+    ctx.fillText(status, 34, 286);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(255,255,255,0.38)';
+    ctx.fillText(`KILLS ${String(m.kills).padStart(2, '0')}`, W - 34, 286);
+    ctx.textAlign = 'left';
+    ctx.restore();
   }
   switchScreen(from, to, direction='forward'){
     if(!to || to === from) return;
@@ -26330,7 +26578,7 @@ class Game {
             this.showToast(`✦ GIRO ÁUREO! ${shots.length} broca${shots.length>1?'s':''} dourada${shots.length>1?'s':''}! ${tierName} (${result.damage.toFixed(1)} dano)`, 1200);
           } else {
             this.showToast(result.isOrbiting
-              ? `🟢 SEGUNDA BOLA! Orbita o Gyro (${result.damage.toFixed(1)} dano)`
+              ? `🟢 SEGUNDA BOLA! Orbita o Ryro (${result.damage.toFixed(1)} dano)`
               : `🟢 BOLA DE AÇO ARREMESSADA! ${tierName} (${result.damage.toFixed(1)} dano)`, 1100);
           }
         }
@@ -28538,6 +28786,7 @@ class Game {
     const dt=Math.min(34, Math.max(0, t - this.lastTime) || 16);
     this.lastTime=t;
     this.update(dt);
+    this.updateMenuEnemyDemo(dt);
     this.draw();
     requestAnimationFrame((nt)=>this.loop(nt));
   }
