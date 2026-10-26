@@ -246,6 +246,35 @@ const GATO_ANTIVIRUS_STUN_DURATION = 1800; // ms atordoado após ataque (1.8s, c
 const GATO_ANTIVIRUS_RETURN_COOLDOWN = 2000; // 2 segundos parado perto do jogador após voltar (requisito fixo, configurável)
 const GATO_ANTIVIRUS_ATTACK_RANGE = 22; // distância para encostar e atacar (configurável)
 
+// --- Configurações Barbosa Ferraz (item especial do NPC Borzuk - Sala Setch) ---
+const BARBOSA_FERRAZ_COOLDOWN = 16000;            // recarga para invocar Borzuk novamente
+const BARBOSA_FERRAZ_ALLY_DURATION = 12000;       // tempo que o aliado Borzuk permanece em campo
+const BARBOSA_FERRAZ_ALLY_SPEED = 2.9;            // velocidade de perseguição
+const BARBOSA_FERRAZ_DETECT_RADIUS = 270;         // alcance de detecção de inimigos
+const BARBOSA_FERRAZ_PUNCH_RANGE = 30;            // distância para desferir soco
+const BARBOSA_FERRAZ_PUNCH_DAMAGE = 2.2;          // dano do soco
+const BARBOSA_FERRAZ_PUNCH_COOLDOWN = 260;        // intervalo entre socos
+const BARBOSA_FERRAZ_HADOUKEN_RANGE = 340;        // alcance máximo do hadouken
+const BARBOSA_FERRAZ_HADOUKEN_DAMAGE = 1.8;       // dano do hadouken
+const BARBOSA_FERRAZ_HADOUKEN_COOLDOWN = 950;     // intervalo entre hadoukens
+const BARBOSA_FERRAZ_HADOUKEN_SPEED = 6.8;        // velocidade do projétil hadouken
+
+// Ícone-imagem do item Barbosa Ferraz (mesma arte do botão JOGAR do menu principal)
+const SPECIAL_ICON_IMAGES = {
+  barbosa_ferraz: 'img/download__2_-removebg-preview.png',
+};
+const _specialIconImageCache = new Map();
+function getSpecialIconImage(src){
+  if(!src) return null;
+  let img = _specialIconImageCache.get(src);
+  if(!img){
+    img = new Image();
+    img.src = src;
+    _specialIconImageCache.set(src, img);
+  }
+  return img;
+}
+
 // ===================== SISTEMA DE ITENS ESPECIAIS (E + COOLDOWN) =====================
 // Arquitetura modular: toda lógica fica aqui, separada do Player/Game.
 // - Classe base SpecialItem controla cooldown de forma confiável com UM único timer (dt), sem setInterval/setTimeout múltiplos.
@@ -264,6 +293,7 @@ class SpecialItem {
     this.cooldown = config.cooldown ?? 10000; // ms de recarga (variável balanceável)
     this.duration = config.duration ?? 0; // ms de efeito ativo (0 = instantâneo)
     this.icon = config.icon ?? '★'; // ícone HUD
+    this.iconImage = config.iconImage ?? null; // ícone em imagem (opcional)
     this.description = config.description ?? '';
     this.color = config.color ?? '#ffcc00'; // cor tema para HUD/partículas
     // Estado interno - controlado apenas por update(dt)
@@ -674,6 +704,240 @@ class StandAlly {
     // indicador tempo no topo
     ctx.fillStyle='rgba(255,255,255,0.9)'; ctx.font='5px monospace'; ctx.textAlign='center';
     ctx.fillText(Math.ceil(this.life/1000)+'s', this.x, y-9+bob); ctx.textAlign='left';
+  }
+  getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
+}
+
+// ===================== ALIADO BORZUK (BARBOSA FERRAZ) =====================
+// Invocado pelo item especial entregue pelo NPC Borzuk na Sala Setch.
+// Persegue inimigos, desfere socos de perto e dispara hadoukens de energia à distância.
+class BorzukAlly {
+  constructor(x, y, owner, game){
+    this.x = x; this.y = y;
+    this.owner = owner || null;
+    this.game = game || null;
+    this.w = 30; this.h = 36;
+    this.speed = BARBOSA_FERRAZ_ALLY_SPEED;
+    this.duration = BARBOSA_FERRAZ_ALLY_DURATION;
+    this.life = BARBOSA_FERRAZ_ALLY_DURATION;
+    this.maxLife = BARBOSA_FERRAZ_ALLY_DURATION;
+    this.dead = false;
+    this.anim = Math.random()*1000;
+    this.target = null;
+    this.punchCd = 0;
+    this.hadoukenCd = 200;
+    this.punchFx = 0;
+    this.castFx = 0;
+    this.hitFlash = 0;
+    this.facing = 1;
+    this.isBorzukAlly = true;
+  }
+  update(dt, enemies, walls, particles, bulletsOut){
+    this.life -= dt;
+    this.anim += dt;
+    if(this.hitFlash>0) this.hitFlash-=dt;
+    if(this.punchCd>0) this.punchCd-=dt;
+    if(this.hadoukenCd>0) this.hadoukenCd-=dt;
+    if(this.punchFx>0) this.punchFx-=dt;
+    if(this.castFx>0) this.castFx-=dt;
+    if(this.life <= 0){ this.dead=true; return false; }
+    // Busca o inimigo vivo mais próximo dentro do raio de detecção
+    let best=null, bestD=BARBOSA_FERRAZ_DETECT_RADIUS;
+    for(const e of enemies||[]){
+      if(!e || e.dead) continue;
+      const d=dist(this.x,this.y,e.x,e.y);
+      if(d < bestD){ best=e; bestD=d; }
+    }
+    this.target=best;
+    if(best && !best.dead){
+      const dx=best.x-this.x, dy=best.y-this.y;
+      const d=Math.hypot(dx,dy)||1;
+      this.facing = dx<0 ? -1 : 1;
+      // Hadouken: dispara quando o alvo está a meia distância
+      if(this.hadoukenCd<=0 && d > BARBOSA_FERRAZ_PUNCH_RANGE+10 && d < BARBOSA_FERRAZ_HADOUKEN_RANGE){
+        const n=normalize(dx,dy);
+        this.castFx=190;
+        this.hadoukenCd=BARBOSA_FERRAZ_HADOUKEN_COOLDOWN;
+        if(bulletsOut){
+          bulletsOut.push(new Bullet(this.x + n.x*12, this.y + n.y*8, n.x, n.y, 'player', {
+            speed: BARBOSA_FERRAZ_HADOUKEN_SPEED,
+            damage: BARBOSA_FERRAZ_HADOUKEN_DAMAGE,
+            range: BARBOSA_FERRAZ_HADOUKEN_RANGE,
+            size: 9,
+            color: '#7dd3fc',
+            glow: 'rgba(56,189,248,0.38)',
+            isHadouken: true
+          }));
+        }
+        if(particles){
+          for(let k=0;k<9;k++){
+            particles.push(new Particle(
+              this.x + n.x*12, this.y + n.y*8,
+              n.x*randRange(0.4,1.7) + randRange(-0.5,0.5),
+              n.y*randRange(0.4,1.7) + randRange(-0.5,0.5),
+              230, k%2?'#7dd3fc':'#e0f2fe', 2
+            ));
+          }
+        }
+      }
+      if(d <= BARBOSA_FERRAZ_PUNCH_RANGE){
+        // Soco corpo a corpo
+        if(this.punchCd<=0){
+          const died=best.takeDamage(BARBOSA_FERRAZ_PUNCH_DAMAGE);
+          best.hitFlash=130;
+          this.punchCd=BARBOSA_FERRAZ_PUNCH_COOLDOWN;
+          this.punchFx=130;
+          this.hitFlash=90;
+          best.x += (dx/d)*6;
+          best.y += (dy/d)*6;
+          if(particles){
+            for(let k=0;k<7;k++){
+              particles.push(new Particle(best.x, best.y, randRange(-2,2), randRange(-2,0.6), 220, k%2?'#e2e8f0':'#7dd3fc', 2.2));
+            }
+            if(died){
+              for(let k=0;k<10;k++){
+                const ang=Math.random()*Math.PI*2;
+                particles.push(new Particle(best.x, best.y, Math.cos(ang)*randRange(1.2,3.2), Math.sin(ang)*randRange(1.2,3.2), 300, '#cbd5e1', 2));
+              }
+            }
+          }
+        }
+      } else {
+        const n=normalize(dx,dy);
+        this.moveTowards(n.x*this.speed, n.y*this.speed, walls);
+      }
+    } else {
+      // Sem alvo: volta para perto do dono, ou patrulha no lugar
+      const ox = this.owner ? this.owner.x : this.x;
+      const oy = this.owner ? this.owner.y : this.y;
+      const dx=ox-this.x, dy=oy-this.y;
+      if(Math.hypot(dx,dy) > 70){
+        const n=normalize(dx,dy);
+        this.moveTowards(n.x*this.speed*0.9, n.y*this.speed*0.9, walls);
+      } else {
+        this.x += Math.sin(this.anim*0.0025)*0.45;
+        this.y += Math.cos(this.anim*0.0022)*0.45;
+      }
+    }
+    // Colisão com todos: jogador dono, inimigos, outros aliados e o NPC Borzuk.
+    this.separateFrom(this.owner, walls);
+    for(const e of enemies||[]) this.separateFrom(e, walls);
+    if(this.game && this.game.allies){
+      for(const a of this.game.allies) if(a!==this) this.separateFrom(a, walls);
+    }
+    if(this.game && this.game.currentRoom && this.game.currentRoom.borzukNPC){
+      this.separateFrom(this.game.currentRoom.borzukNPC, walls);
+    }
+    this.x=clamp(this.x, WALL_THICK+this.w/2, CANVAS_W-WALL_THICK-this.w/2);
+    this.y=clamp(this.y, WALL_THICK+this.h/2, CANVAS_H-WALL_THICK-this.h/2);
+    return !this.dead;
+  }
+  separateFrom(o, walls){
+    if(!o || o===this || o.dead) return;
+    const ow = o.w || 24, oh = o.h || 24;
+    const minD = (this.w + ow) * 0.5;
+    const dx = this.x - o.x, dy = this.y - o.y;
+    let d = Math.hypot(dx, dy);
+    if(d >= minD) return;
+    if(d < 0.001){ d = 0.001; }
+    const push = minD - d;
+    const nx = dx/d, ny = dy/d;
+    const tries = [
+      [nx*push, 0],
+      [0, ny*push],
+      [nx*push, ny*push]
+    ];
+    for(const [px, py] of tries){
+      const tx=this.x+px, ty=this.y+py;
+      let blocked=false;
+      for(const w of walls||[]){
+        if(rectCollide(tx-this.w/2, ty-this.h/2, this.w, this.h, w.x,w.y,w.w,w.h)){ blocked=true; break; }
+      }
+      if(!blocked){ this.x=tx; this.y=ty; return; }
+    }
+  }
+  moveTowards(vx, vy, walls){
+    let nx=this.x+vx, ny=this.y+vy, canX=true, canY=true;
+    const hw=this.w/2, hh=this.h/2;
+    for(const w of walls||[]){
+      if(rectCollide(nx-hw, this.y-hh, this.w, this.h, w.x,w.y,w.w,w.h)) canX=false;
+      if(rectCollide(this.x-hw, ny-hh, this.w, this.h, w.x,w.y,w.w,w.h)) canY=false;
+    }
+    if(canX) this.x=nx;
+    if(canY) this.y=ny;
+  }
+  draw(ctx){
+    const W=this.w, H=this.h, x=this.x-W/2, y=this.y-H/2;
+    const bob=Math.sin(this.anim*0.010)*1.4;
+    const flash=this.hitFlash>0 && Math.floor(this.hitFlash/40)%2===0;
+    const pulse=0.5+Math.sin(this.anim*0.012)*0.35;
+    ctx.fillStyle='rgba(0,0,0,0.32)'; ctx.fillRect(x+2, y+H-3, W, 4);
+    // aura prata/ciano do Borzuk
+    ctx.fillStyle=`rgba(148,163,184,${0.12+pulse*0.08})`;
+    ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.9+pulse*4, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle=`rgba(56,189,248,${0.30+pulse*0.18})`; ctx.lineWidth=1.2;
+    ctx.setLineDash([4,3]); ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.8, 0, Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+    // pernas (calça preta)
+    ctx.fillStyle=flash?'#fff':'#111827'; ctx.fillRect(x+6, y+24+bob, W-12, H-27);
+    ctx.fillStyle=flash?'#334155':'#0b1220'; ctx.fillRect(x+6, y+24+bob, 2, H-27);
+    // sapatos
+    ctx.fillStyle='#0a0a0a'; ctx.fillRect(x+4, y+H-4, W-8, 2.5);
+    // camisa branca
+    ctx.fillStyle=flash?'#fff':'#f8fafc'; ctx.fillRect(x+7, y+12+bob, W-14, 13);
+    ctx.fillStyle='#e2e8f0'; ctx.fillRect(x+7, y+23+bob, W-14, 1.5);
+    // jaqueta preta nas laterais
+    ctx.fillStyle=flash?'#475569':'#111827';
+    ctx.fillRect(x+3, y+11+bob, 5, 15);
+    ctx.fillRect(x+W-8, y+11+bob, 5, 15);
+    ctx.fillStyle=flash?'#64748b':'#1f2937';
+    ctx.fillRect(x+8, y+12+bob, 2, 9); ctx.fillRect(x+W-10, y+12+bob, 2, 9);
+    // cinto
+    ctx.fillStyle='#0b1220'; ctx.fillRect(x+7, y+24+bob, W-14, 2);
+    ctx.fillStyle='#94a3b8'; ctx.fillRect(x+W/2-1.5, y+24+bob, 3, 2);
+    // cabeça (pele meio escura)
+    ctx.fillStyle=flash?'#fff':'#a9714b'; ctx.fillRect(x+8, y+3+bob, W-16, 10);
+    // cabelo meio cinza
+    ctx.fillStyle=flash?'#e5e7eb':'#9ca3af'; ctx.fillRect(x+7, y+1+bob, W-14, 3);
+    ctx.fillRect(x+7, y+3+bob, 2, 4); ctx.fillRect(x+W-9, y+3+bob, 2, 4);
+    // boca
+    ctx.fillStyle='#5b3a2a'; ctx.fillRect(x+W/2-2, y+9.4+bob, 4, 1);
+    // olhos
+    const ex=this.facing*0.8;
+    ctx.fillStyle='#1a0a00';
+    ctx.fillRect(x+11+ex, y+6+bob, 2.2, 2.4);
+    ctx.fillRect(x+W-13.2+ex, y+6+bob, 2.2, 2.4);
+    ctx.fillStyle='#4b5563';
+    ctx.fillRect(x+10.5+ex, y+5+bob, 3, 0.9);
+    ctx.fillRect(x+W-13.5+ex, y+5+bob, 3, 0.9);
+    // braços / pose de ataque
+    if(this.castFx>0){
+      ctx.fillStyle='#111827'; ctx.fillRect(x+W-3, y+13+bob, 5, 5);
+      ctx.fillStyle='#a9714b'; ctx.fillRect(x+W+1, y+14+bob, 4, 3);
+      const g=0.4+Math.sin(this.anim*0.04)*0.3;
+      ctx.fillStyle=`rgba(125,211,252,${g})`;
+      ctx.beginPath(); ctx.arc(x+W+7, y+15.5+bob, 5+this.castFx*0.01, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,0.9)';
+      ctx.beginPath(); ctx.arc(x+W+7, y+15.5+bob, 2, 0, Math.PI*2); ctx.fill();
+    } else {
+      ctx.fillStyle='#111827'; ctx.fillRect(x+1, y+13+bob, 4, 7);
+      ctx.fillStyle='#a9714b'; ctx.fillRect(x+1, y+19+bob, 4, 3);
+      const punchOut = this.punchFx>0 ? 6 : 0;
+      const dir = this.facing;
+      ctx.fillStyle='#111827';
+      ctx.fillRect(dir>0 ? x+W-5 : x+1, y+12+bob, 4+punchOut, 5);
+      const fx = dir>0 ? x+W-1+punchOut : x-4-punchOut;
+      ctx.fillStyle='#a9714b'; ctx.fillRect(fx, y+12.5+bob, 4, 4);
+      if(this.punchFx>0){
+        ctx.fillStyle='rgba(226,232,240,0.7)';
+        ctx.beginPath(); ctx.arc(fx+2, y+14.5+bob, 5, 0, Math.PI*2); ctx.fill();
+      }
+    }
+    // barra de duração
+    const pct=clamp(this.life/this.duration,0,1);
+    ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(x, y-8+bob, W, 4);
+    ctx.fillStyle=pct>0.5?'#94a3b8':pct>0.25?'#facc15':'#ef4444'; ctx.fillRect(x, y-8+bob, W*pct, 4);
+    ctx.fillStyle='rgba(255,255,255,0.9)'; ctx.font='5px monospace'; ctx.textAlign='center';
+    ctx.fillText('BORZUK', this.x, y-10+bob); ctx.textAlign='left';
   }
   getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
 }
@@ -1596,6 +1860,79 @@ class GiroAureo extends SpecialItem {
   }
 }
 
+// ===================== BARBOSA FERRAZ (PRESENTE DO BORZUK - SALA SETCH) =====================
+// Item especial exclusivo entregue pelo NPC Borzuk. Invoca o aliado Borzuk,
+// que persegue inimigos e luta com socos e hadoukens.
+class BarbosaFerraz extends SpecialItem {
+  constructor(){
+    super({
+      id: 'barbosa_ferraz',
+      name: 'BARBOSA FERRAZ',
+      key: 'e',
+      cooldown: BARBOSA_FERRAZ_COOLDOWN,
+      duration: BARBOSA_FERRAZ_ALLY_DURATION,
+      icon: '🥊',
+      iconImage: SPECIAL_ICON_IMAGES.barbosa_ferraz,
+      description: 'Invoca o aliado Borzuk, que luta com socos e hadouken',
+      color: '#7dd3fc'
+    });
+    this.ally = null;
+  }
+  hasActiveAlly(game){
+    return !!(game && game.allies && game.allies.some(a => a && a.isBorzukAlly && !a.dead && a.life>0));
+  }
+  tryActivate(player, game){
+    if(this.hasActiveAlly(game)){
+      if(game && game.showToast) game.showToast('🥊 Borzuk já está lutando ao seu lado!', 1400);
+      return false;
+    }
+    return super.tryActivate(player, game);
+  }
+  activate(player, game){
+    if(!game) return;
+    if(!game.allies) game.allies=[];
+    let sx=player.x + randRange(-30,30), sy=player.y + randRange(-30,30), tries=0;
+    const walls=game.currentRoom?game.currentRoom.walls:[];
+    while(tries<14){
+      let onWall=false;
+      for(const w of walls) if(rectCollide(sx-16,sy-19,32,38,w.x,w.y,w.w,w.h)){ onWall=true; break; }
+      if(!onWall && dist(sx,sy,player.x,player.y) > 22) break;
+      sx=player.x + randRange(-46,46); sy=player.y + randRange(-46,46); tries++;
+    }
+    sx=clamp(sx, WALL_THICK+22, CANVAS_W-WALL_THICK-22);
+    sy=clamp(sy, WALL_THICK+22, CANVAS_H-WALL_THICK-22);
+    const ally = new BorzukAlly(sx, sy, player, game);
+    this.ally = ally;
+    game.allies.push(ally);
+    // Efeito de invocação
+    for(let k=0;k<22;k++){
+      const ang=Math.random()*Math.PI*2;
+      game.particles.push(new Particle(sx,sy, Math.cos(ang)*randRange(1.2,3.8), Math.sin(ang)*randRange(1.2,3.8), 460, k%2?'#7dd3fc':'#cbd5e1', 2.8));
+    }
+    for(let k=0;k<8;k++) game.particles.push(new Particle(sx,sy, randRange(-1,1), randRange(-1,0.6), 350, '#ffffff', 2));
+    game.shake=Math.max(game.shake||0, 65);
+    if(game.showToast) game.showToast('🥊 BARBOSA FERRAZ! Borzuk entrou na luta!', 1900);
+  }
+  onDeactivate(player, game){
+    if(this.ally && !this.ally.dead){
+      this.ally.dead = true;
+      if(game && game.particles){
+        for(let k=0;k<14;k++){
+          const ang=Math.random()*Math.PI*2;
+          game.particles.push(new Particle(this.ally.x, this.ally.y, Math.cos(ang)*randRange(0.8,2.6), Math.sin(ang)*randRange(0.8,2.6), 340, k%2?'#7dd3fc':'#94a3b8', 2));
+        }
+      }
+    }
+    this.ally = null;
+  }
+  getStatusText(){
+    if(this.isActive) return `Ativo: ${Math.ceil(this.durationRemaining/1000)}s • Borzuk lutando`;
+    if(this.isOnCooldown()) return `Cooldown: ${this.getRemainingSeconds()}s`;
+    return 'Pronto! Invoca Borzuk';
+  }
+  playEffects(player, game){}
+}
+
 // Registro modular: facilita adicionar novos itens sem reescrever Game/Player
 // Basta criar classe nova extends SpecialItem e adicionar aqui.
 const SPECIAL_REGISTRY = {
@@ -1606,6 +1943,7 @@ const SPECIAL_REGISTRY = {
   'farmar_aura':       () => new FarmarAura(),
   'oli_xadrez':        () => new OliXadrez(),
   'giro_aureo':        () => new GiroAureo(),
+  'barbosa_ferraz':      () => new BarbosaFerraz(),
 };
 function createSpecialItem(id){
   const factory = SPECIAL_REGISTRY[id];
@@ -1681,8 +2019,10 @@ const UPGRADE_VALUES = {
   ESPADA_INCOMUM_WAVE_SPEED: 9.2,        // velocidade do corte
   ESPADA_INCOMUM_WAVE_DMG_FACTOR: 0.78,  // dano do corte = heavyDamage * factor
   ESPADA_INCOMUM_WAVE_SIZE: 9,           // tamanho base do projétil corte
-  ESPADA_RARA_GUARDIAO_SPEED: 0.32,      // +32% velocidade ao carregar
-  ESPADA_RARA_GUARDIAO_SHIELD_MS: 1100,  // escudo dura ~1.1s após carregar/soltar
+  ESPADA_RARA_GUARDIAO_SPEED: 0.20,      // +20% velocidade ao carregar
+  ESPADA_RARA_GUARDIAO_SHIELD_MS: 850,   // escudo dura ~0.85s após soltar
+  ESPADA_RARA_GUARDIAO_COOLDOWN: 2400,   // recarga do escudo após bloquear
+  ESPADA_RARA_GUARDIAO_MIN_CHARGE: 0.30, // carga mínima para formar o escudo
   // LUVA - punho foguete
   LUVA_COMUM_SPEED: 0.14,           // +14% velocidade ida
   LUVA_RARA_RANGE: 0.18,            // +18% alcance
@@ -1933,10 +2273,12 @@ const UPGRADE_DEFS = [
       w._swordWaveFactor = UPGRADE_VALUES.ESPADA_INCOMUM_WAVE_DMG_FACTOR;
       w._swordWaveSize = UPGRADE_VALUES.ESPADA_INCOMUM_WAVE_SIZE;
   }},
-  { id:'espada_rara_guardiao_agil', weapon:'ESPADA', rarity:'RARA', name:'Postura do Guardião', desc:'Ao carregar ganha escudo (1 hit) e +32% vel.', apply:(w)=>{
+  { id:'espada_rara_guardiao_agil', weapon:'ESPADA', rarity:'RARA', name:'Postura do Guardião', desc:'Carregando 30%: escudo (1 hit) e +20% vel. (recarga 2.4s)', apply:(w)=>{
       w._swordGuardian = true;
       w._guardianSpeed = UPGRADE_VALUES.ESPADA_RARA_GUARDIAO_SPEED;
       w._guardianShieldMs = UPGRADE_VALUES.ESPADA_RARA_GUARDIAO_SHIELD_MS;
+      w._guardianCooldown = UPGRADE_VALUES.ESPADA_RARA_GUARDIAO_COOLDOWN;
+      w._guardianMinCharge = UPGRADE_VALUES.ESPADA_RARA_GUARDIAO_MIN_CHARGE;
   }},
   // LUVA
   { id:'luva_comum_propulsor', weapon:'LUVA', rarity:'COMUM', name:'Propulsor Leve', desc:'+14% velocidade ida', apply:(w)=>{
@@ -2543,6 +2885,15 @@ const summonedEnemySpeed = 1.6;
 const SPIKE_SIZE = 28;
 const spikeDamage = 1;        // meio coração
 const spikeCooldown = 900;    // invulnerabilidade após dano de espinho
+
+// --- Vórtice Gravitacional (armadilha da Fase 5) ---
+const GRAVITY_TRAP_RADIUS = 96;
+const GRAVITY_TRAP_PULL_SPEED = 1.25;
+const GRAVITY_TRAP_PUSH_SPEED = 1.95;
+const GRAVITY_TRAP_PULL_MS = 1600;
+const GRAVITY_TRAP_WARN_MS = 520;
+const GRAVITY_TRAP_PUSH_MS = 900;
+const GRAVITY_TRAP_IDLE_MS = 380;
 
 // --- Noclip (passivo incomum) ---
 const NOCLIP_ITEM_SIZE = 20;
@@ -4110,6 +4461,10 @@ const JL_INTERACT_RANGE = 64;
 const OLI_NPC_SIZE_W = 24;
 const OLI_NPC_SIZE_H = 30;
 const OLI_NPC_INTERACT_RANGE = 64;
+// NPC Borzuk (dá o item especial Barbosa Ferraz) - um pouco maior que o jogador
+const BORZUK_NPC_SIZE_W = 34;
+const BORZUK_NPC_SIZE_H = 44;
+const BORZUK_NPC_INTERACT_RANGE = 72;
 
 // ===================== IO-IO ORBITANTE =====================
 // Io-io invocado pelo passivo: orbita o jogador girando e causa dano por contato
@@ -4500,7 +4855,7 @@ function applyCharacterToPlayer(player, characterId){
   // Ao trocar de personagem, reseta redução de cooldown e flags de especiais ativos
   // (será recalculado via equipSpecial se necessário, e upgrades já foram resetados em startGame)
   // Limpa flags de espada/guardião etc que possam vazar
-  player.swordGuardianActive=false; player.swordGuardianCharges=0; player.swordGuardianTimer=0;
+  player.swordGuardianActive=false; player.swordGuardianCharges=0; player.swordGuardianTimer=0; player.swordGuardianCooldown=0;
   // Dev - Raio Matemático flags
   if(characterId==='dev'){
     player.rayMatematicoChargeTime = 0;
@@ -5417,6 +5772,115 @@ class Spike {
     ctx.strokeStyle='rgba(0,255,136,0.18)';
     ctx.lineWidth=1;
     ctx.strokeRect(x, y+8 + bob, this.w, this.h-8);
+  }
+}
+
+// ===================== VÓRTICE GRAVITACIONAL (Fase 5) =====================
+class GravityTrap {
+  constructor(x, y, radius = GRAVITY_TRAP_RADIUS){
+    this.x = x; this.y = y;
+    this.radius = radius;
+    this.anim = Math.random()*Math.PI*2;
+    const phases = ['pull','warn','push','idle'];
+    this.phase = phases[randInt(0, phases.length-1)];
+    this.phaseTimer = this.phase==='pull' ? GRAVITY_TRAP_PULL_MS
+      : this.phase==='warn' ? GRAVITY_TRAP_WARN_MS
+      : this.phase==='push' ? GRAVITY_TRAP_PUSH_MS : GRAVITY_TRAP_IDLE_MS;
+    this.nearPlayer = false;
+  }
+  update(dt){
+    this.anim += dt * (this.phase==='warn' ? 0.014 : this.phase==='pull' ? 0.010 : 0.007);
+    this.phaseTimer -= dt;
+    if(this.phaseTimer > 0) return;
+    if(this.phase==='pull'){ this.phase='warn'; this.phaseTimer=GRAVITY_TRAP_WARN_MS; }
+    else if(this.phase==='warn'){ this.phase='push'; this.phaseTimer=GRAVITY_TRAP_PUSH_MS; }
+    else if(this.phase==='push'){ this.phase='idle'; this.phaseTimer=GRAVITY_TRAP_IDLE_MS; }
+    else { this.phase='pull'; this.phaseTimer=GRAVITY_TRAP_PULL_MS; }
+  }
+  applyToPlayer(player, walls, particles, dt){
+    if(!player) return;
+    const dx = this.x - player.x, dy = this.y - player.y;
+    const d = Math.hypot(dx, dy);
+    this.nearPlayer = d < this.radius*1.7;
+    if(this.phase!=='pull' && this.phase!=='push') return;
+    if(d > this.radius + 18 || d < 10) return;
+    if(player.isDashing && player.isDashing()) return;
+    if(player.isChicotePulling) return;
+    const pulling = this.phase==='pull';
+    const dir = pulling ? 1 : -1;
+    const t = clamp(d/this.radius, 0, 1);
+    const power = pulling ? 0.72 + 0.38*(1-t) : 0.85 + 0.45*(1-t);
+    const base = pulling ? GRAVITY_TRAP_PULL_SPEED : GRAVITY_TRAP_PUSH_SPEED;
+    const step = base * power * (dt/16.667);
+    const nx = player.x + (dx/d)*step*dir;
+    const ny = player.y + (dy/d)*step*dir;
+    let moved = false;
+    if(!player.checkWallCollision(nx, player.y, walls)){ player.x = nx; moved = true; }
+    if(!player.checkWallCollision(player.x, ny, walls)){ player.y = ny; moved = true; }
+    player.x = clamp(player.x, WALL_THICK + player.w/2, CANVAS_W - WALL_THICK - player.w/2);
+    player.y = clamp(player.y, WALL_THICK + player.h/2, CANVAS_H - WALL_THICK - player.h/2);
+    if(moved && particles && Math.random()<0.4){
+      const a = Math.random()*Math.PI*2;
+      const rr = this.radius*randRange(0.45, 0.98);
+      const px = this.x + Math.cos(a)*rr;
+      const py = this.y + Math.sin(a)*rr;
+      const toward = Math.atan2(this.y - py, this.x - px);
+      const spd = pulling ? randRange(0.8,1.8) : randRange(1.4,2.8);
+      particles.push(new Particle(px, py, Math.cos(toward)*spd*(pulling?1:-1), Math.sin(toward)*spd*(pulling?1:-1), 220, pulling?'rgba(90,220,255,0.85)':'rgba(255,150,70,0.85)', 1.5));
+    }
+  }
+  draw(ctx){
+    const pulling = this.phase==='pull';
+    const warning = this.phase==='warn';
+    const pushing = this.phase==='push';
+    const col = pushing ? '255,150,70' : warning ? '255,220,90' : '90,220,255';
+    const pulse = 0.5 + Math.sin(this.anim*2.6)*0.5;
+    const active = pulling || pushing;
+    ctx.save();
+    ctx.fillStyle='rgba(0,0,0,0.18)';
+    ctx.beginPath(); ctx.ellipse(this.x, this.y+4, this.radius*0.94, this.radius*0.7, 0, 0, Math.PI*2); ctx.fill();
+    ctx.setLineDash([5,5]);
+    ctx.strokeStyle=`rgba(${col},${warning?0.42+pulse*0.25:0.18+pulse*0.12})`;
+    ctx.lineWidth=warning?2:1.4;
+    ctx.lineDashOffset = -this.anim*18;
+    ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2); ctx.stroke();
+    ctx.setLineDash([]);
+    for(let i=0;i<4;i++){
+      const start = this.anim*(pushing?-1:1) + i*Math.PI/2;
+      ctx.strokeStyle=`rgba(${col},${active?0.34+pulse*0.28:0.14})`;
+      ctx.lineWidth=active?1.8:1;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius*(0.28+i*0.17), start, start+1.05);
+      ctx.stroke();
+    }
+    ctx.fillStyle=`rgba(${col},${active?0.18+pulse*0.12:0.09})`;
+    ctx.beginPath(); ctx.arc(this.x, this.y, this.radius*0.24, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle=`rgba(${col},${0.55+pulse*0.3})`;
+    ctx.beginPath(); ctx.arc(this.x, this.y, this.radius*0.065, 0, Math.PI*2); ctx.fill();
+    if(active || warning){
+      const arrows = 8;
+      for(let i=0;i<arrows;i++){
+        const a = (i/arrows)*Math.PI*2 - this.anim*(pushing?-0.45:0.45);
+        const rr = this.radius*(0.68 + Math.sin(this.anim*1.7 + i)*0.06);
+        const ax = this.x + Math.cos(a)*rr;
+        const ay = this.y + Math.sin(a)*rr;
+        ctx.save();
+        ctx.translate(ax, ay);
+        ctx.rotate(a + (pushing?0:Math.PI));
+        ctx.fillStyle=`rgba(${col},${warning?0.45+pulse*0.3:0.35+pulse*0.35})`;
+        ctx.beginPath(); ctx.moveTo(4.2,0); ctx.lineTo(-3,-2.4); ctx.lineTo(-3,2.4); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+    }
+    if(this.nearPlayer){
+      ctx.font='5px monospace'; ctx.textAlign='center';
+      ctx.fillStyle=`rgba(${col},0.92)`;
+      ctx.fillText('VÓRTICE GRAVITACIONAL', this.x, this.y - this.radius - 8);
+      ctx.fillStyle=`rgba(${col},${0.7+pulse*0.25})`;
+      ctx.fillText(pulling?'SUCÇÃO':pushing?'REPULSÃO':warning?'PREPARE-SE':'RECARREGANDO', this.x, this.y - this.radius - 2);
+      ctx.textAlign='left';
+    }
+    ctx.restore();
   }
 }
 
@@ -8615,6 +9079,7 @@ class Bullet {
     this.isSwordWave = !!opts.isSwordWave; // corte de vento da espada
     this.isRayMatematico = !!opts.isRayMatematico; // Dev principal
     this.isMiniRay = !!opts.isMiniRay; // Sobremesa mini
+    this.isHadouken = !!opts.isHadouken; // Hadouken do aliado Borzuk
     this.explosionRadius = opts.explosionRadius ?? 96;
     this.explosionDamage = opts.explosionDamage ?? 4;
     // ===== ASPECTOS DE ARMAS (traits copiadas de outra arma) =====
@@ -8773,6 +9238,27 @@ class Bullet {
     if (this.x < -20 || this.x > CANVAS_W + 20 || this.y < -20 || this.y > CANVAS_H + 20) this.dead = true;
   }
   draw(ctx) {
+    // Hadouken do aliado Borzuk: esfera de energia ciano com rastro
+    if(this.isHadouken){
+      const ang=Math.atan2(this.dirY,this.dirX);
+      ctx.strokeStyle=this.glow;
+      ctx.lineWidth=this.size+2; ctx.lineCap='round';
+      ctx.globalAlpha=0.55;
+      ctx.beginPath();
+      ctx.moveTo(this.x - this.dirX*16, this.y - this.dirY*16);
+      ctx.lineTo(this.x, this.y);
+      ctx.stroke();
+      ctx.globalAlpha=1; ctx.lineCap='butt';
+      ctx.fillStyle=this.glow;
+      ctx.beginPath(); ctx.arc(this.x, this.y, this.size+4, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle=this.color;
+      ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,0.92)';
+      ctx.beginPath(); ctx.arc(this.x, this.y, this.size*0.45, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle='rgba(255,255,255,0.7)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.arc(this.x, this.y, this.size*0.7, ang+0.4, ang+2.6); ctx.stroke();
+      return;
+    }
     // Dev - Mini Lazer Sobremesa teleguiado (pouco dano, segue inimigo)
     if(this.isMiniRay){
       const ang=Math.atan2(this.dirY,this.dirX);
@@ -9371,6 +9857,7 @@ class MeleeSwing {
     this.dead=false;
     this.owner=opts.owner||'player';
     this.weaponName=opts.weaponName||'MELEE';
+    this.isSword=!!opts.isSword || String(this.weaponName).toUpperCase()==='ESPADA';
     this.shockRadius=opts.shockRadius||0;
     this.shockDamage=opts.shockDamage||0;
     this.pierce=opts.pierce||0;
@@ -9408,6 +9895,10 @@ class MeleeSwing {
     const alpha=0.82*(1-prog*0.62);
     const baseAng=Math.atan2(this.dirY,this.dirX);
     const halfRad=(this.angle/2)*Math.PI/180;
+    if(this.isSword){
+      this.drawSwordSlash(ctx, prog, alpha, baseAng, halfRad);
+      return;
+    }
     // glow arc
     ctx.fillStyle=this.glow.replace(/0\.\d+/, String((0.12+alpha*0.10).toFixed(2)));
     ctx.beginPath(); ctx.moveTo(this.x,this.y); ctx.arc(this.x,this.y,this.range, baseAng-halfRad, baseAng+halfRad); ctx.closePath(); ctx.fill();
@@ -9427,6 +9918,86 @@ class MeleeSwing {
     }
     // center dot
     ctx.fillStyle='rgba(255,255,255,0.72)'; ctx.beginPath(); ctx.arc(this.x,this.y,1.8,0,Math.PI*2); ctx.fill();
+  }
+  drawSwordSlash(ctx, prog, alpha, baseAng, halfRad){
+    const t=1-Math.pow(1-clamp(prog,0,1),3);
+    const curAng=lerp(baseAng-halfRad, baseAng+halfRad, t);
+    const trailAng=lerp(baseAng-halfRad, curAng, 0.52);
+    const bladeLen=this.range-6;
+    const gold=this.color==='#ffd700';
+    const col=this.isHeavy?'255,255,255':(gold?'255,215,0':'226,232,245');
+    const a0=clamp(alpha,0.15,0.95);
+    ctx.save();
+    const grad=ctx.createRadialGradient(this.x,this.y,this.range*0.36,this.x,this.y,this.range*1.06);
+    grad.addColorStop(0,`rgba(${col},0)`);
+    grad.addColorStop(0.55,`rgba(${col},${(0.10+a0*0.15).toFixed(3)})`);
+    grad.addColorStop(1,`rgba(${col},0)`);
+    ctx.fillStyle=grad;
+    ctx.beginPath();
+    ctx.arc(this.x,this.y,this.range*1.02, Math.min(baseAng-halfRad,trailAng), Math.max(baseAng-halfRad,curAng));
+    ctx.arc(this.x,this.y,this.range*0.48, curAng, trailAng, true);
+    ctx.closePath();
+    ctx.fill();
+    for(let i=0;i<3;i++){
+      ctx.strokeStyle=`rgba(${col},${(a0*(0.42-i*0.11)).toFixed(3)})`;
+      ctx.lineWidth=(this.isHeavy?2.4:1.6)-i*0.35;
+      ctx.beginPath();
+      ctx.arc(this.x,this.y,this.range*(0.99-i*0.16), Math.min(baseAng-halfRad,trailAng), Math.max(baseAng-halfRad,curAng));
+      ctx.stroke();
+    }
+    const blade=(ang,a)=>{
+      const hx=this.x+Math.cos(ang)*8;
+      const hy=this.y+Math.sin(ang)*8;
+      ctx.save();
+      ctx.translate(hx,hy);
+      ctx.rotate(ang);
+      if(this.isHeavy){
+        ctx.strokeStyle=`rgba(255,255,255,${a*0.35})`;
+        ctx.lineWidth=6;
+        ctx.beginPath(); ctx.moveTo(4,0); ctx.lineTo(bladeLen,0); ctx.stroke();
+      }
+      ctx.fillStyle=`rgba(238,242,252,${a})`;
+      ctx.beginPath();
+      ctx.moveTo(2,-2.7);
+      ctx.lineTo(bladeLen-5,-1.55);
+      ctx.lineTo(bladeLen,0);
+      ctx.lineTo(bladeLen-5,1.55);
+      ctx.lineTo(2,2.7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle=`rgba(255,255,255,${a*0.95})`;
+      ctx.lineWidth=0.8;
+      ctx.stroke();
+      ctx.strokeStyle=`rgba(120,128,158,${a*0.55})`;
+      ctx.lineWidth=0.9;
+      ctx.beginPath(); ctx.moveTo(8,-0.5); ctx.lineTo(bladeLen-6,-0.5); ctx.stroke();
+      ctx.fillStyle=`rgba(${gold?213:192},${gold?176:160},${gold?54:48},${a})`;
+      ctx.fillRect(-1.6,-6.2,3.2,12.4);
+      ctx.fillStyle=`rgba(84,55,32,${a})`;
+      ctx.fillRect(-8.8,-1.3,7,2.6);
+      ctx.fillStyle=`rgba(${gold?213:192},${gold?176:160},${gold?54:48},${a})`;
+      ctx.beginPath(); ctx.arc(-9.6,0,2,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+    };
+    for(let i=3;i>=1;i--){
+      const ang=curAng - i*0.10*(this.isHeavy?1.25:1);
+      blade(ang, a0*(0.24-i*0.045));
+    }
+    blade(curAng,a0);
+    const tipX=this.x+Math.cos(curAng)*this.range;
+    const tipY=this.y+Math.sin(curAng)*this.range;
+    ctx.fillStyle=`rgba(255,255,255,${a0})`;
+    ctx.beginPath(); ctx.arc(tipX,tipY,this.isHeavy?3:2,0,Math.PI*2); ctx.fill();
+    const streaks=this.isHeavy?10:6;
+    for(let i=0;i<streaks;i++){
+      const sa=lerp(baseAng-halfRad,curAng,Math.random());
+      const rr=this.range*randRange(0.58,1.02);
+      const sx=this.x+Math.cos(sa)*rr;
+      const sy=this.y+Math.sin(sa)*rr;
+      ctx.fillStyle=`rgba(${col},${(Math.random()*a0*0.7).toFixed(3)})`;
+      ctx.fillRect(sx+randRange(-1,1),sy+randRange(-1,1),randRange(0.8,1.8),randRange(0.8,1.8));
+    }
+    ctx.restore();
   }
 }
 
@@ -12047,6 +12618,7 @@ class SpecialItemPickup extends Item {
     const tmp = factory ? factory() : null;
     this.specialName = tmp ? tmp.name : specialId;
     this.specialIcon = tmp ? tmp.icon : '★';
+    this.specialIconImage = tmp ? tmp.iconImage : null;
     this.specialColor = tmp ? tmp.color : '#ffcc00';
     this.isSpecialPickup = true;
   }
@@ -12072,6 +12644,7 @@ class SpecialItemPickup extends Item {
     const tmp = factory ? factory() : null;
     this.specialName = tmp ? tmp.name : newSpecialId;
     this.specialIcon = tmp ? tmp.icon : '★';
+    this.specialIconImage = tmp ? tmp.iconImage : null;
     this.specialColor = tmp ? tmp.color : '#ffcc00';
     this.type = 'special_'+newSpecialId;
     // spawnDelay evita re-pega instantânea (anti-duplicação/exploit)
@@ -12091,6 +12664,7 @@ class SpecialItemPickup extends Item {
     else if(this.specialId==='gato_antivirus') ctx.fillStyle=`rgba(59,130,246,${0.26+pulse*0.16})`;
     else if(this.specialId==='power_star') ctx.fillStyle=`rgba(255,215,0,${0.28+pulse*0.16})`;
     else if(this.specialId==='farmar_aura') ctx.fillStyle=`rgba(255,107,157,${0.26+pulse*0.16})`;
+    else if(this.specialId==='barbosa_ferraz') ctx.fillStyle=`rgba(125,211,252,${0.24+pulse*0.16})`;
     else {
       // fallback hex -> rgba via helper
       if(col.startsWith('#')){
@@ -12114,7 +12688,11 @@ class SpecialItemPickup extends Item {
     // ícone central grande - corrigido alinhamento e fonte para emojis vs 67
     ctx.fillStyle='#fff';
     ctx.textAlign='center';
-    if(this.specialId==='farmar_aura'){
+    const iconImg = this.specialIconImage ? getSpecialIconImage(this.specialIconImage) : null;
+    if(iconImg && iconImg.complete && iconImg.naturalWidth>0){
+      const iw = s*0.7;
+      ctx.drawImage(iconImg, x-iw/2, y-iw/2+1, iw, iw);
+    } else if(this.specialId==='farmar_aura'){
       ctx.font='bold 13px "Press Start 2P"';
       ctx.fillText(this.specialIcon, x, y+5);
     } else if(this.specialId==='escudo_magico'){
@@ -12130,6 +12708,9 @@ class SpecialItemPickup extends Item {
       ctx.font='14px sans-serif';
       ctx.fillText(this.specialIcon, x, y+5);
     } else if(this.specialId==='power_star'){
+      ctx.font='14px sans-serif';
+      ctx.fillText(this.specialIcon, x, y+5);
+    } else if(this.specialId==='barbosa_ferraz'){
       ctx.font='14px sans-serif';
       ctx.fillText(this.specialIcon, x, y+5);
     } else {
@@ -12428,6 +13009,7 @@ class Player {
     this.swordGuardianCharges = 0;
     this.swordGuardianTimer = 0; // ms restantes de escudo/velocidade após soltar
     this.swordGuardianSpeedBonus = 0;
+    this.swordGuardianCooldown = 0;
     // Dev - Raio Matemático (exclusivo) - MECÂNICA DO LASER ADICIONADA (charge + minigame)
     this.rayMatematicoChargeTime = 0; // ms acumulado segurando (compat)
     this.isRayMatematicoCharging = false; // está carregando?
@@ -12462,7 +13044,7 @@ class Player {
     this.swordChargeTime=0; this.isSwordCharging=false; this.swordChargeDir=null; this.swordHeavyReady=false;
      this.swordCombo=0; this.swordComboTimer=0;
     this.chicoteChargeTime=0; this.isChicoteCharging=false; this.chicoteChargeDir=null; this.chicoteHeavyReady=false;
-    this.swordGuardianActive=false; this.swordGuardianCharges=0; this.swordGuardianTimer=0;
+    this.swordGuardianActive=false; this.swordGuardianCharges=0; this.swordGuardianTimer=0; this.swordGuardianCooldown=0;
     // LASER REMOVIDA
     // Motosserra barra cura mantém entre salas (não zera no reset de sala, só em new game via startGame) - mas garante inicialização
     if(this.motosserraCharge===undefined) this.motosserraCharge=0;
@@ -14261,9 +14843,9 @@ class Player {
           const d=dist(this.x,this.y,e.x,e.y);
           if(d<110){
             const ang=Math.atan2(e.y - this.y, e.x - this.x)||Math.random()*Math.PI*2;
-            e.x+=Math.cos(ang)*14; e.y+=Math.sin(ang)*14;
+            e.x+=Math.cos(ang)*10; e.y+=Math.sin(ang)*10;
             e.hitFlash = Math.max(e.hitFlash||0, 110);
-            if(e.stunTimer!==undefined) e.stunTimer = Math.max(e.stunTimer||0, 140);
+            if(e.stunTimer!==undefined) e.stunTimer = Math.max(e.stunTimer||0, 100);
           }
         }
       }
@@ -14271,6 +14853,7 @@ class Player {
       this.swordGuardianActive = false;
       this.swordGuardianTimer = 0;
       this.swordGuardianSpeedBonus = 0;
+      this.swordGuardianCooldown = (this.weapon && this.weapon._guardianCooldown) ?? UPGRADE_VALUES.ESPADA_RARA_GUARDIAO_COOLDOWN;
       this.invulnTimer = 140;
       return false;
     }
@@ -14528,25 +15111,32 @@ class Player {
     }
     // LASER REMOVIDA - velocidade
     // ===== ESPADA Guardião Ágil - escudo + velocidade ao carregar (upgrade) =====
+    this.swordGuardianCooldown = Math.max(0, (this.swordGuardianCooldown||0) - dt);
     if(this.weapon && this.weapon._swordGuardian){
       if(this.isSwordCharging){
-        this.swordGuardianActive = true;
-        this.swordGuardianCharges = 1;
-        this.swordGuardianTimer = this.weapon._guardianShieldMs ?? UPGRADE_VALUES.ESPADA_RARA_GUARDIAO_SHIELD_MS;
         this.swordGuardianSpeedBonus = this.weapon._guardianSpeed ?? UPGRADE_VALUES.ESPADA_RARA_GUARDIAO_SPEED;
-        // aplica velocidade extra imediatamente sobre baseMove (sobrescreve cálculo anterior)
         this.speed = baseMove * (1 + this.swordGuardianSpeedBonus);
+        const minP = this.weapon._guardianMinCharge ?? UPGRADE_VALUES.ESPADA_RARA_GUARDIAO_MIN_CHARGE;
+        if(!this.swordGuardianActive && this.swordGuardianCooldown<=0 && this.getSwordChargeProgress()>=minP){
+          this.swordGuardianActive = true;
+          this.swordGuardianCharges = 1;
+          this.swordGuardianTimer = this.weapon._guardianShieldMs ?? UPGRADE_VALUES.ESPADA_RARA_GUARDIAO_SHIELD_MS;
+        } else if(this.swordGuardianActive){
+          this.swordGuardianTimer = this.weapon._guardianShieldMs ?? UPGRADE_VALUES.ESPADA_RARA_GUARDIAO_SHIELD_MS;
+        }
       } else if(this.swordGuardianActive){
         // mantém escudo/velocidade por timer após soltar
         this.swordGuardianTimer -= dt;
         if(this.swordGuardianTimer > 0){
-          // mantém velocidade residual (65% do bônus) para dash pós-corte
-          this.speed = baseMove * (1 + (this.swordGuardianSpeedBonus||0) * 0.65);
+          // mantém velocidade residual (50% do bônus) para dash pós-corte
+          this.speed = baseMove * (1 + (this.swordGuardianSpeedBonus||0) * 0.50);
         } else {
           this.swordGuardianActive = false;
           this.swordGuardianCharges = 0;
           this.swordGuardianSpeedBonus = 0;
         }
+      } else {
+        this.swordGuardianSpeedBonus = 0;
       }
     } else {
       // sem upgrade guardião: gerencia expiração residual se havia escudo
@@ -15527,6 +16117,11 @@ class Player {
         ctx.fillStyle='rgba(0,0,0,0.62)'; ctx.fillRect(bx, by, bw, bh);
         ctx.fillStyle='#7ec8ff'; ctx.fillRect(bx, by, bw*pctG, bh);
       }
+    } else if(this.weapon && this.weapon._swordGuardian && this.isSwordCharging && this.swordGuardianCooldown>0){
+      ctx.fillStyle='rgba(126,200,255,0.72)';
+      ctx.font='5px monospace'; ctx.textAlign='center';
+      ctx.fillText(`GUARDIÃO ${(this.swordGuardianCooldown/1000).toFixed(1)}s`, this.x, this.y + bob - 17);
+      ctx.textAlign='left';
     }
     // Espada combo 3 golpes - indicador acima (mais útil)
     if(this.weapon && this.weapon.isSword && this.swordComboTimer>0){
@@ -16651,7 +17246,7 @@ class Player {
       ctx.fillRect(x+8, y-6 + bob, 8, 3);
     }
     // overlay melee swing (braço esticado durante corte)
-    if(this.meleeAnim>0 && this.meleeDir){
+    if(this.meleeAnim>0 && this.meleeDir && !(this.weapon && this.weapon.isSword)){
       const p=this.meleeAnim/160;
       const ang=Math.atan2(this.meleeDir.y, this.meleeDir.x);
       ctx.strokeStyle='rgba(255,255,255,0.92)';
@@ -18298,7 +18893,7 @@ class SetchCupGame {
       }
       if(room) room.shake = 60;
       // Os outros NPCs da sala commenting a jogada (reação)
-      if(room) for(const o of [room.jlNPC, room.oliNPC, room.indianaNPC]) if(o && o.onCupRound) o.onCupRound(true, this.round);
+      if(room) for(const o of [room.jlNPC, room.oliNPC, room.indianaNPC, room.borzukNPC]) if(o && o.onCupRound) o.onCupRound(true, this.round);
     } else {
       this.streak = 0;
       this.setBanner(this.timedOut ? 'TEMPO ESGOTADO!' : 'ERROU!', '#ff6b6b', 1700);
@@ -18310,7 +18905,7 @@ class SetchCupGame {
         for(let k=0;k<10;k++) game.particles.push(new Particle(cup.displayX, cup.displayY-8, randRange(-1.2,1.2), randRange(-1,0.4), 240, '#ff3b30', 1.8));
       }
       if(room && room.npc && room.npc.onLose) room.npc.onLose();
-      if(room) for(const o of [room.jlNPC, room.oliNPC, room.indianaNPC]) if(o && o.onCupRound) o.onCupRound(false, this.round);
+      if(room) for(const o of [room.jlNPC, room.oliNPC, room.indianaNPC, room.borzukNPC]) if(o && o.onCupRound) o.onCupRound(false, this.round);
     }
     return {ok:true, win:isWin, reward:this.rewardType, round:this.round, final:this.isFinalRound()};
   }
@@ -19661,6 +20256,175 @@ class OliNPC extends SetchVendor {
   }
 }
 
+// ===================== BORZUK NPC - BARBOSA FERRAZ (SALA SETCH) =====================
+// NPC que entrega o item especial exclusivo Barbosa Ferraz (BarbosaFerraz):
+// invoca o aliado Borzuk, que luta com socos e hadouken.
+// Aparência: cabelo meio cinza, pele meio escura, roupa branca com detalhes
+// pretos, calça preta e jaqueta preta. Um pouco maior que o jogador.
+class BorzukNPC extends SetchVendor {
+  constructor(x,y){
+    super(x, y, BORZUK_NPC_SIZE_W, BORZUK_NPC_SIZE_H, BORZUK_NPC_INTERACT_RANGE, {
+      name:'BORZUK',
+      color:'rgba(148,163,184,0.96)',
+      ringColor:'rgba(125,211,252,0.8)',
+      lines:[
+        'O punho é de ferro. O soco também.',
+        'Quer lutar comigo? Então leva a minha luva.',
+        'Hadouken não se aprende. Se herda.',
+        'O Setch aposta em copo. Eu aposto em soco.',
+        'Essa jaqueta preta já viu muita briga.',
+        'Pele escura, cabelo cinza, punho firme.',
+      ],
+      doneLines:['A luva é sua. Usa com honra.','Soco firme, mente limpa.','Se precisar, me chama.'],
+    });
+    this.giftIcon='🥊'; this.giftColor='#7dd3fc';
+    this.giftBadge='🥊'; // luva flutuando
+    this.hypeLines=['Isso! Soco bem dado!','Hadouken limpo, jogador.','Boa luta! O Borzuk aprova.'];
+    this.pokeLines=['Copo te derrubou? Levanta e soca de novo.','Borzuk não cai fácil.','Tá apanhando do Setch? Foca, parvo.'];
+    this.punchFx=0;
+  }
+  update(dt,player){
+    super.update(dt,player);
+    // luva flutua sempre que o jogador chega perto (convite)
+    if(this.glow>0.4 && Math.random()<0.02) this.punchFx=220;
+    if(this.punchFx>0) this.punchFx-=dt;
+  }
+  // Deixa o item especial Barbosa Ferraz NO CHÃO para pegar/trocar com [E]
+  tryGiveGift(player, game, room){
+    if(this.giftGiven) return {ok:false, reason:'already_given'};
+    if(player.equippedSpecial && player.equippedSpecial.id==='barbosa_ferraz'){
+      this.giftGiven = true;
+      if(room) room.borzukGiftGiven = true;
+      return {ok:false, reason:'already_has'};
+    }
+    if(!SPECIAL_REGISTRY['barbosa_ferraz']) return {ok:false, reason:'create_failed'};
+    let dropped=false;
+    if(game && game.currentRoom){
+      const it=new SpecialItemPickup(this.x+26, this.y+16, 'barbosa_ferraz');
+      it.spawnDelay=140;
+      it.isNpcGift = true;
+      game.currentRoom.items.push(it);
+      dropped=true;
+    }
+    this.giftGiven=true;
+    if(room) room.borzukGiftGiven=true;
+    if(game){
+      game.shake=Math.max(game.shake||0, 70);
+      for(let k=0;k<18;k++) game.particles.push(new Particle(this.x,this.y, randRange(-1.6,1.6), randRange(-1.7,0.6), 380, '#7dd3fc', 2.4));
+      for(let k=0;k<8;k++) game.particles.push(new Particle(this.x,this.y, randRange(-1.1,1.1), randRange(-1.4,0.5), 300, '#e2e8f0', 1.8));
+      if(game.currentRoom) game.currentRoom.explosions.push({x:this.x,y:this.y,radius:12,life:340,max:340,isBorzukGift:true});
+      const had = player.equippedSpecial ? player.equippedSpecial.name : null;
+      const msg = dropped
+        ? '🥊 Borzuk: Deixei a BARBOSA FERRAZ no chão! Aperte [E] perto dela para equipar' + (had ? ` (troca ${had})` : '') + '.'
+        : '🥊 Borzuk: A luva é sua. Socos e hadouken na sala.';
+      if(game.showToast) game.showToast(msg, 3000);
+    }
+    this.say('A luva está aí no chão. Levanta e luta!', 2600);
+    this.celebrate();
+    return {ok:true, special:'barbosa_ferraz', dropped};
+  }
+  draw(ctx, player){
+    const W=this.w, H=this.h;
+    const x=this.x-W/2, y=this.y-H/2, bob=Math.sin(this.anim*0.008)*1.6;
+    const breathe=Math.sin(this.anim*0.008)*0.35;
+    // sombra
+    ctx.fillStyle='rgba(0,0,0,0.34)'; ctx.fillRect(x+2, y+H-3, W, 4);
+    // aura prata/ciano (ferro)
+    const pulse=0.5+Math.sin(this.anim*0.011)*0.30;
+    ctx.fillStyle=`rgba(148,163,184,${0.14+pulse*0.08 + this.glow*0.06})`;
+    ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.92+pulse*3,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle=`rgba(125,211,252,${0.24+pulse*0.12})`; ctx.lineWidth=1.1; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.87,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+    this.drawHighlight(ctx, x, y, W, H, bob);
+    // pernas - calça preta
+    ctx.fillStyle='#111827'; ctx.fillRect(x+7, y+30+bob, W-14, H-33);
+    ctx.fillStyle='#0b1220'; ctx.fillRect(x+7, y+30+bob, 2, H-33);
+    // sapatos
+    ctx.fillStyle='#000'; ctx.fillRect(x+5, y+H-4, W-10, 2.5);
+    // corpo - camisa branca
+    ctx.fillStyle='#f8fafc'; ctx.fillRect(x+9, y+14+bob+breathe, W-18, 16);
+    ctx.fillStyle='#e2e8f0'; ctx.fillRect(x+9, y+28.5+bob+breathe, W-18, 1.5);
+    // jaqueta preta
+    ctx.fillStyle='#111827';
+    ctx.fillRect(x+4, y+13+bob+breathe, 5, 18);
+    ctx.fillRect(x+W-9, y+13+bob+breathe, 5, 18);
+    // lapelas / detalhes pretos
+    ctx.fillStyle='#1f2937';
+    ctx.fillRect(x+10, y+14+bob+breathe, 2.5, 12);
+    ctx.fillRect(x+W-12.5, y+14+bob+breathe, 2.5, 12);
+    ctx.fillStyle='#0b1220'; ctx.fillRect(x+9, y+13+bob+breathe, W-18, 1.4);
+    // cinto
+    ctx.fillStyle='#0b1220'; ctx.fillRect(x+9, y+29+bob, W-18, 2);
+    ctx.fillStyle='#94a3b8'; ctx.fillRect(x+W/2-2, y+29+bob, 4, 2);
+    // cabeça - pele meio escura
+    ctx.fillStyle='#a9714b'; ctx.fillRect(x+9, y+2+bob, W-18, 12);
+    ctx.fillStyle='#8d5524'; ctx.fillRect(x+9, y+11.5+bob, W-18, 2.5);
+    // cabelo meio cinza
+    ctx.fillStyle='#9ca3af'; ctx.fillRect(x+8, y-0.5+bob, W-16, 3.6);
+    ctx.fillRect(x+8, y+1.5+bob, 2.2, 5); ctx.fillRect(x+W-10.2, y+1.5+bob, 2.2, 5);
+    // boca
+    drawMoodMouth(ctx, this.x, y+12.4+bob, W-24, '#4a2a1a', this.mood);
+    // olhos (ciano, acompanham o jogador) - piscam
+    const eyeY=y+6+bob, ex=this.lookX*0.9, ey=this.lookY*0.6;
+    const moodEye=clamp(this.mood, -1, 1);
+    const eyeH=(this.blink>0?0.7:2.6) * (1 + moodEye*0.22);
+    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+12, eyeY, 2.6, eyeH); ctx.fillRect(x+W-14.6, eyeY, 2.6, eyeH);
+    if(this.blink<=0){
+      ctx.fillStyle='#7dd3fc'; ctx.fillRect(x+12.5+ex, eyeY+1+ey+moodEye*0.5, 1.2, 1.2); ctx.fillRect(x+W-14.1+ex, eyeY+1+ey+moodEye*0.5, 1.2, 1.2);
+      ctx.fillStyle='#fff'; ctx.fillRect(x+13+ex, eyeY+1.5+ey, 0.6, 0.6); ctx.fillRect(x+W-13.6+ex, eyeY+1.5+ey, 0.6, 0.6);
+    }
+    // sobrancelhas cinza
+    ctx.fillStyle='#6b7280';
+    const browY=y+4.4+bob-moodEye*0.9;
+    ctx.fillRect(x+11.5, browY, 3.4, 1); ctx.fillRect(x+W-14.9, browY, 3.4, 1);
+    // braços (jaqueta preta + mãos)
+    ctx.fillStyle='#111827';
+    ctx.fillRect(x+1, y+15+bob+breathe, 4.5, 9); ctx.fillRect(x+W-5.5, y+15+bob+breathe, 4.5, 9);
+    ctx.fillStyle='#a9714b';
+    ctx.fillRect(x+1, y+23+bob+breathe, 4.5, 4); ctx.fillRect(x+W-5.5, y+23+bob+breathe, 4.5, 4);
+    // luvas de ferro / brilho nos punhos
+    const gauntlet=this.punchFx>0 ? 1+this.punchFx/220 : (this.glow>0.4 ? 1+Math.sin(this.anim*0.02)*0.08 : 1);
+    ctx.save(); ctx.translate(x+3.2, y+26.5+bob+breathe); ctx.scale(gauntlet, gauntlet);
+    ctx.fillStyle='rgba(125,211,252,0.28)'; ctx.beginPath(); ctx.arc(0,0,4,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#cbd5e1'; ctx.fillRect(-2.2,-2.2,4.4,4.4);
+    ctx.fillStyle='#64748b'; ctx.fillRect(-2.2,0.6,4.4,1.2);
+    ctx.restore();
+    ctx.save(); ctx.translate(x+W-3.2, y+26.5+bob+breathe); ctx.scale(gauntlet, gauntlet);
+    ctx.fillStyle='rgba(125,211,252,0.28)'; ctx.beginPath(); ctx.arc(0,0,4,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#cbd5e1'; ctx.fillRect(-2.2,-2.2,4.4,4.4);
+    ctx.fillStyle='#64748b'; ctx.fillRect(-2.2,0.6,4.4,1.2);
+    ctx.restore();
+    this.drawCheer(ctx, this.x, this.y+bob);
+    this.drawGiftPedestal(ctx, x, y);
+    // nome tag
+    ctx.fillStyle='rgba(0,0,0,0.68)'; ctx.fillRect(this.x-27, y-14+bob, 54, 8);
+    if(!this.giftGiven && Math.floor(this.anim/500)%2===0){
+      ctx.strokeStyle='rgba(125,211,252,0.9)'; ctx.lineWidth=0.7;
+      ctx.strokeRect(this.x-27.5, y-14.5+bob, 55, 9);
+    }
+    ctx.fillStyle='#7dd3fc'; ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
+    ctx.fillText('BORZUK', this.x, y-8+bob); ctx.textAlign='left';
+    this.drawGiftBadge(ctx, this.x, y-21+bob, '#7dd3fc');
+    const nearBorzuk = !!(player && this.isNear(player));
+    this.drawBubble(ctx, this.x, y-14+bob, (nearBorzuk && !this.giftGiven) ? -14 : 0);
+    // hint
+    if(!this.giftGiven){
+      if(nearBorzuk){
+        this.drawAlert(ctx, this.x, y-14+bob);
+        this.drawPrompt(ctx, this.x, y-22+bob, keyTag('e')+' BARBOSA FERRAZ', '#7dd3fc');
+      } else {
+        ctx.fillStyle='rgba(125,211,252,0.96)'; ctx.font='5px monospace'; ctx.textAlign='center';
+        ctx.fillText(keyTag('e')+' BARBOSA FERRAZ', this.x, y-18+bob); ctx.textAlign='left';
+        ctx.strokeStyle=`rgba(125,211,252,${0.38+pulse*0.18})`; ctx.lineWidth=1.4; ctx.setLineDash([3,3]);
+        ctx.strokeRect(x-2, y-4+bob, W+4, H+6); ctx.setLineDash([]);
+      }
+    } else {
+      ctx.fillStyle='rgba(74,222,128,0.9)'; ctx.font='5px monospace'; ctx.textAlign='center';
+      ctx.fillText('OBRIGADO!', this.x, y-18+bob); ctx.textAlign='left';
+    }
+  }
+}
+
 // ===================== ROOM =====================
 class Room {
   constructor(gx, gy, doors, isStart = false, seedRand, floor = 1) {
@@ -19675,6 +20439,7 @@ class Room {
     this.items = []; // itens no chão
     this.fires = []; // rastros de fogo desta sala
     this.spikes = []; // espinhos fase 3
+    this.gravityTraps = []; // vórtices gravitacionais da fase 5
     this.explosions = []; // círculos de explosão kamikaze {x,y,r,life,max}
     this.farmarAuras = []; // auras expansivas JL - Farmar Aura 67
     this.exitPortal = null; // só na sala exit
@@ -19722,8 +20487,10 @@ class Room {
     this.indianaNPC = null; // Indiana Jones NPC (Chicote 100%)
     this.jlNPC = null;   // JL NPC (passivo IO-IO)
     this.oliNPC = null;  // Oli NPC (item especial de Xadrez)
+    this.borzukNPC = null; // Borzuk NPC (item especial Barbosa Ferraz)
     this.jlGiftGiven = false;
     this.oliGiftGiven = false;
+    this.borzukGiftGiven = false;
     this.indianaGiftGiven = false; // garante 100% Chicote
     this.rareItemCollected = false;
     this.buildWalls(seedRand);
@@ -19732,6 +20499,7 @@ class Room {
       this.spawnItems(seedRand);
       // espinhos apenas a partir da fase 3, e chance configurável (não bloqueia portas)
       if(this.floor===3 || this.floor===4) this.spawnSpikes(seedRand);
+      if(this.floor===5 && this.type==='enemy') this.spawnGravityTraps(seedRand);
       if(this.floor===5 && this.type==='enemy' && seedRand()<0.18) this.spawnSpikes(seedRand); // poucos espinhos na fase 5 normal, mas boss arena sem
       if(this.floor===6 && this.type==='enemy' && seedRand()<0.12) this.spawnSpikes(seedRand); // mineradora fase 6 poucos espinhos
     }
@@ -20240,6 +21008,41 @@ class Room {
     }
   }
 
+  spawnGravityTraps(rng){
+    const count = rng()<0.18 ? 2 : (rng()<0.55 ? 1 : 0);
+    const cx=CANVAS_W/2, cy=CANVAS_H/2;
+    for(let i=0;i<count;i++){
+      let x,y,tries=0,bad=true;
+      do{
+        x=randRange(90, CANVAS_W-90);
+        y=randRange(80, CANVAS_H-80);
+        tries++;
+        bad = dist(x,y,cx,cy) < 100;
+        if(!bad){
+          for(const d of this.getDoorRects()){
+            if(dist(x,y, d.x+d.w/2, d.y+d.h/2) < 105){ bad=true; break; }
+          }
+        }
+        if(!bad){
+          for(const w of this.walls){
+            if(rectCollide(x-26, y-26, 52, 52, w.x,w.y,w.w,w.h)){ bad=true; break; }
+          }
+        }
+        if(!bad){
+          for(const s of this.spikes){
+            if(dist(x,y,s.x,s.y) < GRAVITY_TRAP_RADIUS*0.72){ bad=true; break; }
+          }
+        }
+        if(!bad){
+          for(const t of this.gravityTraps){
+            if(dist(x,y,t.x,t.y) < GRAVITY_TRAP_RADIUS*1.75){ bad=true; break; }
+          }
+        }
+      }while(bad && tries<24);
+      if(!bad) this.gravityTraps.push(new GravityTrap(x,y));
+    }
+  }
+
   makeRareRoom(rng){
     if(this.isStart || this.isExit) return false;
     if(this.isRare) return false;
@@ -20247,6 +21050,7 @@ class Room {
     this.type = 'rare';
     // limpa spikes centrais para destacar item
     this.spikes = this.spikes.filter(s=> dist(s.x,s.y, CANVAS_W/2, CANVAS_H/2) > 90);
+    this.gravityTraps = this.gravityTraps.filter(t=> dist(t.x,t.y, CANVAS_W/2, CANVAS_H/2) > 120);
     // paredes internas leves para não poluir sala rara
     // remove um pilar se houver muitos
     if(this.walls.length>6) this.walls.splice(4,1);
@@ -20277,6 +21081,7 @@ class Room {
     this.type = 'miniboss';
     // limpa spikes centrais para arena limpa
     this.spikes = this.spikes.filter(s=> dist(s.x,s.y, CANVAS_W/2, CANVAS_H/2) > 110);
+    this.gravityTraps = this.gravityTraps.filter(t=> dist(t.x,t.y, CANVAS_W/2, CANVAS_H/2) > 130);
     // remove pilares centrais para dar espaço ao miniboss
     this.walls = this.walls.filter(w => dist(w.x+w.w/2, w.y+w.h/2, CANVAS_W/2, CANVAS_H/2) > 100);
     // garante arena sem itens comuns
@@ -20295,6 +21100,7 @@ class Room {
     this.type = 'boss_stair';
     // Limpa tudo para arena imponente
     this.spikes = []; // sem espinhos na arena do boss
+    this.gravityTraps = [];
     // Remove pilares centrais e garante arena limpa no topo e centro
     this.walls = this.walls.filter(w => {
       const wx=w.x+w.w/2, wy=w.y+w.h/2;
@@ -20327,6 +21133,7 @@ class Room {
     this.hackerBattleStarted = false;
     // Limpa para arena Dark Vírus
     this.spikes = [];
+    this.gravityTraps = [];
     this.walls = this.walls.filter(w => {
       const wx=w.x+w.w/2, wy=w.y+w.h/2;
       if(dist(wx,wy, CANVAS_W/2, CANVAS_H/2) < 110) return false;
@@ -20390,6 +21197,7 @@ class Room {
     this.partyConfetti = [];
     // Limpa spikes e remove pilares centrais para pista de dança
     this.spikes = [];
+    this.gravityTraps = [];
     this.walls = this.walls.filter(w => dist(w.x+w.w/2, w.y+w.h/2, CANVAS_W/2, CANVAS_H/2) > 110);
     // Sem itens iniciais — recompensa só após limpar
     this.items = [];
@@ -20422,6 +21230,7 @@ class Room {
       : [];
     const hasChicote = ownWeapons.includes('chicote');
     const hasXadrez = !!(player && player.equippedSpecial && player.equippedSpecial.id==='oli_xadrez');
+    const hasBarbosa = !!(player && player.equippedSpecial && player.equippedSpecial.id==='barbosa_ferraz');
     const items = [
       { label:'COPINHOS', icon:'🎩', color:'#ffd700',
         done:!!this.setchCleared, dropped:false },
@@ -20431,6 +21240,8 @@ class Room {
         done:hasIoi, dropped:!!this.jlGiftGiven },
       { label:'XADREZ',   icon:'♞',  color:'#c084fc',
         done:hasXadrez, dropped:!!this.oliGiftGiven },
+      { label:'BARBOSA',  icon:'🥊', color:'#7dd3fc',
+        done:hasBarbosa, dropped:!!this.borzukGiftGiven },
     ];
     const w = 92, h = 8 + items.length*11;
     const bx = CANVAS_W - WALL_THICK - w - 8;
@@ -20494,6 +21305,7 @@ const it = items[i];
     this.type = 'painel';
     // Sala de serviço: sem inimigos, sem espinhos e sem itens largados
     this.spikes = [];
+    this.gravityTraps = [];
     this.enemies = [];
     this.items = [];
     this.fires = [];
@@ -20649,6 +21461,7 @@ const it = items[i];
     this.setchCleared = false;
     // Limpa inimigos e spikes para arena NPC (2x tamanho limpo)
     this.spikes = [];
+    this.gravityTraps = [];
     this.enemies = [];
     this.items = [];
     // Reconstrói paredes para arena grande sem pilares centrais (double size visual)
@@ -20674,8 +21487,11 @@ const it = items[i];
     // NPC Oli - dá o item especial de Xadrez (Torre/Bispo/Rainha/Rei)
     this.oliNPC = new OliNPC(CANVAS_W/2 - 196, CANVAS_H/2 + 60);
     this.oliGiftGiven = false;
+    // NPC Borzuk - dá o item especial Barbosa Ferraz (invoca aliado com socos/hadouken)
+    this.borzukNPC = new BorzukNPC(CANVAS_W/2 + 196, CANVAS_H/2 + 66);
+    this.borzukGiftGiven = false;
     // referência da sala nos NPCs (falas, gestos e desenho do prompt do copinho)
-    for(const n of [this.npc, this.indianaNPC, this.jlNPC, this.oliNPC]) if(n) n.room = this;
+    for(const n of [this.npc, this.indianaNPC, this.jlNPC, this.oliNPC, this.borzukNPC]) if(n) n.room = this;
     // Sala do Setch: isCleared() retorna sempre true, então as portas já nascem
     // abertas (nada a marcar aqui).
     return true;
@@ -20906,9 +21722,11 @@ const it = items[i];
       if(this.indianaNPC) this.indianaNPC.update(dt, player);
       if(this.jlNPC) this.jlNPC.update(dt, player);
       if(this.oliNPC) this.oliNPC.update(dt, player);
+      if(this.borzukNPC) this.borzukNPC.update(dt, player);
     }
     // atualiza spikes (anim)
     for(const s of this.spikes) s.update(dt);
+    for(const t of this.gravityTraps){ t.update(dt); t.applyToPlayer(player, this.walls, globalParticles, dt); }
     // atualiza explosões visuais
     for(let i=this.explosions.length-1;i>=0;i--){
       const ex=this.explosions[i];
@@ -21742,6 +22560,14 @@ if(e.canDamageHead()){
       }
     }
 
+    // NPC Borzuk é sólido: jogador e inimigos não atravessam o corpo dele.
+    if(this.isSetch && this.borzukNPC && player){
+      this.pushOutOfNpc(player, this.borzukNPC);
+      for(const e of this.enemies){
+        if(!e.dead) this.pushOutOfNpc(e, this.borzukNPC);
+      }
+    }
+
     // inimigo ↔ jogador - dano varia com variação (tanque/brutal/elite)
     for (const e of this.enemies) {
       if(e.type==='stair_boss') continue; // colisão cabeça/mãos já tratada no boss.update + powerStar
@@ -21784,6 +22610,27 @@ if(e.canDamageHead()){
       // active já controlado externamente pelo Game (floor cleared)
     }
     }catch(e){ console.error('Room update error', e); }
+  }
+
+  // Empurra uma entidade para fora de um NPC sólido (colisão AABB simples).
+  // Usado pelo Borzuk: o jogador, os inimigos e o aliado não atravessam o corpo dele.
+  pushOutOfNpc(ent, npc){
+    if(!ent || !npc || ent.dead) return;
+    const ew=ent.w||24, eh=ent.h||24;
+    const ex=ent.x-ew/2, ey=ent.y-eh/2;
+    const nx=npc.x-npc.w/2, ny=npc.y-npc.h/2;
+    if(!rectCollide(ex, ey, ew, eh, nx, ny, npc.w, npc.h)) return;
+    const overlapL = (ex+ew) - nx;
+    const overlapR = (nx+npc.w) - ex;
+    const overlapT = (ey+eh) - ny;
+    const overlapB = (ny+npc.h) - ey;
+    const m = Math.min(overlapL, overlapR, overlapT, overlapB);
+    if(m === overlapL) ent.x -= overlapL;
+    else if(m === overlapR) ent.x += overlapR;
+    else if(m === overlapT) ent.y -= overlapT;
+    else ent.y += overlapB;
+    ent.x = clamp(ent.x, WALL_THICK + ew/2, CANVAS_W - WALL_THICK - ew/2);
+    ent.y = clamp(ent.y, WALL_THICK + eh/2, CANVAS_H - WALL_THICK - eh/2);
   }
 
   // Muros com profundidade real: gradiente, textura em blocos, bisel externo claro,
@@ -22561,6 +23408,7 @@ if(e.canDamageHead()){
       if(this.indianaNPC) this.indianaNPC.draw(ctx, _setchPlayer);
       if(this.jlNPC) this.jlNPC.draw(ctx, _setchPlayer);
       if(this.oliNPC) this.oliNPC.draw(ctx, _setchPlayer);
+      if(this.borzukNPC) this.borzukNPC.draw(ctx, _setchPlayer);
       // Placar de presentes da sala: mostra o que já foi levado e o que falta.
       // Substitui a antiga faixa de texto que duplicava a dica do Jogo do Copinho
       // (o cupGame já desenha a instrução do [E] embaixo da mesa) e, de quebra,
@@ -22576,9 +23424,9 @@ if(e.canDamageHead()){
       // Portas da Sala Setch estão sempre abertas: a linha só informa o quanto
       // dos presentes opcionais já saiu (o ✓ do placar continua sendo o placar).
       ctx.fillStyle='rgba(74,222,128,0.88)'; ctx.font='6px monospace'; ctx.textAlign='center';
-      const anyGift = this.indianaGiftGiven || this.jlGiftGiven || this.oliGiftGiven;
-      const allGifts = this.setchCleared && anyGift;
-      const txt = allGifts ? '✓ SETCH, JL, OLI & INDIANA COMPLETOS • PORTAS ABERTAS'
+      const anyGift = this.indianaGiftGiven || this.jlGiftGiven || this.oliGiftGiven || this.borzukGiftGiven;
+      const allGifts = this.setchCleared && this.indianaGiftGiven && this.jlGiftGiven && this.oliGiftGiven && this.borzukGiftGiven;
+      const txt = allGifts ? '✓ SETCH, JL, OLI, INDIANA & BORZUK COMPLETOS • PORTAS ABERTAS'
         : this.setchCleared ? `✓ COPINHOS VENCIDO (${SETCH_ROUNDS} RODADAS) • PORTAS ABERTAS`
         : anyGift ? '✓ PRESENTE ENTREGUE NO CHÃO • PORTAS ABERTAS'
         : '↔ PORTAS ABERTAS • PRESENTES NO CHÃO SÃO OPCIONAIS';
@@ -22587,6 +23435,9 @@ if(e.canDamageHead()){
 
     // rastros de fogo (desenha no chão, sob itens)
     for(const f of this.fires) f.draw(ctx);
+
+    // vórtices gravitacionais (Fase 5)
+    for(const t of this.gravityTraps) t.draw(ctx);
 
     // espinhos
     for(const s of this.spikes) s.draw(ctx);
@@ -24107,6 +24958,7 @@ class Game {
       else status='Pronto '+keyTag('e');
       cards.push({
         icon: sp.icon||'★',
+        iconImage: sp.iconImage||'',
         name: `ESPECIAL: ${sp.name}`,
         desc: `${sp.description} • ${status} • Cooldown ${Math.round(sp.cooldown/1000)}s`,
         badge: sp.isActive?'ATIVO': sp.isOnCooldown()?'RECARGA':'PRONTO',
@@ -24175,7 +25027,7 @@ class Game {
     contentEl.innerHTML = cards.map(c=>`
       <div class="loadout-card" style="border-color:${c.border}; background:${c.color}12">
         <div style="display:flex; align-items:center; gap:8px;">
-          <span class="loadout-card-icon">${c.icon}</span>
+          <span class="loadout-card-icon">${c.iconImage ? `<img src="${c.iconImage}" alt="">` : c.icon}</span>
           <span class="loadout-card-name">${c.name}</span>
           <span class="loadout-card-badge" style="color:${c.color}; border-color:${c.border}; background:${c.color}14">${c.badge}</span>
         </div>
@@ -24248,7 +25100,7 @@ class Game {
     // Especial equipado
     if(this.player.equippedSpecial){
       const sp=this.player.equippedSpecial;
-      items.push({icon:sp.icon||'★', name:sp.name, desc:sp.description||'Item especial [E]', badge:'ESPECIAL', color:sp.color||'#ffd700'});
+      items.push({icon:sp.icon||'★', iconImage:sp.iconImage||'', name:sp.name, desc:sp.description||'Item especial [E]', badge:'ESPECIAL', color:sp.color||'#ffd700'});
     }
     // Upgrades (melhorias) - lista todas
     if(this.player.obtainedUpgrades && this.player.obtainedUpgrades.size>0){
@@ -24282,7 +25134,7 @@ class Game {
     }
     container.innerHTML = items.map(it=>`
       <div class="pause-item" style="border-color:${it.color}22">
-        <div class="pause-item-icon" style="color:${it.color}; border-color:${it.color}33">${it.icon}</div>
+        <div class="pause-item-icon" style="color:${it.color}; border-color:${it.color}33">${it.iconImage ? `<img src="${it.iconImage}" alt="">` : it.icon}</div>
         <div class="pause-item-info">
           <span class="pause-item-name">${it.name}</span>
           <span class="pause-item-desc">${it.desc}</span>
@@ -24527,7 +25379,7 @@ class Game {
     this.player.swordChargeTime=0; this.player.isSwordCharging=false; this.player.swordChargeDir=null; this.player.swordHeavyReady=false;
     this.player.swordCombo=0; this.player.swordComboTimer=0;
     this.player.chicoteChargeTime=0; this.player.isChicoteCharging=false; this.player.chicoteChargeDir=null; this.player.chicoteHeavyReady=false;
-    this.player.swordGuardianActive=false; this.player.swordGuardianCharges=0; this.player.swordGuardianTimer=0;
+    this.player.swordGuardianActive=false; this.player.swordGuardianCharges=0; this.player.swordGuardianTimer=0; this.player.swordGuardianCooldown=0;
     this.player.motosserraCharge=0; this.player.motosserraChargeMax=MOTOSSERRA_CHARGE_MAX; this.player.motosserraIdleTimer=0;
     this.player.activeFist=null; this.player.activeFists=[]; this.player.meleeAnim=0;
     // CHICOTE - reseta puxão e chapeu no novo jogo
@@ -25531,7 +26383,7 @@ class Game {
     const room=this.currentRoom;
     // Presentes deixados no chão pelos NPCs têm PRIORIDADE: sem isso o [E]
     // cairia nos hints/diálogos do Setch e o item nunca seria alcançável.
-    // (Chicote usa [Q] e IO-IO é automático, então aqui é só o especial do Oli.)
+    // (Chicote usa [Q] e IO-IO é automático; aqui ficam os especiais de Oli e Borzuk.)
     if(this.trySpecialSwapOrPickup()) return true;
     // Prioridade Indiana Jones - Chicote 100% garantido (requisito)
     if(room.indianaNPC && !room.indianaGiftGiven && !room.indianaNPC.giftGiven){
@@ -25541,7 +26393,7 @@ class Game {
         return true;
       }
     }
-    // Prioridade JL (passivo IO-IO) e Oli (item especial de Xadrez)
+    // Prioridade JL (passivo IO-IO), Oli (Xadrez) e Borzuk (Barbosa Ferraz)
     if(room.jlNPC && !room.jlGiftGiven && !room.jlNPC.giftGiven && !this.player.hasIoiPassive){
       const nearJL = dist(this.player.x, this.player.y, room.jlNPC.x, room.jlNPC.y) < JL_INTERACT_RANGE;
       if(nearJL){ room.jlNPC.tryGiveGift(this.player, this, room); return true; }
@@ -25549,6 +26401,10 @@ class Game {
     if(room.oliNPC && !room.oliGiftGiven && !room.oliNPC.giftGiven){
       const nearOli = dist(this.player.x, this.player.y, room.oliNPC.x, room.oliNPC.y) < OLI_NPC_INTERACT_RANGE;
       if(nearOli){ room.oliNPC.tryGiveGift(this.player, this, room); return true; }
+    }
+    if(room.borzukNPC && !room.borzukGiftGiven && !room.borzukNPC.giftGiven){
+      const nearBorzuk = dist(this.player.x, this.player.y, room.borzukNPC.x, room.borzukNPC.y) < BORZUK_NPC_INTERACT_RANGE;
+      if(nearBorzuk){ room.borzukNPC.tryGiveGift(this.player, this, room); return true; }
     }
     if(!room.npc || !room.cupGame) {
       // Se só tem Indiana e ainda não deu gift, dá hint
@@ -25560,6 +26416,10 @@ class Game {
       if(room.oliNPC && !room.oliGiftGiven){
         const nearOli2 = dist(this.player.x, this.player.y, room.oliNPC.x, room.oliNPC.y) < OLI_NPC_INTERACT_RANGE + 18;
         if(nearOli2){ this.showToast(`Oli: Aproxime-se e ${TOUCH_MODE?'toque em ESPECIAL':'pressione [E]'} - o XADREZ fica no chão (${keyTag('e')} para equipar)!`, 1400); return true; }
+      }
+      if(room.borzukNPC && !room.borzukGiftGiven){
+        const nearBorzuk2 = dist(this.player.x, this.player.y, room.borzukNPC.x, room.borzukNPC.y) < BORZUK_NPC_INTERACT_RANGE + 18;
+        if(nearBorzuk2){ this.showToast(`Borzuk: Aproxime-se e ${TOUCH_MODE?'toque em ESPECIAL':'pressione [E]'} - a BARBOSA FERRAZ fica no chão (${keyTag('e')} para equipar)!`, 1400); return true; }
       }
       if(room.indianaNPC && !room.indianaGiftGiven){
         const nearInd2 = dist(this.player.x, this.player.y, room.indianaNPC.x, room.indianaNPC.y) < CHICOTE_INTERACT_RANGE + 18;
@@ -25587,6 +26447,10 @@ class Game {
         const nearOli3 = dist(this.player.x, this.player.y, room.oliNPC.x, room.oliNPC.y) < OLI_NPC_INTERACT_RANGE;
         if(nearOli3){ room.oliNPC.tryGiveGift(this.player, this, room); return true; }
       }
+      if(room.borzukNPC && !room.borzukGiftGiven && !room.borzukNPC.giftGiven){
+        const nearBorzuk3 = dist(this.player.x, this.player.y, room.borzukNPC.x, room.borzukNPC.y) < BORZUK_NPC_INTERACT_RANGE;
+        if(nearBorzuk3){ room.borzukNPC.tryGiveGift(this.player, this, room); return true; }
+      }
       return false; // já venceu, não precisa mais jogar
     }
     const cg=room.cupGame;
@@ -25595,7 +26459,7 @@ class Game {
     // Estado idle: E perto do NPC inicia o jogo
     if(cg.state==='idle'){
       if(!nearNPC) {
-        if(room.indianaNPC && !room.indianaGiftGiven) this.showToast('Aproxime-se: Setch [E] COPINHOS | JL [E] IO-IO | Oli [E] XADREZ | Indiana [E] CHICOTE', 1300);
+        if(room.indianaNPC && !room.indianaGiftGiven) this.showToast('Aproxime-se: Setch [E] COPINHOS | JL [E] IO-IO | Oli [E] XADREZ | Indiana [E] CHICOTE | Borzuk [E] BARBOSA', 1300);
         else this.showToast(`Chegue mais perto de Setch para jogar ${keyTag('e')}`, 1100);
         return true; // consome E para não ativar especial por engano
       }
@@ -26155,13 +27019,14 @@ class Game {
     if(this.player.equippedSpecial){
       this.player.equippedSpecial.update(dt, this.player, this);
     }
-    // Atualiza aliados Stand (Flecha Stand - Invocar Aliado) - duração e IA própria
+    // Atualiza aliados (Flecha Stand e Barbosa Ferraz/Borzuk) - duração e IA própria
     for(let i=this.allies.length-1;i>=0;i--){
       const al=this.allies[i];
-      const alive=al.update(dt, this.currentRoom.enemies, walls, this.particles);
+      const alive=al.update(dt, this.currentRoom.enemies, walls, this.particles, this.bullets);
       if(!alive || al.dead){
         // efeito desaparecimento
-        for(let k=0;k<10;k++) this.particles.push(new Particle(al.x,al.y, randRange(-1.2,1.2), randRange(-1.2,0.4), 280, '#a78bfa', 2));
+        const col = al.isBorzukAlly ? '#7dd3fc' : '#a78bfa';
+        for(let k=0;k<10;k++) this.particles.push(new Particle(al.x,al.y, randRange(-1.2,1.2), randRange(-1.2,0.4), 280, col, 2));
         this.allies.splice(i,1);
       }
     }
@@ -28426,16 +29291,19 @@ class Game {
       const innerL = x + 6*k, innerR = x + sw - 5*k;
       const badgeL = innerR - keyW;
       const rowBase = top + 11;                  // baseline comum dos dois rótulos
-      const nameFull = `${sp.icon} ${sp.name}`;
+      const hudIcon = sp.iconImage ? getSpecialIconImage(sp.iconImage) : null;
+      const hasHudIcon = !!(hudIcon && hudIcon.complete && hudIcon.naturalWidth>0);
+      const iconGap = hasHudIcon ? 10*k : 0;
+      const nameFull = hasHudIcon ? sp.name : `${sp.icon} ${sp.name}`;
       //Prioridade da linha 1: o NOME identifica o item e nunca é sacrificado;
       // o status é redundante com a barra, então ele é que cede espaço.
       // Em A++ o painel tem ~177px úteis e "67 FARMAR AURA" + "Ativo: 4s" somam
       // 201px: o nome fica inteiro a 7px e o status vira a forma curta ("4s").
       const rowRoom = Math.max(30*k, innerR - keyW - 3*k - innerL);
-      const nameFit = hudFitPick(ctx, nameFull, rowRoom*0.72, 6, 5);
+      const nameFit = hudFitPick(ctx, nameFull, Math.max(24*k, rowRoom*0.72 - iconGap), 6, 5);
       ctx.font = hudFont(nameFit.size);
       const nameW = ctx.measureText(nameFit.text).width;
-      const stRoom = Math.max(14*k, rowRoom - nameW - 4*k);
+      const stRoom = Math.max(14*k, rowRoom - nameW - iconGap - 4*k);
       // forma curta: o tempo no fim do status ("Ativo: 4s" -> "4s")
       const stShort = (String(st).match(/[\d.,]+\s*s\s*$/) || [null])[0];
       let stFit = hudFitPick(ctx, st, stRoom, 5, 5);
@@ -28446,7 +29314,8 @@ class Game {
       ctx.textAlign = 'left';
       ctx.font = hudFont(nameFit.size);
       ctx.fillStyle = active ? '#7af2ff' : cooling ? 'rgba(255,255,255,0.78)' : (sp.color || '#ffcc00');
-      ctx.fillText(nameFit.text, innerL, rowBase);
+      if(hasHudIcon) ctx.drawImage(hudIcon, innerL, rowBase-7*k, 8*k, 8*k);
+      ctx.fillText(nameFit.text, innerL + iconGap, rowBase);
       ctx.font = hudFont(stFit.size);
       ctx.fillStyle = active ? 'rgba(0,217,255,0.92)' : 'rgba(255,255,255,0.68)';
       ctx.textAlign = 'right';

@@ -524,6 +524,7 @@ html, body {
     linear-gradient(180deg, rgba(34,197,94,0.09), rgba(255,255,255,0.02));
   border-color: rgba(34,197,94,0.30);
   box-shadow: 0 8px 24px rgba(34,197,94,0.12), inset 0 1px 0 rgba(255,255,255,0.06);
+  padding-bottom: 38px;
 }
 .char-card[data-char="gyro"]:hover{
   border-color: rgba(34,197,94,0.50);
@@ -567,7 +568,8 @@ html, body {
 .loadout-char{ font-family: system-ui, sans-serif; font-size: 0.6875rem; font-weight:800; color:#fff; background: rgba(0,0,0,0.24); border:1px solid rgba(255,255,255,0.06); padding:4px 8px; border-radius:999px; }
 .loadout-content{ display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
 .loadout-card{ background: rgba(0,0,0,0.18); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 9px; display:flex; flex-direction:column; gap:4px; }
-.loadout-card-icon{ font-size: 1rem; line-height:1; }
+.loadout-card-icon{ font-size: 1rem; line-height:1; display:inline-flex; align-items:center; justify-content:center; }
+.loadout-card-icon img{ width:1.15rem; height:1.15rem; object-fit:contain; display:block; }
 .loadout-card-name{ font-family:'Press Start 2P', monospace; font-size: 0.4375rem; color:#fff; letter-spacing:0.5px; }
 .loadout-card-desc{ font-family: system-ui, sans-serif; font-size: 0.625rem; color: var(--muted); line-height:1.35; }
 .loadout-card-badge{ font-family: system-ui, sans-serif; font-size: 0.5rem; font-weight:800; padding:2px 6px; border-radius:999px; border:1px solid; display:inline-block; width:fit-content; }
@@ -1535,6 +1537,7 @@ body.is-touch.show-rotate .rotate-hint { display: flex; }
   font-size: 0.8125rem;
   flex-shrink:0;
 }
+.pause-item-icon img{ width:22px; height:22px; object-fit:contain; display:block; }
 .pause-item-info{ display:flex; flex-direction:column; gap:2px; min-width:0; }
 .pause-item-name{
   font-family: 'Press Start 2P', monospace;
@@ -2578,6 +2581,7 @@ details > summary { cursor: pointer; min-height: 2.75em; display: flex; align-it
 #characterScreen .char-card[data-char="oli"]    { --pc: #a78bfa; --pcg: rgba(167,139,250,0.50); }
 #characterScreen .char-card[data-char="ash"]    { --pc: #ff3b30; --pcg: rgba(255,59,48,0.50); }
 #characterScreen .char-card[data-char="dev"]    { --pc: #7af2ff; --pcg: rgba(122,242,255,0.50); }
+#characterScreen .char-card[data-char="gyro"]   { --pc: #22c55e; --pcg: rgba(34,197,94,0.50); }
 
 /* Brilho que "respira" no estado normal.
    O pulso vai em `filter`, não em `box-shadow`: animação tem prioridade sobre
@@ -2600,6 +2604,7 @@ details > summary { cursor: pointer; min-height: 2.75em; display: flex; align-it
 #characterScreen .char-card:nth-child(5){ animation-delay: 0.20s, 0s; }
 #characterScreen .char-card:nth-child(6){ animation-delay: 0.24s, 0s; }
 #characterScreen .char-card:nth-child(7){ animation-delay: 0.28s, 0s; }
+#characterScreen .char-card:nth-child(8){ animation-delay: 0.32s, 0s; }
 
 @keyframes charCardGlow {
   0%, 100% { filter: drop-shadow(0 0 5px var(--pcg)); }
