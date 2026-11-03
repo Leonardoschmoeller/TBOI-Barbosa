@@ -35,6 +35,7 @@
     <!-- Menu Inicial -->
     <div id="menuScreen" class="screen active">
       <div class="menu-visuals" aria-hidden="true">
+        <canvas id="menuCodeRain" class="menu-coderain"></canvas>
         <div class="menu-grid"></div>
         <div class="menu-scanlines"></div>
         <div class="menu-orb menu-orb-a"></div>
@@ -309,6 +310,7 @@
             📱 <strong>No celular:</strong> arraste na <strong>metade esquerda</strong> para andar e na
             <strong>metade direita</strong> para mirar e atirar. Use os botões <strong>TROCAR</strong>,
             <strong>DASH</strong> e <strong>ESPECIAL</strong> na parte de baixo, e pause com ❚❚.
+            Com o <strong>Dev</strong>, segure a mira até 100% e depois <strong>toque na tela ou solte a mira</strong> quando o marcador estiver na zona verde.
             Jogue com o celular na horizontal.
           </p>
           <div class="controls-quickstats">
@@ -762,7 +764,7 @@
               <li><span class="tip-icon">⭐</span> <span><span style="color:#ffd700">Power Star</span> use em horda ou contra Boss: fique colado para causar 3 dano a cada 320ms por 7s.</span></li>
               <li><span class="tip-icon">◉</span> <span>Boss Fase 5: 1ª fase só cabeça toma dano. Em 50% cabeça fica <b>BLOQUEADA</b> — destrua as <b>2 mãos (16 HP cada)</b> para liberar.</span></li>
               <li><span class="tip-icon">⚡</span> <span>Boss avisa raio 950ms (linha amarela até o centro). Saia do centro! Mãos batem → 8 projéteis radiais.</span></li>
-              <li><span class="tip-icon">🌪️</span> <span><span style="color:#5adcff">Vórtice Gravitacional</span> (Fase 5): armadilha no chão que alterna <b>sucção</b> e <b>repulsão</b>. O <b>dash</b> ignora a força — use para escapar.</span></li>
+              <li><span class="tip-icon">🌪️</span> <span><span style="color:#5adcff">Vórtice Gravitacional</span> (Fase 5): armadilha no chão que alterna <b>sucção</b> e <b>repulsão</b>. A sucção puxa em espiral e o <b>núcleo causa dano</b>; a repulsão lança você e desvia tiros inimigos. O anel em volta mostra a próxima fase e o <b>dash</b> ignora a força — use para escapar.</span></li>
               <li><span class="tip-icon">⬆</span> <span>Upgrades por arma: colete no chão, aplica na hora e fica vinculado. Q troca mantém. Até 3 níveis.</span></li>
               <li><span class="tip-icon">🐒</span> <span><span style="color:#ffd700">Bored Ape</span> <span style="font-size:0.75rem; color:#ffd700; background:rgba(255,215,0,0.12); border:1px solid rgba(255,215,0,0.22); padding:1px 4px; border-radius:999px;">NFT • BAYC</span> — referência Bored Ape Yacht Club • 8 cores: rosa, amarelo, vermelho, azul, verde, roxo, laranja, ciano — pulo ágil, 3 HP, aparece em várias fases.</span></li>
               <li><span class="tip-icon">🎲</span> <span><span style="color:#a78bfa">Sala Setch</span> 2× tamanho — Fase 5/6 • <b>portas sempre abertas</b> (dá para entrar, ignorar tudo e sair) • 5 NPCs: Setch (copinhos), Indiana (Chicote 100%), JL (passivo IO-IO), Oli (Xadrez) e Borzuk (Barbosa Ferraz). <span style="color:#ffd700">Os presentes ficam largados no CHÃO</span>: <b>Chicote</b>, <b>Xadrez</b> e <b>Barbosa Ferraz</b> você pega com <b>[Q]</b>/<b>[E]</b> perto, e o <b>IO-IO</b> é automático ao encostar — nada é equipado na hora. A <b>Barbosa Ferraz</b> invoca o aliado <b>Borzuk</b>, que persegue inimigos com socos e hadouken. Copinhos em <b>3 rodadas</b> (5 → 8 → 12 trocas, cada uma mais rápida, com trocas em par nas últimas): memorize a bolinha, escolha 1/2/3, clique ou [E] perto do copo, dentro do anel de contagem (ele congela se você sair da mesa). Resposta rápida cura 1 coração e acertos seguidos aumentam o prêmio final (upgrade, Vida Cibernética ou 💾 <span style="color:#4ade80">Disquete da Vida</span>).</span></li>
@@ -810,6 +812,9 @@
       <canvas id="gameCanvas" width="960" height="540"></canvas>
       <!-- HUD é desenhado no canvas (ver draw/drawHudInfo em game.js) - aqui só overlays -->
       <div id="hud">
+        <button id="btnHudExtra" class="hud-extra-toggle" type="button" aria-pressed="false" title="Ocultar fase/tempo e melhorias">
+          <span class="hud-extra-icon" aria-hidden="true">◉</span><span class="hud-extra-label hud-extra-label-full">FASE/TEMPO</span><span class="hud-extra-label hud-extra-label-short">HUD</span>
+        </button>
         <div id="swapHint" class="swap-hint hidden">Pressione Q para trocar</div>
       </div>
 

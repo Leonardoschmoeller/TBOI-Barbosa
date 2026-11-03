@@ -24520,8 +24520,10 @@ class Game {
     this._chipsRevealT=0;
     this._chipsFade=1;
     this._hudMouse={x:-1,y:-1};
+    this._hudExtraHidden=false;
 
     this.bindUI();
+    this.initMenuCodeRain();
     this.resizeCanvas();
     this.renderRecords();     // tabelas já aparecem Certain no 1º load
     window.addEventListener('resize', () => this.resizeCanvas());
@@ -24629,6 +24631,11 @@ class Game {
     // Pause menu
     const btnPause=document.getElementById('btnPause');
     if(btnPause) btnPause.addEventListener('click', ()=> this.togglePause());
+    const btnHudExtra=document.getElementById('btnHudExtra');
+    if(btnHudExtra){
+      btnHudExtra.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); this.toggleHudExtra(); });
+      this.updateHudExtraButton();
+    }
     document.getElementById('btnResume').addEventListener('click', ()=> this.resume());
     // REINICIAR FASE: regera só o andar atual, mantendo itens, melhorias e continues.
     // O cronômetro NÃO zera (senão virar botão de trapaça).
@@ -24883,7 +24890,12 @@ class Game {
   showControls(){
     // Atualiza loadout dinâmico antes de mostrar
     this.updateControlsLoadout();
+    // Glitch nos dois lados: menu saindo, controles entrando
+    if(this.menuScreen && this.menuScreen.classList.contains('active')){
+      try{ this.glitchTransition(this.menuScreen); }catch(e){}
+    }
     this.controlsScreen.classList.add('active');
+    try{ this.glitchTransition(this.controlsScreen); }catch(e){}
     // Garante que controles fique por cima do pause quando aberto via pause
     if(this._controlsReturnToPause){
       this.controlsScreen.style.zIndex = '30';
@@ -24892,15 +24904,21 @@ class Game {
     }
   }
   hideControls(){
-    this.controlsScreen.classList.remove('active');
-    this.controlsScreen.style.zIndex = '';
-    // Se veio do pause, volta ao pause
-    if(this._controlsReturnToPause && this.state==='PAUSED'){
-      this._controlsReturnToPause = false;
-      if(this.pauseScreen) this.pauseScreen.classList.add('active');
-    } else {
-      this._controlsReturnToPause = false;
-    }
+    const returnToPause = this._controlsReturnToPause && this.state==='PAUSED';
+    try{ this.glitchTransition(this.controlsScreen); }catch(e){}
+    setTimeout(()=>{
+      try{
+        this.controlsScreen.classList.remove('active');
+        this.controlsScreen.style.zIndex = '';
+        this._controlsReturnToPause = false;
+        // Se veio do pause, volta ao pause; senão, garante o menu visível
+        const target = returnToPause ? this.pauseScreen : this.menuScreen;
+        if(target){
+          target.classList.add('active');
+          try{ this.glitchTransition(target); }catch(e){}
+        }
+      }catch(e){}
+    }, 200);
   }
   // Atualiza o banner de loadout dentro da tela de controles (mostra o que os itens equipados fazem)
   updateControlsLoadout(){
@@ -25053,6 +25071,17 @@ class Game {
   togglePause(){
     if(this.state==='PLAYING') this.pause();
     else if(this.state==='PAUSED') this.resume();
+  }
+  toggleHudExtra(){
+    this._hudExtraHidden=!this._hudExtraHidden;
+    this.updateHudExtraButton();
+    this.showToast(this._hudExtraHidden ? 'Fase/tempo e melhorias ocultados' : 'Fase/tempo e melhorias visíveis', 1400);
+  }
+  updateHudExtraButton(){
+    const btn=document.getElementById('btnHudExtra');
+    if(!btn) return;
+    btn.setAttribute('aria-pressed', this._hudExtraHidden ? 'true' : 'false');
+    btn.title=this._hudExtraHidden ? 'Mostrar fase/tempo e melhorias' : 'Ocultar fase/tempo e melhorias';
   }
   hidePause(){
     if(this.pauseScreen) this.pauseScreen.classList.remove('active');
@@ -29413,6 +29442,7 @@ class Game {
         tag='★ SALA RARA ★'; tagColor='#ffd700';
       }
     }
+    if(!this._hudExtraHidden){
     // ===== painel de informações no RODAPÉ (fora da faixa da parede e do vão da porta) =====
     const infoLine = `SALA ${room?`${room.gx},${room.gy}`:'-'} • ${this.roomsExplored}/${this.rooms.length} salas • INIMIGOS ${curEnemies}${locked?' 🔒':''}/${totalEnemies}`;
     // --- geometria do painel, derivada das métricas reais do texto ---
@@ -29602,6 +29632,7 @@ class Game {
         ctx.fillText(hudFitText(ctx, `${displayTotal} níveis • troque arma [Q] p/ ver`, bx2-18*k, 5, 'monospace'), 9*k, CANVAS_H-12-bh+bh*0.68);
       }
     }
+    }
     // SEED: estava em 4px com alfa 0.28 (praticamente invisível). É a informação
     // que o jogador precisa para reproduzir a run, então ganhou corpo e contraste.
     ctx.font = hudFont(5);
@@ -29724,6 +29755,86 @@ class Game {
     this.update(dt);
     this.draw();
     requestAnimationFrame((nt)=>this.loop(nt));
+  }
+
+  // Chuva de código (matrix) atrás do menu principal.
+  // Desenha uma coluna por caractere, com rastro por fade e "cabeça" brilhante.
+  initMenuCodeRain(){
+    const canvas = document.getElementById('menuCodeRain');
+    if(!canvas || typeof canvas.getContext !== 'function') return;
+    if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const ctx = canvas.getContext('2d');
+    if(!ctx) return;
+    const glyphs = '01アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワン{}[]()<>|;:=+-*/%#@$&';
+    const COL_W = 16;
+    const FONT = '13px "Press Start 2P", monospace';
+    let drops = [];
+    let dpr = 1;
+    let last = 0;
+    const resize = ()=>{
+      const w = canvas.offsetWidth || window.innerWidth;
+      const h = canvas.offsetHeight || window.innerHeight;
+      dpr = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = Math.max(1, Math.round(w * dpr));
+      canvas.height = Math.max(1, Math.round(h * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const cols = Math.max(1, Math.floor(w / COL_W));
+      drops = [];
+      for(let i=0;i<cols;i++){
+        drops.push({
+          x: i * COL_W + COL_W * 0.5,
+          y: Math.random() * h,
+          speed: 55 + Math.random() * 150,
+          hot: Math.random() < 0.18,
+          ch: glyphs[Math.floor(Math.random() * glyphs.length)]
+        });
+      }
+      last = 0;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+    const draw = (now)=>{
+      requestAnimationFrame(draw);
+      const menu = document.getElementById('menuScreen');
+      if(!menu || !menu.classList.contains('active')){ last = now; return; }
+      if(!last) last = now;
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const w = canvas.width / dpr;
+      const h = canvas.height / dpr;
+      ctx.fillStyle = 'rgba(8,8,16,0.12)';
+      ctx.fillRect(0, 0, w, h);
+      ctx.font = FONT;
+      ctx.textAlign = 'center';
+      for(let i=0;i<drops.length;i++){
+        const d = drops[i];
+        d.y += d.speed * dt;
+        if(d.y > h + 20){
+          d.y = Math.random() * -h * 0.5;
+          d.speed = 55 + Math.random() * 150;
+          d.hot = Math.random() < 0.18;
+        }
+        if(Math.random() < 0.35) d.ch = glyphs[Math.floor(Math.random() * glyphs.length)];
+        // Rastro fraco (um caractere atrás) + cabeça brilhante
+        ctx.fillStyle = d.hot ? 'rgba(60,255,150,0.42)' : 'rgba(0,217,255,0.40)';
+        ctx.fillText(glyphs[(i * 7 + Math.floor(d.y)) % glyphs.length], d.x, d.y - COL_W);
+        ctx.fillStyle = d.hot ? 'rgba(160,255,205,0.95)' : 'rgba(140,248,255,0.95)';
+        ctx.fillText(d.ch, d.x, d.y);
+      }
+    };
+    requestAnimationFrame(draw);
+  }
+
+  // Efeito de transição entre telas (glitch rápido, sem bloquear cliques)
+  glitchTransition(el){
+    if(!el) return;
+    try{
+      el.classList.remove('glitch-transition');
+      void el.offsetWidth;
+      el.classList.add('glitch-transition');
+      clearTimeout(el._glitchTimer);
+      el._glitchTimer = setTimeout(()=>{ try{ el.classList.remove('glitch-transition'); }catch(e){} }, 540);
+    }catch(e){}
   }
 }
 

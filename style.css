@@ -838,6 +838,52 @@ html, body {
   padding: 0;
 }
 
+/* Botão que mostra/oculta o painel de fase+tempo e a lista de melhorias */
+.hud-extra-toggle {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 18px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(8,8,16,0.74);
+  color: rgba(223,231,245,0.92);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  letter-spacing: 0.4px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
+}
+.hud-extra-toggle:hover,
+.hud-extra-toggle:focus-visible {
+  background: rgba(0,217,255,0.16);
+  border-color: rgba(0,217,255,0.55);
+  color: #ffffff;
+  outline: none;
+}
+.hud-extra-toggle[aria-pressed="true"] {
+  background: rgba(60,45,0,0.62);
+  border-color: rgba(255,204,0,0.52);
+  color: #ffd94a;
+  opacity: 0.82;
+}
+.hud-extra-icon { font-size: 9px; line-height: 1; }
+.hud-extra-label-short { display: none; }
+@media (max-width: 640px) {
+  .hud-extra-toggle { padding: 3px 5px; }
+  .hud-extra-icon { display: none; }
+  .hud-extra-label-full { display: none; }
+  .hud-extra-label-short { display: inline; }
+}
+
 /* Swap hint - menor, não cobre mapa */
 .swap-hint {
   position: absolute;
@@ -2807,7 +2853,7 @@ details > summary { cursor: pointer; min-height: 2.75em; display: flex; align-it
   50%      { opacity: 0.45; transform: scale(0.72); }
 }
 
-/* --- Título com glitch sutil (a maior parte do tempo fica limpo) ---------- */
+/* --- Título com glitch rápido ---------- */
 .title-main {
   position: relative;
   display: inline-block;
@@ -2826,24 +2872,95 @@ details > summary { cursor: pointer; min-height: 2.75em; display: flex; align-it
 .title-main::before {
   color: #00d9ff;
   clip-path: inset(0 0 54% 0);
-  animation: titleGlitchTop 7.5s steps(1) infinite;
+  animation: titleGlitchTop 1.7s steps(1) infinite;
 }
 .title-main::after {
   color: #ff3b30;
   clip-path: inset(50% 0 0 0);
-  animation: titleGlitchBottom 8.3s steps(1) infinite;
+  animation: titleGlitchBottom 1.9s steps(1) infinite;
+}
+
+/* Menu code rain */
+.menu-coderain {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  opacity: 0.32;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  -webkit-mask-image: radial-gradient(ellipse at 50% 45%, #000 12%, rgba(0,0,0,0.55) 58%, transparent 92%);
+  mask-image: radial-gradient(ellipse at 50% 45%, #000 12%, rgba(0,0,0,0.55) 58%, transparent 92%);
+}
+
+/* Glitch transition for screens */
+.screen.glitch-transition {
+  animation: screenGlitchIn 0.48s steps(2, end) both;
+  will-change: transform, filter, clip-path;
+}
+.screen.glitch-transition::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(255,59,48,0.34), transparent 28%, transparent 72%, rgba(0,217,255,0.34)),
+    repeating-linear-gradient(0deg, rgba(0,217,255,0.12) 0 1px, transparent 1px 4px);
+  mix-blend-mode: screen;
+  animation: screenGlitchFlash 0.48s steps(3, end) both;
+}
+.screen.glitch-transition::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  background: repeating-linear-gradient(0deg, rgba(255,255,255,0.12) 0 2px, transparent 2px 7px);
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  animation: screenGlitchBars 0.48s steps(4, end) both;
+}
+@keyframes screenGlitchIn {
+  0%   { filter: brightness(1.8) hue-rotate(-22deg) saturate(1.9); transform: translate3d(-7px,0,0) skewX(-1.4deg) scale(1.015); clip-path: inset(0 0 0 0); }
+  15%  { filter: brightness(1.4) hue-rotate(20deg) saturate(1.7); transform: translate3d(8px,-2px,0) skewX(1.5deg); clip-path: inset(9% 0 5% 0); }
+  30%  { filter: brightness(1.2) hue-rotate(-12deg) saturate(1.5); transform: translate3d(-5px,2px,0) skewX(-0.9deg); clip-path: inset(0 0 15% 0); }
+  45%  { filter: brightness(1.1) hue-rotate(8deg) saturate(1.4); transform: translate3d(4px,-1px,0); clip-path: inset(11% 0 0 0); }
+  60%  { transform: translate3d(-2px,1px,0); clip-path: inset(0 0 4% 0); }
+  80%  { transform: translate3d(1px,0,0); clip-path: inset(0); }
+  100% { filter: none; transform: none; clip-path: inset(0); }
+}
+@keyframes screenGlitchFlash {
+  0%   { opacity: 0.95; transform: translateX(-9px); }
+  30%  { opacity: 0.62; transform: translateX(7px); }
+  60%  { opacity: 0.38; transform: translateX(-4px); }
+  100% { opacity: 0; transform: translateX(0); }
+}
+@keyframes screenGlitchBars {
+  0%   { opacity: 0.9; clip-path: polygon(0 0, 100% 0, 100% 12%, 0 16%); }
+  20%  { opacity: 0.75; clip-path: polygon(0 22%, 100% 18%, 100% 34%, 0 30%); }
+  40%  { opacity: 0.8; clip-path: polygon(0 48%, 100% 52%, 100% 60%, 0 56%); }
+  60%  { opacity: 0.55; clip-path: polygon(0 70%, 100% 66%, 100% 78%, 0 82%); }
+  80%  { opacity: 0.32; clip-path: polygon(0 88%, 100% 84%, 100% 96%, 0 92%); }
+  100% { opacity: 0; clip-path: none; }
 }
 @keyframes titleGlitchTop {
-  0%, 91%, 100% { opacity: 0; transform: translate(0, 0); }
-  92%           { opacity: 0.85; transform: translate(-3px, -1px); }
-  94%           { opacity: 0.55; transform: translate(3px, 1px); }
-  96%           { opacity: 0; transform: translate(0, 0); }
+  0%, 70%, 100% { opacity: 0; transform: translate(0, 0); }
+  71%           { opacity: 0.9; transform: translate(-4px, -2px); }
+  74%           { opacity: 0.6; transform: translate(4px, 2px); }
+  77%           { opacity: 0; transform: translate(0, 0); }
+  86%           { opacity: 0.8; transform: translate(-2px, 1px); }
+  89%           { opacity: 0.4; transform: translate(3px, -1px); }
+  92%           { opacity: 0; transform: translate(0, 0); }
 }
 @keyframes titleGlitchBottom {
-  0%, 89%, 100% { opacity: 0; transform: translate(0, 0); }
-  90%           { opacity: 0.75; transform: translate(3px, 1px); }
-  93%           { opacity: 0.45; transform: translate(-2px, -1px); }
-  95%           { opacity: 0; transform: translate(0, 0); }
+  0%, 68%, 100% { opacity: 0; transform: translate(0, 0); }
+  69%           { opacity: 0.8; transform: translate(4px, 2px); }
+  72%           { opacity: 0.5; transform: translate(-3px, -1px); }
+  75%           { opacity: 0; transform: translate(0, 0); }
+  84%           { opacity: 0.7; transform: translate(2px, -1px); }
+  87%           { opacity: 0.35; transform: translate(-3px, 1px); }
+  90%           { opacity: 0; transform: translate(0, 0); }
 }
 
 #menuScreen .title-tag {
@@ -3123,3 +3240,5 @@ details > summary { cursor: pointer; min-height: 2.75em; display: flex; align-it
   .title-main::after { animation: none !important; opacity: 1; }
   .menu-particles span { display: none; }
 }
+
+
