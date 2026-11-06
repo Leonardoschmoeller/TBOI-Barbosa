@@ -546,6 +546,42 @@ html, body {
   background: linear-gradient(90deg, rgba(34,197,94,0.18), rgba(34,197,94,0.09));
   box-shadow: 0 0 8px rgba(34,197,94,0.14);
 }
+/* ===== CYBER BUG -  improvisado ===== */
+.char-card[data-char="cyberbug"]{
+  background:
+    radial-gradient(ellipse at 28% 16%, rgba(34,211,238,0.24) 0%, rgba(34,211,238,0.08) 36%, rgba(240,171,252,0.05) 62%, rgba(255,255,255,0.02) 78%),
+    linear-gradient(180deg, rgba(15,23,42,0.92), rgba(2,6,23,0.86));
+  border-color: rgba(34,211,238,0.38);
+  box-shadow: 0 8px 24px rgba(34,211,238,0.14), inset 0 1px 0 rgba(255,255,255,0.06);
+  padding-bottom: 38px;
+  position: relative;
+  overflow: hidden;
+}
+.char-card[data-char="cyberbug"]::after{
+  content:""; position:absolute; inset:0; pointer-events:none;
+  background: repeating-linear-gradient(180deg, rgba(34,211,238,0.06) 0 1px, transparent 1px 5px);
+  mix-blend-mode: screen; opacity:0.55;
+}
+.char-card[data-char="cyberbug"]:hover{
+  border-color: rgba(34,211,238,0.65);
+  box-shadow: 0 12px 30px rgba(34,211,238,0.24), 0 0 0 1px rgba(240,171,252,0.18) inset;
+  transform: translateY(-3px) scale(1.015);
+}
+.char-card[data-char="cyberbug"].selected{
+  border-color:#22d3ee;
+  box-shadow:0 0 0 2px rgba(34,211,238,0.32), 0 10px 28px rgba(0,0,0,0.35), 0 0 26px rgba(34,211,238,0.22);
+}
+.char-card[data-char="cyberbug"] .char-icon{
+  filter: drop-shadow(0 0 9px rgba(34,211,238,0.70)) drop-shadow(0 0 14px rgba(240,171,252,0.35));
+}
+.char-card[data-char="cyberbug"] .char-name{
+  color:#cffafe; text-shadow: 0 0 8px rgba(34,211,238,0.55), 0 0 14px rgba(240,171,252,0.22);
+}
+.char-badge.cyberbug{
+  color:#22d3ee; border-color: rgba(34,211,238,0.38);
+  background: linear-gradient(90deg, rgba(34,211,238,0.20), rgba(240,171,252,0.10));
+  box-shadow: 0 0 10px rgba(34,211,238,0.18);
+}
 .character-hint{ font-family: system-ui, sans-serif; font-size: 0.6875rem; color: var(--muted); margin-top:10px; min-height:14px; }
 .character-hint.ready{ color:#4ade80; font-weight:700; }
 #btnPlay:disabled, #btnPlayChar:disabled{ opacity:0.45; cursor:not-allowed; filter:grayscale(0.35); box-shadow:0 4px 0 #3a3a3a; }
@@ -836,52 +872,6 @@ html, body {
   flex-direction: column;
   justify-content: space-between;
   padding: 0;
-}
-
-/* Botão que mostra/oculta o painel de fase+tempo e a lista de melhorias */
-.hud-extra-toggle {
-  position: absolute;
-  top: 3px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 6;
-  pointer-events: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 18px;
-  padding: 2px 7px;
-  border-radius: 6px;
-  border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(8,8,16,0.74);
-  color: rgba(223,231,245,0.92);
-  font-family: 'Press Start 2P', monospace;
-  font-size: 6px;
-  letter-spacing: 0.4px;
-  line-height: 1;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
-}
-.hud-extra-toggle:hover,
-.hud-extra-toggle:focus-visible {
-  background: rgba(0,217,255,0.16);
-  border-color: rgba(0,217,255,0.55);
-  color: #ffffff;
-  outline: none;
-}
-.hud-extra-toggle[aria-pressed="true"] {
-  background: rgba(60,45,0,0.62);
-  border-color: rgba(255,204,0,0.52);
-  color: #ffd94a;
-  opacity: 0.82;
-}
-.hud-extra-icon { font-size: 9px; line-height: 1; }
-.hud-extra-label-short { display: none; }
-@media (max-width: 640px) {
-  .hud-extra-toggle { padding: 3px 5px; }
-  .hud-extra-icon { display: none; }
-  .hud-extra-label-full { display: none; }
-  .hud-extra-label-short { display: inline; }
 }
 
 /* Swap hint - menor, não cobre mapa */
@@ -1539,6 +1529,16 @@ body.is-touch.show-rotate .rotate-hint { display: flex; }
   background: linear-gradient(180deg, #1b2c38 0%, #14202a 100%) !important;
 }
 #btnRestartFloor:hover{ border-color: #7af2ff !important; filter: brightness(1.12); }
+/* Toggle do HUD informativo: ocupa a linha inteira para o rótulo não quebrar */
+#btnPauseHudExtra{
+  grid-column: 1 / -1;
+  border-color: rgba(0,217,255,0.30) !important;
+  color: #8aefff !important;
+}
+#btnPauseHudExtra[aria-pressed="true"]{
+  border-color: rgba(255,204,0,0.42) !important;
+  color: #ffd94a !important;
+}
 .pause-collected-section{
   margin: 0 14px 14px;
 }
@@ -2628,6 +2628,7 @@ details > summary { cursor: pointer; min-height: 2.75em; display: flex; align-it
 #characterScreen .char-card[data-char="ash"]    { --pc: #ff3b30; --pcg: rgba(255,59,48,0.50); }
 #characterScreen .char-card[data-char="dev"]    { --pc: #7af2ff; --pcg: rgba(122,242,255,0.50); }
 #characterScreen .char-card[data-char="gyro"]   { --pc: #22c55e; --pcg: rgba(34,197,94,0.50); }
+#characterScreen .char-card[data-char="cyberbug"]{ --pc: #22d3ee; --pcg: rgba(34,211,238,0.55); }
 
 /* Brilho que "respira" no estado normal.
    O pulso vai em `filter`, não em `box-shadow`: animação tem prioridade sobre
@@ -2651,6 +2652,7 @@ details > summary { cursor: pointer; min-height: 2.75em; display: flex; align-it
 #characterScreen .char-card:nth-child(6){ animation-delay: 0.24s, 0s; }
 #characterScreen .char-card:nth-child(7){ animation-delay: 0.28s, 0s; }
 #characterScreen .char-card:nth-child(8){ animation-delay: 0.32s, 0s; }
+#characterScreen .char-card:nth-child(9){ animation-delay: 0.36s, 0s; }
 
 @keyframes charCardGlow {
   0%, 100% { filter: drop-shadow(0 0 5px var(--pcg)); }

@@ -259,6 +259,19 @@ const BARBOSA_FERRAZ_HADOUKEN_DAMAGE = 1.8;       // dano do hadouken
 const BARBOSA_FERRAZ_HADOUKEN_COOLDOWN = 950;     // intervalo entre hadoukens
 const BARBOSA_FERRAZ_HADOUKEN_SPEED = 6.8;        // velocidade do projétil hadouken
 
+// --- Configurações Cyber Slow (especial exclusivo do Cyber Bug) ---
+// Sem cooldown tradicional: o custo é a barra de SOBRECARGA. Enquanto ativo,
+// inimigos e todos os projéteis rodam em câmera lenta; o jogador continua normal.
+const CYBER_SLOW_ENEMY_TIME_SCALE = 0.05;      // inimigos a 5% da velocidade normal
+const CYBER_SLOW_PROJECTILE_TIME_SCALE = 0.08; // projéteis a 8% da velocidade normal
+const CYBER_SLOW_TIME_SCALE = CYBER_SLOW_ENEMY_TIME_SCALE;
+const CYBER_OVERLOAD_MAX = 100;              // barra cheia
+const CYBER_OVERLOAD_RISE_PER_SEC = 16;      // +16% por segundo ativo (~6,25s até sobrecarregar)
+const CYBER_OVERLOAD_DECAY_PER_SEC = 22;     // -22% por segundo depois do descanso
+const CYBER_OVERLOAD_KILL_DECAY = 10;        // -10% por inimigo derrotado
+const CYBER_OVERLOAD_IDLE_GATE = 50000;      // 50s sem reativar antes da barra começar a baixar
+const CYBER_OVERLOAD_HEART_DAMAGE = 2;       // 1 coração (HP é medido em meias-corações)
+
 // Ícone-imagem do item Barbosa Ferraz (mesma arte do botão JOGAR do menu principal)
 const SPECIAL_ICON_IMAGES = {
   barbosa_ferraz: 'img/download__2_-removebg-preview.png',
@@ -1933,6 +1946,178 @@ class BarbosaFerraz extends SpecialItem {
   playEffects(player, game){}
 }
 
+// ===================== CYBER BUG - CYBER SLOW (ESPECIAL) =====================
+//  improvisado: câmera lenta para inimigos e todos os projéteis.
+// Sem cooldown: E liga/desliga. A barra de sobrecarga sobe enquanto ativo;
+// se chegar a 100%, o corpo paga 1 coração e o sistema desliga.
+// Depois de desligar, a barra fica travada por 50s sem reativar; só então começa
+// a esfriar. Reativar antes disso reinicia a contagem dos 50s.
+class CyberSlow extends SpecialItem {
+  constructor(){
+    super({
+      id: 'cyber_slow',
+      name: 'CYBER SLOW',
+      key: 'e',
+      cooldown: 0,
+      duration: 0,
+      icon: '⏣',
+      description: 'Câmera lenta extrema: inimigos a 5% e projéteis a 8% • cada abate alivia 10% da sobrecarga • 100% custa 1 coração',
+      color: '#22d3ee'
+    });
+    this.overload = 0;          // 0..100
+    this.idleGate = 0;          // ms restantes antes de a sobrecarga começar a baixar
+    this.timeScale = CYBER_SLOW_ENEMY_TIME_SCALE;
+    this.projectileTimeScale = CYBER_SLOW_PROJECTILE_TIME_SCALE;
+    this._trailTimer = 0;
+  }
+  canActivate(){ return true; } // E sempre responde: liga, desliga ou avisa do bloqueio
+  isOnCooldown(){ return this.overload >= CYBER_OVERLOAD_MAX; }
+  getCooldownPercent(){ return 0; }
+  getDurationPercent(){ return 1; }
+  getOverloadPercent(){ return clamp(this.overload / CYBER_OVERLOAD_MAX, 0, 1); }
+  isOverloaded(){ return this.overload >= CYBER_OVERLOAD_MAX; }
+  onEnemyDefeated(count, player, game){
+    if(!count || count < 1 || this.overload <= 0) return;
+    const before = this.overload;
+    this.overload = Math.max(0, this.overload - CYBER_OVERLOAD_KILL_DECAY * count);
+    const relieved = before - this.overload;
+    if(relieved <= 0) return;
+    const p = player || (game && game.player);
+    if(!game) return;
+    game.shake = Math.max(game.shake||0, 16 + Math.min(18, count*4));
+    if(game.particles && p){
+      const n = Math.min(22, 6 + count*4);
+      for(let k=0;k<n;k++){
+        const ang = Math.random()*Math.PI*2;
+        game.particles.push(new Particle(
+          p.x + Math.cos(ang)*randRange(4,18),
+          p.y + Math.sin(ang)*randRange(4,18),
+          Math.cos(ang)*randRange(0.4,1.6), Math.sin(ang)*randRange(0.4,1.6),
+          randRange(260,420), k%3===0 ? '#ffffff' : k%2 ? '#22d3ee' : '#f0abfc', randRange(1.3,2.3)
+        ));
+      }
+    }
+    if(game.showToast) game.showToast(`⏣ Abate removeu ${Math.round(relieved)}% da sobrecarga${count>1?` (${count} inimigos)`:''}`, 900);
+  }
+  tryActivate(player, game){
+    if(this.isActive){
+      this.shutDown(player, game, 'manual');
+      return true;
+    }
+    if(this.isOverloaded()){
+      if(game && game.showToast){
+        const wait = this.idleGate > 0 ? ` • descanso ${Math.ceil(this.idleGate/1000)}s` : '';
+        game.showToast(`⏣ Sobrecarga a 100%! Espere esfriar${wait}`, 1500);
+      }
+      return false;
+    }
+    this.activate(player, game);
+    this.isActive = true;
+    this.idleGate = 0; // reativar zera a contagem do descanso
+    this.onActivated(player, game);
+    return true;
+  }
+  activate(player, game){
+    player.cyberSlowActive = true;
+    if(!player.cyberSlowTrail) player.cyberSlowTrail = [];
+    if(game && game.showToast) game.showToast('⏣ CYBER SLOW ATIVO — inimigos a 5% e projéteis a 8% [E desliga]', 1700);
+  }
+  onActivated(player, game){
+    if(!game) return;
+    for(let k=0;k<18;k++){
+      const ang = Math.random()*Math.PI*2;
+      game.particles.push(new Particle(
+        player.x + Math.cos(ang)*randRange(4,16),
+        player.y + Math.sin(ang)*randRange(4,16),
+        Math.cos(ang)*randRange(0.8,2.4), Math.sin(ang)*randRange(0.8,2.4),
+        320, k%3===0 ? '#f0abfc' : k%2 ? '#22d3ee' : '#a5f3fc', 2
+      ));
+    }
+    game.shake = Math.max(game.shake||0, 45);
+  }
+  shutDown(player, game, reason){
+    if(!this.isActive) return;
+    this.isActive = false;
+    this.durationRemaining = 0;
+    this.idleGate = CYBER_OVERLOAD_IDLE_GATE;
+    player.cyberSlowActive = false;
+    player.cyberSlowTrail = [];
+    if(!game) return;
+    for(let k=0;k<14;k++){
+      const ang = Math.random()*Math.PI*2;
+      game.particles.push(new Particle(
+        player.x, player.y,
+        Math.cos(ang)*randRange(0.6,2.2), Math.sin(ang)*randRange(0.6,2.2),
+        260, k%2 ? '#22d3ee' : '#f0abfc', 1.8
+      ));
+    }
+    game.shake = Math.max(game.shake||0, 35);
+    if(game.showToast){
+      if(reason==='overload') game.showToast('⏣ SOBRECARGA! -1 coração • espere 50s sem usar para a barra baixar', 2000);
+      else if(reason==='manual') game.showToast(`⏣ Cyber Slow desligado • sobrecarga ${Math.round(this.overload)}% • descanso 50s`, 1500);
+    }
+  }
+  onActiveTick(dt, player, game){
+    if(!game) return;
+    this._trailTimer += dt;
+    if(this._trailTimer >= 30){
+      this._trailTimer = 0;
+      if(!player.cyberSlowTrail) player.cyberSlowTrail = [];
+      player.cyberSlowTrail.push({x: player.x, y: player.y, life: 560, max: 560});
+      while(player.cyberSlowTrail.length > 20) player.cyberSlowTrail.shift();
+      if(Math.random()<0.7){
+        game.particles.push(new Particle(
+          player.x + randRange(-9,9), player.y + randRange(-9,9),
+          randRange(-0.4,0.4), randRange(-0.7,0.1), 200,
+          Math.random()<0.5 ? 'rgba(34,211,238,0.75)' : 'rgba(240,171,252,0.65)', 1.4
+        ));
+      }
+    }
+    if(player.cyberSlowTrail){
+      for(const g of player.cyberSlowTrail) g.life -= dt;
+      player.cyberSlowTrail = player.cyberSlowTrail.filter(g=>g.life>0);
+    }
+  }
+  update(dt, player, game){
+    if(this.isActive){
+      this.overload = Math.min(CYBER_OVERLOAD_MAX, this.overload + (CYBER_OVERLOAD_RISE_PER_SEC * dt) / 1000);
+      this.idleGate = CYBER_OVERLOAD_IDLE_GATE; // enquanto ativo, o descanso não corre
+      this.onActiveTick(dt, player, game);
+      if(this.overload >= CYBER_OVERLOAD_MAX){
+        this.overload = CYBER_OVERLOAD_MAX;
+        if(player && typeof player.takeDamage === 'function'){
+          player.takeDamage(CYBER_OVERLOAD_HEART_DAMAGE, { game, ignoreInvuln: true, ignoreShield: true, source: 'cyber_overload' });
+        }
+        this.shutDown(player, game, 'overload');
+      }
+      return;
+    }
+    if(this.idleGate > 0){
+      this.idleGate = Math.max(0, this.idleGate - dt);
+    } else if(this.overload > 0){
+      this.overload = Math.max(0, this.overload - (CYBER_OVERLOAD_DECAY_PER_SEC * dt) / 1000);
+    }
+    if(player && player.cyberSlowTrail && player.cyberSlowTrail.length){
+      for(const g of player.cyberSlowTrail) g.life -= dt;
+      player.cyberSlowTrail = player.cyberSlowTrail.filter(g=>g.life>0);
+    }
+  }
+  onDeactivate(player, game){
+    this.shutDown(player, game, 'manual');
+  }
+  getStatusText(){
+    if(this.isActive) return `Ativo: ${Math.round(this.overload)}%`;
+    if(this.isOverloaded()){
+      return this.idleGate > 0 ? `Sobrecarga: ${Math.ceil(this.idleGate/1000)}s` : 'Sobrecarga: esfriando';
+    }
+    if(this.overload > 0){
+      if(this.idleGate > 0) return `Descanso: ${Math.ceil(this.idleGate/1000)}s`;
+      return `Carga: ${Math.round(this.overload)}%`;
+    }
+    return 'Pronto!';
+  }
+}
+
 // Registro modular: facilita adicionar novos itens sem reescrever Game/Player
 // Basta criar classe nova extends SpecialItem e adicionar aqui.
 const SPECIAL_REGISTRY = {
@@ -1944,6 +2129,7 @@ const SPECIAL_REGISTRY = {
   'oli_xadrez':        () => new OliXadrez(),
   'giro_aureo':        () => new GiroAureo(),
   'barbosa_ferraz':      () => new BarbosaFerraz(),
+  'cyber_slow':          () => new CyberSlow(),
 };
 function createSpecialItem(id){
   const factory = SPECIAL_REGISTRY[id];
@@ -2636,7 +2822,7 @@ const UPGRADE_DEFS = [
       w.damage = Math.min(w.damage * 1.12, baseD*UPGRADE_CAPS.MAX_DANO_FACTOR);
       w._fomeHeal = (w._fomeHeal||0) + UPGRADE_VALUES.MOTOSSERRA_RARA_FOME_HEAL;
   }},
-  { id:'motosserra_muito_rara_infernal', weapon:'MOTOSSERRA', rarity:'MUITO_RARA', name:'Motor Infernal', desc:'+30% alcance/ângulo e +32% dano (Ash)', apply:(w)=>{
+  { id:'motosserra_muito_rara_infernal', weapon:'MOTOSSERRA', rarity:'MUITO_RARA', name:'Motor Intenso', desc:'+30% alcance/ângulo e +32% dano (Ash)', apply:(w)=>{
       const baseR=WEAPON_MOTOSSERRA.range, baseD=WEAPON_MOTOSSERRA.damage;
       w.range = Math.min(w.range * (1+UPGRADE_VALUES.MOTOSSERRA_MUITO_RARA_INFERNAL_RANGE), baseR*UPGRADE_CAPS.MAX_RANGE_FACTOR);
       w.meleeAngle = Math.min(w.meleeAngle * 1.30, 185);
@@ -2767,26 +2953,11 @@ const UPGRADE_DEFS = [
       w._aspectReturnWave = true;
       w.returnToHand = true;
   }},
-  { id:'aspect_rara_guardiao', weapon:'ALL', compatible:ASPECT_ALL_WEAPONS, rarity:'RARA', category:ASPECT_CATEGORY,
-    name:'Guardião de Dillian', desc:'Aspecto Dillian: um escudo orbital bloqueia projéteis inimigos', apply:(w)=>{
-      if(!ASPECT_ALL_WEAPONS.includes(w.name)) return;
-      w._aspectEscudo = true;
-  }},
-  { id:'aspect_rara_gato', weapon:'ALL', compatible:ASPECT_ALL_WEAPONS, rarity:'RARA', category:ASPECT_CATEGORY,
-    name:'Gato Antivírus', desc:'Aspecto Gato: um gato acompanha você e ataca os inimigos', apply:(w)=>{
-      if(!ASPECT_ALL_WEAPONS.includes(w.name)) return;
-      w._aspectGato = true;
-  }},
   { id:'aspect_muito_rara_feixe', weapon:'ALL', compatible:ASPECT_BULLET_WEAPONS, rarity:'MUITO_RARA', category:ASPECT_CATEGORY,
     name:'Feixe Codificado', desc:'Aspecto Dev: o projétil vira feixe largo que perfura e atravessa paredes', apply:(w)=>{
       if(!ASPECT_BULLET_WEAPONS.includes(w.name)) return;
       w._aspectBeam = true;
       w.ghostWalls = true;
-  }},
-  { id:'aspect_muito_rara_ioio', weapon:'ALL', compatible:ASPECT_ALL_WEAPONS, rarity:'MUITO_RARA', category:ASPECT_CATEGORY,
-    name:'Órbita de Io-io', desc:'Aspecto JL: ao sofrer dano, invoca um io-io maior e mais forte', apply:(w)=>{
-      if(!ASPECT_ALL_WEAPONS.includes(w.name)) return;
-      w._aspectIoi = true;
   }},
   { id:'aspect_muito_rara_garra', weapon:'ALL', compatible:ASPECT_BULLET_WEAPONS, rarity:'MUITO_RARA', category:ASPECT_CATEGORY,
     name:'Garra do Indiana', desc:'Aspecto Chicote: o projétil crava na parede, te puxa e explode no ponto da âncora', apply:(w)=>{
@@ -3013,6 +3184,7 @@ const PAINEL_CODES = {
 const PAINEL_CODE_LIST = Object.keys(PAINEL_CODES);
 
 // ===================== SALA SETCH (2x TAMANHO) =====================
+const SETCH_POSTER_IMAGE = 'img/Gemini_Generated_Image_1dg0en1dg0en1dg0.jpg';
 const SETCH_ROOM_CHANCE = 1.0; // 100% por andar quando elegível (Fase 5 ou 6) - requisito: 100% ou na fase 5 ou na fase 6
 const SETCH_ROOM_FLOORS = [5,6]; // só aparece em Fase 5 ou 6
 const SETCH_ROOM_MIN_DISTANCE = 2; // distância mínima do start
@@ -4682,6 +4854,21 @@ const CHARACTER_DEFS = {
     allowedWeapons: ['BOLAS'], // lock exclusivo - mantém a identidade
     exclusive: 'bolas',
     description: '3 ♥ • Duas Bolas de Aço • Segure para carregar e solte para arremessar • A bola quica nas paredes e volta pra mão • E: Giro Áureo (brocas perfurantes) • Chapéu de aba larga'
+  },
+  cyberbug: {
+    id: 'cyberbug',
+    displayName: 'Cyber Bug',
+    icon: '🧑‍🚀',
+    color: '#22d3ee',
+    bg: 'rgba(34,211,238,0.16)',
+    border: 'rgba(34,211,238,0.45)',
+    maxHp: 4, // 2 corações - vidro, mas com controle de tempo
+    boneHearts: 0,
+    starterWeapon: 'NORMAL',
+    starterSpecial: 'cyber_slow', // especial exclusivo - Sandevistan improvisado
+    allowedWeapons: null, // pode usar qualquer arma, foco é o Cyber Slow
+    exclusive: 'cyber_slow',
+    description: '2 ♥ • Humano cibernético com capuz, viseira e implantes neon • E: Cyber Slow - inimigos a 5% e todos os projéteis a 8% da velocidade • Rastro neon no chão e imagens duplicadas • Cada abate alivia 10% da sobrecarga • Sem cooldown, mas a barra enche: 100% custa 1 coração e trava 50s'
   }
 };
 const CHARACTER_IDS = Object.keys(CHARACTER_DEFS);
@@ -4806,6 +4993,9 @@ function applyCharacterToPlayer(player, characterId){
   player.gyroGoldenAnchor = null;
   player.goldenSpin = false;
   player.gyroExtraBall = null;
+  // Cyber Bug - estado visual do Cyber Slow (sempre limpo ao aplicar personagem)
+  player.cyberSlowActive = false;
+  player.cyberSlowTrail = [];
   // Reseta contaminação de outros personagens
   player.cyberHp = 0;
   player.maxCyberHp = CYBER_HEART_MAX_CYBER;
@@ -14783,14 +14973,18 @@ class Player {
     this.continues -= 1;
     return true;
   }
+  getBaseRedHeartCapacity(){
+    if(this.characterId==='cyberbug' && this.characterDef && this.characterDef.maxHp) return this.characterDef.maxHp;
+    return BONE_HEART_RED_CAPACITY;
+  }
   takeDamage(amount, opts = {}) {
     // Power Star: invencibilidade total
-    if(this.powerStarActive) return false;
+    if(this.powerStarActive && !opts.ignoreInvuln) return false;
     // CHICOTE: invulnerável durante o grapple (voo + trajeto + impacto).
     // O jogador não controla o movimento enquanto é puxado, então dano aqui é
     // aleatório e imprevisível. Ver CHICOTE_PULL_INVULN_*.
-    if(this.isChicotePullProtected()) return false;
-    if (this.invulnTimer > 0 || this.hurtCooldown > 0) return false;
+    if(!opts.ignoreInvuln && this.isChicotePullProtected()) return false;
+    if (!opts.ignoreInvuln && (this.invulnTimer > 0 || this.hurtCooldown > 0)) return false;
     // Migração legado Soul -> Bone (uma vez)
     if(this.boneHearts === undefined) this.boneHearts = 0;
     if(this.maxBoneHearts === undefined) this.maxBoneHearts = BONE_HEART_MAX_CONTAINERS;
@@ -14798,7 +14992,7 @@ class Player {
       const legacyBones = Math.ceil(this.cyberHp / 2);
       const toConvert = Math.min(legacyBones, this.maxBoneHearts);
       this.boneHearts = toConvert;
-      const expectedMax = BONE_HEART_RED_CAPACITY + this.boneHearts * 2;
+      const expectedMax = this.getBaseRedHeartCapacity() + this.boneHearts * 2;
       if(this.maxHp < expectedMax){
         const diff = expectedMax - this.maxHp;
         this.maxHp = expectedMax;
@@ -14809,7 +15003,7 @@ class Player {
     if(this.cyberHp === undefined) this.cyberHp = 0;
     if(this.maxCyberHp === undefined) this.maxCyberHp = CYBER_HEART_MAX_CYBER;
     // ===== Escudo Mágico: absorve um dano completo (prioridade sobre Bone) =====
-    if(this.shieldActive && this.shieldCharges > 0){
+    if(!opts.ignoreShield && this.shieldActive && this.shieldCharges > 0){
       this.shieldCharges--;
       const gameRef = opts.game || (typeof window !== 'undefined' ? window.game : null);
       if(this.equippedSpecial && this.equippedSpecial.id === 'escudo_magico' && typeof this.equippedSpecial.onAbsorb === 'function'){
@@ -14827,7 +15021,7 @@ class Player {
       return false;
     }
     // ===== ESPADA Guardião Ágil: escudo ao carregar (1 hit) =====
-    if(this.swordGuardianActive && this.swordGuardianCharges > 0){
+    if(!opts.ignoreShield && this.swordGuardianActive && this.swordGuardianCharges > 0){
       this.swordGuardianCharges--;
       const gameRef = opts.game || (typeof window !== 'undefined' ? window.game : null);
       const particles = gameRef && gameRef.particles ? gameRef.particles : (typeof window!=='undefined' && window.game ? window.game.particles : []);
@@ -14875,7 +15069,7 @@ class Player {
         const room = gameRef && gameRef.currentRoom ? gameRef.currentRoom : (typeof window!=='undefined' && window.game ? window.game.currentRoom : null);
         this.boneHearts -= 1;
         this.maxHp -= 2;
-        if(this.maxHp < BONE_HEART_RED_CAPACITY) this.maxHp = BONE_HEART_RED_CAPACITY;
+        if(this.maxHp < this.getBaseRedHeartCapacity()) this.maxHp = this.getBaseRedHeartCapacity();
         if(this.hp > this.maxHp) this.hp = this.maxHp;
         // também garante maxBoneHearts coerente
         if(this.boneHearts < 0) this.boneHearts = 0;
@@ -14970,9 +15164,9 @@ class Player {
 
   update(dt, input, walls) {
     try{
-    // Bone Heart: garante consistência maxHp = base 6 + ossos*2 (migração legada)
+    // Bone Heart: garante consistência maxHp = base do personagem + ossos*2 (migração legada)
     if(this.boneHearts !== undefined){
-      const expectedMax = BONE_HEART_RED_CAPACITY + this.boneHearts*2;
+      const expectedMax = this.getBaseRedHeartCapacity() + this.boneHearts*2;
       if(this.maxHp !== expectedMax && this.boneHearts>=0 && this.boneHearts<=BONE_HEART_MAX_CONTAINERS){
         // só corrige se divergir por migração ou bug, preserva hp proporcional
         this.maxHp = expectedMax;
@@ -15809,6 +16003,69 @@ class Player {
     return this.appendAspectExtras(bullets, dir);
   }
 
+  drawCyberSlowTrail(ctx, bob){
+    const trail = this.cyberSlowTrail;
+    if(!this.cyberSlowActive || !trail || !trail.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for(let i=1;i<trail.length;i++){
+      const a = trail[i-1];
+      const b = trail[i];
+      const p = clamp(b.life/(b.max||560), 0, 1);
+      const idx = (i+1)/trail.length;
+      const ay = a.y + bob*0.28;
+      const by = b.y + bob*0.28;
+      ctx.globalAlpha = 0.08 + p*0.30*idx;
+      ctx.strokeStyle = '#f0abfc';
+      ctx.lineWidth = 2 + idx*10;
+      ctx.beginPath(); ctx.moveTo(a.x, ay); ctx.lineTo(b.x, by); ctx.stroke();
+      ctx.globalAlpha = 0.10 + p*0.48*idx;
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 1.2 + idx*5.5;
+      ctx.beginPath(); ctx.moveTo(a.x, ay); ctx.lineTo(b.x, by); ctx.stroke();
+      ctx.globalAlpha = 0.18 + p*0.72*idx;
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.lineWidth = 0.7 + idx*1.8;
+      ctx.beginPath(); ctx.moveTo(a.x, ay); ctx.lineTo(b.x, by); ctx.stroke();
+    }
+    ctx.setLineDash([6, 12]);
+    ctx.lineDashOffset = -(this.animTime*0.04) % 18;
+    ctx.globalAlpha = 0.32;
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 1;
+    for(let i=1;i<trail.length;i++){
+      const a=trail[i-1], b=trail[i];
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y+bob*0.28);
+      ctx.lineTo(b.x, b.y+bob*0.28);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
+    for(let i=0;i<trail.length;i+=3){
+      const g = trail[i];
+      const p = clamp(g.life/(g.max||560), 0, 1);
+      const idx = (i+1)/trail.length;
+      const gx = g.x - this.w/2;
+      const gy = g.y - this.h/2 + bob*0.35;
+      ctx.globalAlpha = p * 0.18 * idx;
+      ctx.fillStyle = '#f0abfc';
+      ctx.fillRect(gx+2.2, gy+1.5, this.w, this.h);
+      ctx.globalAlpha = p * 0.12 * idx;
+      ctx.fillStyle = '#22d3ee';
+      ctx.fillRect(gx, gy, this.w, this.h);
+      ctx.globalAlpha = p * 0.55 * idx;
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fillRect(gx+5, gy+4, this.w-10, 1.1);
+      ctx.globalAlpha = p * 0.26 * idx;
+      ctx.fillStyle = '#f0abfc';
+      ctx.fillRect(gx+3, gy+7, this.w-6, 0.7);
+    }
+    ctx.restore();
+  }
+
   draw(ctx) {
     if (this.isInvulnerable() && Math.floor(this.animTime / 60) % 2 === 0 && this.hurtCooldown > 0 && (this.hitFlash||0) <= 0) ctx.globalAlpha = 0.45;
     let x = this.x - this.w/2;
@@ -15846,8 +16103,36 @@ class Player {
         y -= this.motosserraDir.y * MOTOSSERRA_RECOIL_AMP * 0.5;
       }
     }
+    this.drawCyberSlowTrail(ctx, bob);
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.fillRect(x+2, y + this.h - 4, this.w, 4);
+    if(this.cyberSlowActive){
+      const pulse = 0.5 + Math.sin(this.animTime*0.02)*0.5;
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      const glow = ctx.createRadialGradient(this.x, this.y+bob, 3, this.x, this.y+bob, 28);
+      glow.addColorStop(0, `rgba(34,211,238,${0.16 + pulse*0.10})`);
+      glow.addColorStop(0.55, `rgba(240,171,252,${0.08 + pulse*0.06})`);
+      glow.addColorStop(1, 'rgba(34,211,238,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y+bob, 28, 0, Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle = `rgba(122,242,255,${0.35 + pulse*0.35})`;
+      ctx.lineWidth = 1.2;
+      for(let i=0;i<3;i++){
+        const r = 13 + i*5 + pulse*2;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y+bob, r, -0.9 + i*0.5, 0.9 + i*0.5);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = `rgba(240,171,252,${0.25 + pulse*0.30})`;
+      ctx.beginPath();
+      ctx.moveTo(x-4, y+6+bob); ctx.lineTo(x-14-pulse*5, y+6+bob);
+      ctx.moveTo(x-4, y+14+bob); ctx.lineTo(x-17-pulse*6, y+14+bob);
+      ctx.stroke();
+      ctx.restore();
+    }
     // Gyro: guia de mira do arremesso (tracejado na direção, inclusive diagonal)
     this.drawGyroAimGuide(ctx);
     if (this.isDashing()) {
@@ -16213,6 +16498,26 @@ class Player {
       ctx.fillStyle='#0d120f';
       ctx.fillRect(x+5, y+20 + bob, 6, 1.5);
       ctx.fillRect(x+15, y+20 + bob, 6, 1.5);
+    } else if(this.characterId==='cyberbug'){
+      const legPulse = 0.55 + Math.sin(this.animTime*0.025)*0.45;
+      ctx.fillStyle='#243247';
+      ctx.fillRect(x+4, y+16 + bob, 6, 6);
+      ctx.fillRect(x+14, y+16 + bob, 6, 6);
+      ctx.fillStyle='#334155';
+      ctx.fillRect(x+4.5, y+16.5 + bob, 5, 1.2);
+      ctx.fillRect(x+14.5, y+16.5 + bob, 5, 1.2);
+      ctx.fillStyle='#0f172a';
+      ctx.fillRect(x+3.8, y+20 + bob, 6.5, 2.2);
+      ctx.fillRect(x+13.7, y+20 + bob, 6.5, 2.2);
+      ctx.fillStyle=`rgba(34,211,238,${0.55+legPulse*0.45})`;
+      ctx.fillRect(x+4.4, y+17 + bob, 1, 4.2);
+      ctx.fillRect(x+18.7, y+17 + bob, 1, 4.2);
+      ctx.fillStyle=`rgba(240,171,252,${0.35+legPulse*0.35})`;
+      ctx.fillRect(x+5.2, y+19.5 + bob, 3.6, 0.9);
+      ctx.fillRect(x+15.2, y+19.5 + bob, 3.6, 0.9);
+      ctx.fillStyle='#22d3ee';
+      ctx.fillRect(x+5, y+21.4 + bob, 4, 0.7);
+      ctx.fillRect(x+15, y+21.4 + bob, 4, 0.7);
     } else {
       ctx.fillStyle = '#3a6ea5';
       ctx.fillRect(x+4, y + 16 + bob, 6, 6);
@@ -16306,6 +16611,42 @@ class Player {
       // cinto + fivela
       ctx.fillStyle='#3f3f46'; ctx.fillRect(x+5, y+16 + bob, 14, 1.6);
       ctx.fillStyle='#d4d4d8'; ctx.fillRect(x+11, y+16 + bob, 2, 1.6);
+    } else if(this.characterId==='cyberbug'){
+      const pulse = 0.5 + Math.sin(this.animTime*0.03)*0.5;
+      ctx.fillStyle='#0b1020';
+      ctx.fillRect(x+4, y+7.5 + bob, 16, 9.5);
+      ctx.fillStyle='#1e293b';
+      ctx.fillRect(x+5, y+8 + bob, 14, 8);
+      ctx.fillStyle='#111827';
+      ctx.fillRect(x+4.2, y+8.2 + bob, 2.2, 7.8);
+      ctx.fillRect(x+17.6, y+8.2 + bob, 2.2, 7.8);
+      ctx.fillStyle='#e8b98f';
+      ctx.fillRect(x+9.5, y+7 + bob, 5, 1.8);
+      ctx.fillStyle='#0f172a';
+      ctx.fillRect(x+8.5, y+8.2 + bob, 7, 1.1);
+      ctx.fillStyle='#22d3ee';
+      ctx.fillRect(x+11.6, y+9 + bob, 0.8, 5.8);
+      ctx.fillStyle=`rgba(34,211,238,${0.35+pulse*0.45})`;
+      ctx.fillRect(x+6, y+10 + bob, 4.6, 0.9);
+      ctx.fillRect(x+13.4, y+10 + bob, 4.6, 0.9);
+      ctx.fillStyle='#f0abfc';
+      ctx.fillRect(x+6, y+14.7 + bob, 12, 0.8);
+      ctx.fillStyle='#1e293b';
+      ctx.fillRect(x+5, y+16 + bob, 14, 1.7);
+      ctx.fillStyle='#0f172a';
+      ctx.fillRect(x+5, y+16.5 + bob, 14, 1.1);
+      ctx.fillStyle='#22d3ee';
+      ctx.fillRect(x+11.3, y+16.2 + bob, 1.6, 1.4);
+      ctx.fillStyle='#020617';
+      ctx.fillRect(x+13.2, y+10.6 + bob, 2.8, 2.8);
+      ctx.fillStyle=`rgba(122,242,255,${0.55+pulse*0.45})`;
+      ctx.fillRect(x+13.9, y+11.3 + bob, 1.4, 1.4);
+      ctx.fillStyle='#334155';
+      ctx.fillRect(x+5.8, y+8.4 + bob, 2.4, 3.2);
+      ctx.fillRect(x+15.8, y+8.4 + bob, 2.4, 3.2);
+      ctx.fillStyle='#f0abfc';
+      ctx.fillRect(x+6.1, y+8.8 + bob, 1.8, 0.7);
+      ctx.fillRect(x+16.1, y+8.8 + bob, 1.8, 0.7);
     }
     // arma visual diferente - novas armas comuns com identidade visual distinta + Bastão JG + Motosserra
     const isShotgun = this.weapon.name==='SHOTGUN';
@@ -17191,6 +17532,59 @@ class Player {
       ctx.fillStyle='#ffe4c4';
       ctx.fillRect(x, y+10 + bob, 4, 5);
       ctx.fillRect(x+20, y+10 + bob, 4, 5);
+    } else if(this.characterId==='cyberbug'){
+      const pulse = 0.5 + Math.sin(this.animTime*0.032)*0.5;
+      ctx.fillStyle='#0b1020';
+      ctx.fillRect(x+2.5, y+0 + bob, 19, 12);
+      ctx.fillStyle='#151f38';
+      ctx.fillRect(x+4, y+1 + bob, 16, 10.5);
+      ctx.fillStyle='#2a1832';
+      ctx.fillRect(x+5, y+1.2 + bob, 14, 3.4);
+      ctx.fillStyle='#f0abfc';
+      ctx.fillRect(x+6, y+1.5 + bob, 5, 0.8);
+      ctx.fillStyle='#e8b98f';
+      ctx.fillRect(x+6, y+3.2 + bob, 12, 8);
+      ctx.fillStyle='#d9a87c';
+      ctx.fillRect(x+7, y+10 + bob, 10, 1.2);
+      ctx.fillStyle='#020617';
+      ctx.fillRect(x+5.4, y+5 + bob, 13.2, 3.6);
+      ctx.fillStyle=`rgba(34,211,238,${0.45+pulse*0.35})`;
+      ctx.fillRect(x+6, y+5.4 + bob, 12, 2.8);
+      const visorShift = this.facing===1 ? 1.4 : -1.4;
+      ctx.fillStyle='#ffffff';
+      ctx.fillRect(x+8.4+visorShift, y+5.8 + bob, 2, 1.1);
+      ctx.fillRect(x+13.6+visorShift, y+5.8 + bob, 2, 1.1);
+      ctx.fillStyle='#22d3ee';
+      ctx.fillRect(x+8.8+visorShift, y+6 + bob, 1.2, 0.7);
+      ctx.fillRect(x+14+visorShift, y+6 + bob, 1.2, 0.7);
+      ctx.fillStyle='#c98f68';
+      ctx.fillRect(x+11.4, y+7.8 + bob, 1.2, 1.1);
+      ctx.fillStyle='#7a4a3a';
+      ctx.fillRect(x+10, y+9.4 + bob, 4, 0.8);
+      ctx.fillStyle='#f0abfc';
+      ctx.fillRect(x+18, y+4.8 + bob, 2.2, 1.1);
+      ctx.fillRect(x+18.4, y+6.2 + bob, 1.4, 1.2);
+      ctx.fillStyle='#22d3ee';
+      ctx.fillRect(x+3.2, y+1 + bob, 0.9, 10);
+      ctx.fillRect(x+19.9, y+1 + bob, 0.9, 10);
+      ctx.fillStyle='#f0abfc';
+      ctx.fillRect(x+3, y+9 + bob, 2.2, 1.1);
+      ctx.fillRect(x+18.8, y+9 + bob, 2.2, 1.1);
+      ctx.fillStyle='#e8b98f';
+      ctx.fillRect(x-1, y+10 + bob, 4, 5);
+      ctx.fillRect(x+21, y+10 + bob, 4, 5);
+      ctx.fillStyle='#0f172a';
+      ctx.fillRect(x-1, y+12.7 + bob, 4, 1.5);
+      ctx.fillRect(x+21, y+12.7 + bob, 4, 1.5);
+      ctx.fillStyle='#22d3ee';
+      ctx.fillRect(x-0.4, y+10.6 + bob, 0.9, 2.8);
+      ctx.fillRect(x+21.5, y+10.6 + bob, 0.9, 2.8);
+      ctx.fillStyle='#f0abfc';
+      ctx.fillRect(x-0.4, y+14.2 + bob, 2.7, 0.7);
+      ctx.fillRect(x+21.7, y+14.2 + bob, 2.7, 0.7);
+      ctx.fillStyle='#0b1020';
+      ctx.fillRect(x, y+14.8 + bob, 3, 1.8);
+      ctx.fillRect(x+21, y+14.8 + bob, 3, 1.8);
     } else {
       ctx.fillStyle = '#e8c9a0';
       ctx.fillRect(x, y+10 + bob, 4, 6);
@@ -21683,8 +22077,9 @@ const it = items[i];
     return rects;
   }
 
-  update(dt, player, bullets, globalParticles, enemyBulletsOut) {
+  update(dt, player, bullets, globalParticles, enemyBulletsOut, timeScale = 1) {
     try{
+    const enemyDt = dt * (timeScale || 1);
     this.anim += dt; // relógio da sala (usado nos pulsos de decoração/placar)
     // Festa horda: anima confetti e controla ondas (pode aparecer em qualquer fase)
     if(this.isPartyHorde && !this.partyHordeDefeated){
@@ -21763,32 +22158,32 @@ const it = items[i];
       if(e.type==='stair_boss'){
         if(bossWaitingDialog) {
           // Só animação leve, não ataca
-          e.anim+=dt;
-          e.leftHand.anim+=dt;
-          e.rightHand.anim+=dt;
+          e.anim+=enemyDt;
+          e.leftHand.anim+=enemyDt;
+          e.rightHand.anim+=enemyDt;
           continue;
         }
-        e.update(dt, player, this.walls, enemyBulletsOut, pendingSummons, this.enemies, globalParticles, this);
+        e.update(enemyDt, player, this.walls, enemyBulletsOut, pendingSummons, this.enemies, globalParticles, this);
       } else if(e.type==='hacker'){
         // Hacker tem diálogo inicial com Dark Vírus
         if(hackerWaitingDialog){
           // mantém animação mas pausa ataque já feita dentro do hacker update
         }
-        e.update(dt, player, this.walls, enemyBulletsOut, pendingSummons, this.enemies, globalParticles, this);
+        e.update(enemyDt, player, this.walls, enemyBulletsOut, pendingSummons, this.enemies, globalParticles, this);
         // glitch code chuva na sala do hacker
         if(this.isHacker && e.battleStarted && Math.random()<0.12){
           const gx=randRange(WALL_THICK+12, CANVAS_W-WALL_THICK-12);
           const gy=WALL_THICK+8;
           globalParticles.push(new Particle(gx, gy, randRange(-0.3,0.3), randRange(1.2,2.4), 420, HACKER_ROOM_GLITCH_COLORS[randInt(0,HACKER_ROOM_GLITCH_COLORS.length-1)], 1.2));
         }
-      } else if (e.type==='fugitive') e.update(dt, player, this.walls, enemyBulletsOut);
-      else if (e.type==='xshooter') e.update(dt, player, this.walls, enemyBulletsOut);
-      else if (e.type==='kamikaze') e.update(dt, player, this.walls);
-      else if (e.type==='summoner') e.update(dt, player, this.walls, pendingSummons, this.enemies);
-      else if (e.type==='miniboss') e.update(dt, player, this.walls, enemyBulletsOut, pendingSummons, this.enemies, globalParticles);
-      else if (e.type==='dash') e.update(dt, player, this.walls);
-      else if (e.type==='macaco' || e.type==='bored_ape' || e.type==='ape_nft') e.update(dt, player, this.walls);
-      else e.update(dt, player, this.walls);
+      } else if (e.type==='fugitive') e.update(enemyDt, player, this.walls, enemyBulletsOut);
+      else if (e.type==='xshooter') e.update(enemyDt, player, this.walls, enemyBulletsOut);
+      else if (e.type==='kamikaze') e.update(enemyDt, player, this.walls);
+      else if (e.type==='summoner') e.update(enemyDt, player, this.walls, pendingSummons, this.enemies);
+      else if (e.type==='miniboss') e.update(enemyDt, player, this.walls, enemyBulletsOut, pendingSummons, this.enemies, globalParticles);
+      else if (e.type==='dash') e.update(enemyDt, player, this.walls);
+      else if (e.type==='macaco' || e.type==='bored_ape' || e.type==='ape_nft') e.update(enemyDt, player, this.walls);
+      else e.update(enemyDt, player, this.walls);
     }
     // Motosserra sangramento: aplica DoT serragem
     for(const e of this.enemies){
@@ -22980,6 +23375,46 @@ if(e.canDamageHead()){
     ctx.textAlign = 'left';
   }
 
+  drawSetchPosters(ctx){
+    const img = getSpecialIconImage(SETCH_POSTER_IMAGE);
+    const ready = !!(img && img.complete && img.naturalWidth > 0);
+    const posters = [
+      { x: CANVAS_W/2 - 280, y: 92, s: 92, rot: -0.035 },
+      { x: CANVAS_W/2,       y: 112, s: 74, rot: 0.015 },
+      { x: CANVAS_W/2 + 280, y: 92, s: 92, rot: 0.035 }
+    ];
+    for(const p of posters){
+      const outer = p.s + 10;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = 'rgba(0,0,0,0.30)';
+      ctx.fillRect(-outer/2 + 3, -outer/2 + 3, outer, outer);
+      ctx.fillStyle = '#0c0914';
+      ctx.fillRect(-outer/2, -outer/2, outer, outer);
+      ctx.strokeStyle = 'rgba(255,215,0,0.78)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-outer/2 + 1, -outer/2 + 1, outer - 2, outer - 2);
+      ctx.strokeStyle = 'rgba(168,85,247,0.45)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(-outer/2 + 4, -outer/2 + 4, outer - 8, outer - 8);
+      ctx.fillStyle = 'rgba(168,85,247,0.14)';
+      ctx.fillRect(-p.s/2, -p.s/2, p.s, p.s);
+      if(ready){
+        const scale = Math.min(p.s / img.naturalWidth, p.s / img.naturalHeight);
+        const dw = img.naturalWidth * scale;
+        const dh = img.naturalHeight * scale;
+        ctx.drawImage(img, -dw/2, -dh/2, dw, dh);
+      }
+      ctx.fillStyle = 'rgba(255,215,0,0.55)';
+      ctx.fillRect(-outer/2, -outer/2, outer, 1.5);
+      ctx.fillStyle = 'rgba(255,255,255,0.22)';
+      ctx.fillRect(-outer/2 + 2, -outer/2 - 2, 16, 5);
+      ctx.fillRect(outer/2 - 18, outer/2 - 3, 16, 5);
+      ctx.restore();
+    }
+  }
+
   draw(ctx, isCurrent, game) {
     try{
     const theme = this.theme || FLOOR_THEMES[this.floor] || FLOOR_THEMES[1];
@@ -23396,6 +23831,7 @@ if(e.canDamageHead()){
       ctx.fillText(isCleared?'✓ SETCH ✓':'◉ SALA SETCH ◉', CANVAS_W/2, WALL_THICK+18); ctx.textAlign='left';
       ctx.fillStyle='rgba(255,255,255,0.72)'; ctx.font='5px monospace'; ctx.textAlign='center';
       ctx.fillText(`2× TAMANHO • ${SETCH_ROUNDS} RODADAS DE COPINHOS`, CANVAS_W/2, WALL_THICK+26); ctx.textAlign='left';
+      this.drawSetchPosters(ctx);
       // Área 2x indicação no chão: ladrilhos maiores
       ctx.fillStyle='rgba(168,85,247,0.06)';
       ctx.fillRect(CANVAS_W/2 - 150, CANVAS_H/2 - 30, 300, 80);
@@ -24519,6 +24955,7 @@ class Game {
     this._hudIdle=false;
     this._chipsRevealT=0;
     this._chipsFade=1;
+    this._hudInfoFade=1;
     this._hudMouse={x:-1,y:-1};
     this._hudExtraHidden=false;
 
@@ -24571,6 +25008,7 @@ class Game {
         else if(e.key==='6') selectChar('ash');
         else if(e.key==='7') selectChar('dev');
         else if(e.key==='8') selectChar('gyro');
+        else if(e.key==='9') selectChar('cyberbug');
         else if(e.key==='Escape'){ this.hideCharacterSelect(); }
       } else if(this.state==='MENU' && !this.controlsScreen.classList.contains('active') && !(this.characterScreen && this.characterScreen.classList.contains('active'))){
         if(e.key==='1'){ this.showCharacterSelect(); selectChar('jg'); }
@@ -24581,6 +25019,7 @@ class Game {
         else if(e.key==='6'){ this.showCharacterSelect(); selectChar('ash'); }
         else if(e.key==='7'){ this.showCharacterSelect(); selectChar('dev'); }
         else if(e.key==='8'){ this.showCharacterSelect(); selectChar('gyro'); }
+        else if(e.key==='9'){ this.showCharacterSelect(); selectChar('cyberbug'); }
       }
     });
     if(btnPlay){
@@ -24631,7 +25070,7 @@ class Game {
     // Pause menu
     const btnPause=document.getElementById('btnPause');
     if(btnPause) btnPause.addEventListener('click', ()=> this.togglePause());
-    const btnHudExtra=document.getElementById('btnHudExtra');
+    const btnHudExtra=document.getElementById('btnPauseHudExtra');
     if(btnHudExtra){
       btnHudExtra.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); this.toggleHudExtra(); });
       this.updateHudExtraButton();
@@ -24663,6 +25102,13 @@ class Game {
       if(this.painelTerminalOpen){
         if(e.key==='Escape'){ e.preventDefault(); this.closePainelTerminal(); }
         else if(e.key.toLowerCase()==='p') e.preventDefault();
+        return;
+      }
+      // H: limpa a tela (fase/tempo + melhorias) sem pausar
+      const readingControls = this.controlsScreen && this.controlsScreen.classList.contains('active');
+      if(!readingControls && (e.key==='h' || e.key==='H') && (this.state==='PLAYING' || this.state==='PAUSED')){
+        e.preventDefault();
+        this.toggleHudExtra();
         return;
       }
       // ESC fecha controles/personagem primeiro, depois pausa
@@ -24970,16 +25416,18 @@ class Game {
     // Especial equipado
     if(p.equippedSpecial){
       const sp=p.equippedSpecial;
+      const isCyber=sp.id==='cyber_slow';
       let status='';
-      if(sp.isActive) status=`ATIVO: ${Math.ceil(sp.durationRemaining/1000)}s`;
+      if(isCyber) status=sp.getStatusText();
+      else if(sp.isActive) status=`ATIVO: ${Math.ceil(sp.durationRemaining/1000)}s`;
       else if(sp.isOnCooldown()) status=`Recarga: ${sp.getRemainingSeconds()}s`;
       else status='Pronto '+keyTag('e');
       cards.push({
         icon: sp.icon||'★',
         iconImage: sp.iconImage||'',
         name: `ESPECIAL: ${sp.name}`,
-        desc: `${sp.description} • ${status} • Cooldown ${Math.round(sp.cooldown/1000)}s`,
-        badge: sp.isActive?'ATIVO': sp.isOnCooldown()?'RECARGA':'PRONTO',
+        desc: `${sp.description} • ${status}${isCyber ? '' : ` • Cooldown ${Math.round(sp.cooldown/1000)}s`}`,
+        badge: isCyber ? (sp.isActive?'ATIVO':sp.isOverloaded()?'SOBRECARGA':'PRONTO') : (sp.isActive?'ATIVO':sp.isOnCooldown()?'RECARGA':'PRONTO'),
         color: sp.color||'#ffd700',
         border: sp.color? `${sp.color}44` : 'rgba(255,215,0,0.22)'
       });
@@ -25075,12 +25523,15 @@ class Game {
   toggleHudExtra(){
     this._hudExtraHidden=!this._hudExtraHidden;
     this.updateHudExtraButton();
-    this.showToast(this._hudExtraHidden ? 'Fase/tempo e melhorias ocultados' : 'Fase/tempo e melhorias visíveis', 1400);
+    this.showToast(this._hudExtraHidden
+      ? 'Fase/tempo e melhorias ocultados — pressione H para MOSTRAR'
+      : 'Fase/tempo e melhorias visíveis — pressione H para OCULTAR', 1900);
   }
   updateHudExtraButton(){
-    const btn=document.getElementById('btnHudExtra');
+    const btn=document.getElementById('btnPauseHudExtra');
     if(!btn) return;
     btn.setAttribute('aria-pressed', this._hudExtraHidden ? 'true' : 'false');
+    btn.textContent=this._hudExtraHidden ? '◉ MOSTRAR FASE/TEMPO E MELHORIAS [H]' : '◉ OCULTAR FASE/TEMPO E MELHORIAS [H]';
     btn.title=this._hudExtraHidden ? 'Mostrar fase/tempo e melhorias' : 'Ocultar fase/tempo e melhorias';
   }
   hidePause(){
@@ -25923,32 +26374,9 @@ class Game {
     give('enableIoiPassive');
     if(p.hasGatoAntivirus!==true){ p.hasGatoAntivirus=true; passives++; }
 
-    // 2) Remove aspectos que duplicariam um passivo ja concedido.
-    // O caso critico e o Gato: passivo + aspecto criavam DOIS gatos ao mesmo tempo.
-    const redundantAspects = [];
-    if(p.hasGatoAntivirus) redundantAspects.push({id:'aspect_rara_gato', flag:'_aspectGato'});
-    const redundantIds = new Set(redundantAspects.map(a=>a.id));
-    const dropUpgrade=(id)=>{
-      if(p.obtainedUpgrades) p.obtainedUpgrades.delete(id);
-      if(p.upgradeLevels) p.upgradeLevels.delete(id);
-      if(p.weaponUpgrades){
-        for(const key of Object.keys(p.weaponUpgrades)){
-          const arr=p.weaponUpgrades[key];
-          if(Array.isArray(arr)) p.weaponUpgrades[key]=arr.filter(x=>x!==id);
-        }
-      }
-    };
-    for(const a of redundantAspects){
-      dropUpgrade(a.id);
-      for(const w of [p.primaryWeapon, p.secondaryWeapon, p.weapon]){
-        if(w && a.flag in w) w[a.flag]=false;
-      }
-    }
-
-    // 3) Melhorias: repete addUpgrade enquanto canAddUpgrade aceitar (sai no maxLevel)
+    // 2) Melhorias: repete addUpgrade enquanto canAddUpgrade aceitar (sai no maxLevel)
     let upgrades=0;
     for(const def of UPGRADE_DEFS){
-      if(redundantIds.has(def.id)) continue;
       let guard=0;
       while(p.canAddUpgrade(def.id) && guard++ < 12){
         if(p.addUpgrade(def.id)) upgrades++;
@@ -26573,6 +27001,10 @@ class Game {
     const res = this.player.tryUseSpecial(this);
     if(res.ok){
       const sp = this.player.equippedSpecial;
+      if(sp.id==='cyber_slow'){
+        if(sp.isActive) return;
+        return;
+      }
       let abilityName='';
       if(sp.id==='flecha_stand' && sp.currentAbility) abilityName=` → ${sp.currentAbility.name}`;
       this.showToast(`✦ ${sp.name}${abilityName} ativada!`, 1600);
@@ -27048,6 +27480,11 @@ class Game {
     if(this.player.equippedSpecial){
       this.player.equippedSpecial.update(dt, this.player, this);
     }
+    // CYBER SLOW: deriva o fator do frame do especial realmente equipado (troca de item = reset seguro).
+    const cyberActive = !!(this.player.equippedSpecial && this.player.equippedSpecial.id==='cyber_slow' && this.player.equippedSpecial.isActive);
+    this.player.cyberSlowActive = cyberActive;
+    const enemyTimeScale = cyberActive ? (this.player.equippedSpecial.timeScale || CYBER_SLOW_ENEMY_TIME_SCALE) : 1;
+    const projectileTimeScale = cyberActive ? (this.player.equippedSpecial.projectileTimeScale || CYBER_SLOW_PROJECTILE_TIME_SCALE) : 1;
     // Atualiza aliados (Flecha Stand e Barbosa Ferraz/Borzuk) - duração e IA própria
     for(let i=this.allies.length-1;i>=0;i--){
       const al=this.allies[i];
@@ -27793,7 +28230,9 @@ class Game {
     const enemyNewBullets=[];
     // Nota: enemy bullets serão adicionadas via Room.update -> enemyBulletsOut, mas também precisamos tratar bullets já existentes como enemy
     for(const b of this.bullets){
-      b.update(dt, walls, this.player);
+      // Cyber Slow desacelera todos os projéteis (inimigos e tiros do jogador).
+      const bulletDt = dt * projectileTimeScale;
+      b.update(bulletDt, walls, this.player);
       // ASPECTO "PRESA NA PAREDE": o projétil cravou -> puxa o jogador até ele
       if(b.anchored){
         b.anchored = false;
@@ -28462,7 +28901,7 @@ class Game {
     // room + enemies + items update
     const beforeEnemies=this.currentRoom.enemies.length;
     const tempEnemyBullets=[];
-    this.currentRoom.update(dt, this.player, this.bullets, this.particles, tempEnemyBullets);
+    this.currentRoom.update(dt, this.player, this.bullets, this.particles, tempEnemyBullets, enemyTimeScale);
     // adiciona novos tiros de fugitivo
     for(const eb of tempEnemyBullets) this.bullets.push(eb);
 
@@ -28591,6 +29030,9 @@ class Game {
     const defeatedNow=beforeEnemies - this.currentRoom.enemies.length;
     if(defeatedNow>0){
       this.enemiesDefeated += defeatedNow;
+      if(this.player.equippedSpecial && typeof this.player.equippedSpecial.onEnemyDefeated==='function'){
+        this.player.equippedSpecial.onEnemyDefeated(defeatedNow, this.player, this);
+      }
       this.shake=90;
       if(this.currentRoom.isCleared()){
         this.showToast('✓ Sala limpa! Portas liberadas', 1500);
@@ -28638,6 +29080,9 @@ class Game {
     const combatNow = !!(this.currentRoom && this.currentRoom.enemies.some(e => !e.dead));
     this._chipsFade = combatNow ? 0.30 : 1;
     if(combatNow && this._chipsRevealT <= 0) this._chipsFade = 0.22;
+    // Painel de fase/tempo, aviso do rodapé e SEED também cedem espaço na luta:
+    // são informações de leitura, não de combate, e ficavam por cima do jogador.
+    this._hudInfoFade = combatNow ? 0.30 : 1;
 
     this.input.update();
     }catch(e){ console.error('Game update error', e); }
@@ -28754,6 +29199,48 @@ class Game {
       const sp=randRange(1.6,4.4);
       this.particles.push(new Particle(sb.x,sb.y, Math.cos(ang)*sp, Math.sin(ang)*sp, randRange(260,480), k%2?'#fbbf24':'#fef3c7', randRange(1.8,3)));
     }
+  }
+
+  drawCyberSlowOverlay(ctx){
+    const p = this.player;
+    const sp = p && p.equippedSpecial;
+    if(!sp || sp.id!=='cyber_slow' || !sp.isActive) return;
+    const t = performance.now();
+    const pulse = 0.5 + Math.sin(t*0.006)*0.5;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const glow = ctx.createRadialGradient(p.x, p.y, 10, p.x, p.y, Math.max(CANVAS_W,CANVAS_H)*0.72);
+    glow.addColorStop(0, `rgba(34,211,238,${0.10+pulse*0.04})`);
+    glow.addColorStop(0.45, 'rgba(34,211,238,0.035)');
+    glow.addColorStop(0.72, `rgba(240,171,252,${0.03+pulse*0.025})`);
+    glow.addColorStop(1, 'rgba(2,6,23,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+    ctx.globalAlpha = 0.10 + pulse*0.05;
+    ctx.fillStyle = '#22d3ee';
+    const off = (t*0.035)%9;
+    for(let y=off;y<CANVAS_H;y+=9) ctx.fillRect(0,y,CANVAS_W,1);
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle = '#f0abfc';
+    for(let y=(t*0.021+4)%17;y<CANVAS_H;y+=17) ctx.fillRect(0,y,CANVAS_W,2);
+    ctx.globalAlpha = 1;
+    for(let i=0;i<4;i++){
+      const phase = ((t*0.00035 + i/4)%1);
+      const r = 18 + phase*Math.max(CANVAS_W,CANVAS_H)*0.62;
+      ctx.strokeStyle = `rgba(34,211,238,${(1-phase)*0.16})`;
+      ctx.lineWidth = 1.2 + phase*1.4;
+      ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2); ctx.stroke();
+    }
+    const bandY = (t*0.08)%CANVAS_H;
+    ctx.fillStyle = `rgba(240,171,252,${0.035+pulse*0.03})`;
+    ctx.fillRect(0,bandY,CANVAS_W,3);
+    ctx.fillStyle = 'rgba(34,211,238,0.12)';
+    ctx.fillRect(0,0,3,CANVAS_H);
+    ctx.fillRect(CANVAS_W-3,0,3,CANVAS_H);
+    ctx.fillStyle = 'rgba(240,171,252,0.08)';
+    ctx.fillRect(3,0,2,CANVAS_H);
+    ctx.fillRect(CANVAS_W-5,0,2,CANVAS_H);
+    ctx.restore();
   }
 
   draw(){
@@ -28931,6 +29418,7 @@ class Game {
         }
       }catch(e){ console.error('Motosserra zone draw error', e); }
       for(const p of this.particles) p.draw(ctx);
+      this.drawCyberSlowOverlay(ctx);
       // ===================== HUD =====================
       // Tudo cabe dentro da faixa da parede (0..WALL_THICK): não cobre o chão, os itens
       // derrubados e o vão da porta de cima (janela livre HUD_LEFT_MAX..HUD_RIGHT_MIN).
@@ -28947,6 +29435,8 @@ class Game {
       // senão o texto flutuava direto no mapa e sumia sobre chão claro.
       if(this.currentRoom.isRare || !this.currentRoom.isCleared() ||
          (this.currentRoom.exitPortal && this.currentRoom.exitPortal.active)){
+        ctx.save();
+        ctx.globalAlpha *= (this._hudInfoFade !== undefined ? this._hudInfoFade : 1);
         const bTxt = this.currentRoom.isRare ? '★ SALA RARA ★'
           : !this.currentRoom.isCleared() ? 'DERROTE OS INIMIGOS PARA ABRIR'
           : (this.floor===1 ? '⬇ ESCADA PARA FASE 2' : this.floor===2 ? '⬇ ESCADA PARA FASE 3' : '⬇ SAÍDA LIBERADA! FUJA!');
@@ -28964,6 +29454,7 @@ class Game {
         ctx.fillStyle=bCol;
         ctx.fillText(bTxt, CANVAS_W/2, CANVAS_H - 14);
         ctx.textAlign='left';
+        ctx.restore();
       }
       const grad=ctx.createRadialGradient(CANVAS_W/2,CANVAS_H/2, CANVAS_W*0.4, CANVAS_W/2,CANVAS_H/2, CANVAS_W*0.9);
       grad.addColorStop(0,'rgba(0,0,0,0)'); grad.addColorStop(1, theme.vignette); ctx.fillStyle=grad; ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
@@ -29305,8 +29796,13 @@ class Game {
           : sp.isActive ? `${an} • ${Math.ceil(sp.durationRemaining/1000)}s`
           : `${an} • Pronto!`;
       }
+      const isCyber = sp.id==='cyber_slow';
+      const overloadPct = isCyber && typeof sp.getOverloadPercent==='function' ? sp.getOverloadPercent()*100 : null;
       const active = !!sp.isActive, cooling = !!sp.isOnCooldown();
-      ctx.fillStyle = active ? 'rgba(0,217,255,0.10)' : cooling ? 'rgba(255,255,255,0.04)' : 'rgba(255,204,0,0.07)';
+      const danger = isCyber && overloadPct >= 75;
+      ctx.fillStyle = isCyber
+        ? (overloadPct >= 100 ? 'rgba(255,59,48,0.12)' : overloadPct >= 75 ? 'rgba(249,115,22,0.10)' : active ? 'rgba(34,211,238,0.12)' : 'rgba(34,211,238,0.05)')
+        : active ? 'rgba(0,217,255,0.10)' : cooling ? 'rgba(255,255,255,0.04)' : 'rgba(255,204,0,0.07)';
       ctx.fillRect(x+2, top+2, sw-4, ph-4);
       // Nome e status dividem a linha 1; a barra e a tecla [E] dividem a linha 2.
       // Dois defeitos medidos e corrigidos aqui:
@@ -29342,28 +29838,35 @@ class Game {
       }
       ctx.textAlign = 'left';
       ctx.font = hudFont(nameFit.size);
-      ctx.fillStyle = active ? '#7af2ff' : cooling ? 'rgba(255,255,255,0.78)' : (sp.color || '#ffcc00');
+      ctx.fillStyle = isCyber
+        ? (overloadPct >= 100 ? '#ff6b6b' : danger ? '#fdba74' : active ? '#f0abfc' : '#7af2ff')
+        : active ? '#7af2ff' : cooling ? 'rgba(255,255,255,0.78)' : (sp.color || '#ffcc00');
       if(hasHudIcon) ctx.drawImage(hudIcon, innerL, rowBase-7*k, 8*k, 8*k);
       ctx.fillText(nameFit.text, innerL + iconGap, rowBase);
       ctx.font = hudFont(stFit.size);
-      ctx.fillStyle = active ? 'rgba(0,217,255,0.92)' : 'rgba(255,255,255,0.68)';
+      ctx.fillStyle = isCyber
+        ? (overloadPct >= 100 ? 'rgba(255,107,107,0.98)' : danger ? 'rgba(253,186,116,0.95)' : 'rgba(122,242,255,0.92)')
+        : active ? 'rgba(0,217,255,0.92)' : 'rgba(255,255,255,0.68)';
       ctx.textAlign = 'right';
       ctx.fillText(stFit.text, badgeL - 3*k, rowBase);   // encosta no [E], nunca em cima
       ctx.textAlign = 'left';
-      const spct = active ? sp.getDurationPercent()*100 : cooling ? sp.getCooldownPercent()*100 : 100;
+      const spct = isCyber ? overloadPct : active ? sp.getDurationPercent()*100 : cooling ? sp.getCooldownPercent()*100 : 100;
+      const barColor = isCyber
+        ? (overloadPct >= 100 ? '#ff3b30' : overloadPct >= 75 ? '#f97316' : overloadPct >= 50 ? '#facc15' : '#22d3ee')
+        : (sp.color || '#ffcc00');
       // barra deixa espaço para a tecla [E], que antes só aparecia colada no nome
       // (e sumia inteira quando o nome era longo).
       const spBarW = Math.max(20*k, sw - 12*k - keyW - 3);
       roundRectPath(ctx, innerL, top+13, spBarW, 3, 1.5);
       ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fill();
-      if(spct > 0){ roundRectPath(ctx, innerL, top+13, spBarW*clamp(spct/100,0,1), 3, 1.5); ctx.fillStyle = sp.color || '#ffcc00'; ctx.fill(); }
+      if(spct > 0){ roundRectPath(ctx, innerL, top+13, spBarW*clamp(spct/100,0,1), 3, 1.5); ctx.fillStyle = barColor; ctx.fill(); }
       const kx = badgeL;
       roundRectPath(ctx, kx, top+12.5, keyW, 5, 2);
-      ctx.fillStyle = active ? 'rgba(0,217,255,0.22)' : 'rgba(255,255,255,0.10)'; ctx.fill();
-      ctx.strokeStyle = active ? 'rgba(0,217,255,0.55)' : 'rgba(255,255,255,0.22)';
+      ctx.fillStyle = isCyber && danger ? 'rgba(249,115,22,0.22)' : active ? 'rgba(0,217,255,0.22)' : 'rgba(255,255,255,0.10)'; ctx.fill();
+      ctx.strokeStyle = isCyber && danger ? 'rgba(249,115,22,0.65)' : active ? 'rgba(0,217,255,0.55)' : 'rgba(255,255,255,0.22)';
       ctx.lineWidth = 1; ctx.stroke();
       ctx.font = hudFont(5); ctx.textAlign = 'center';
-      ctx.fillStyle = active ? '#7af2ff' : 'rgba(255,255,255,0.78)';
+      ctx.fillStyle = isCyber && danger ? '#fdba74' : active ? '#7af2ff' : 'rgba(255,255,255,0.78)';
       ctx.fillText('E', kx + keyW/2, top+16.5);
       ctx.textAlign = 'left';
     } else {
@@ -29398,6 +29901,7 @@ class Game {
   drawHudInfo(ctx){
     const k = HUD_FS;                         // escala de acessibilidade do HUD
     const p=this.player, room=this.currentRoom;
+    const infoFade = this._hudInfoFade !== undefined ? this._hudInfoFade : 1;
     const curEnemies = room?room.enemies.length:0;
     const totalEnemies = this.rooms.reduce((a,r)=>a+r.enemies.length,0);
     const locked = room && !room.isCleared();
@@ -29443,6 +29947,8 @@ class Game {
       }
     }
     if(!this._hudExtraHidden){
+    ctx.save();
+    ctx.globalAlpha *= infoFade;
     // ===== painel de informações no RODAPÉ (fora da faixa da parede e do vão da porta) =====
     const infoLine = `SALA ${room?`${room.gx},${room.gy}`:'-'} • ${this.roomsExplored}/${this.rooms.length} salas • INIMIGOS ${curEnemies}${locked?' 🔒':''}/${totalEnemies}`;
     // --- geometria do painel, derivada das métricas reais do texto ---
@@ -29495,6 +30001,7 @@ class Game {
     ctx.font=hudFont(5); ctx.fillStyle='rgba(255,255,255,0.96)';
     ctx.fillText(hudFitText(ctx, infoLine, pw-22*k, 5), px+13*k, baseB);
     ctx.textAlign='left';
+    ctx.restore();   // fim do painel de fase/tempo (mantém o fade do combate)
     // ===== Melhorias (chips) - canto inferior esquerdo =====
     // Antes só apareciam as melhorias da arma ATUAL e em 4px. Agora lista tudo que o
     // jogador conseguiu: as ativas com a arma equipada em cor cheia, as de outras armas
@@ -29621,6 +30128,8 @@ class Game {
       const totalIds = p.obtainedUpgrades ? p.obtainedUpgrades.size : 0;
       const displayTotal = totalLevels || totalIds;
       if(displayTotal>0){
+        ctx.save();
+        ctx.globalAlpha *= infoFade;
         const bh = 14 + (k-1)*6;
         // Mesmo teto da lista de chips: este aviso também fica à esquerda do painel.
         const bx2 = Math.max(120*k, Math.min(236*k, px - 12*k));
@@ -29630,16 +30139,23 @@ class Game {
         ctx.font=hudFont(5,'monospace');
         ctx.fillStyle='rgba(232,226,250,0.98)';
         ctx.fillText(hudFitText(ctx, `${displayTotal} níveis • troque arma [Q] p/ ver`, bx2-18*k, 5, 'monospace'), 9*k, CANVAS_H-12-bh+bh*0.68);
+        ctx.restore();
       }
     }
     }
     // SEED: estava em 4px com alfa 0.28 (praticamente invisível). É a informação
     // que o jogador precisa para reproduzir a run, então ganhou corpo e contraste.
+    // Junto vai a dica [H]: é a única forma de saber como trazer de volta o painel
+    // quando ele está oculto.
+    const seedHint = `SEED ${this.seed} • [H] ${this._hudExtraHidden ? 'MOSTRAR' : 'OCULTAR'}`;
+    ctx.save();
+    if(!this._hudExtraHidden) ctx.globalAlpha *= infoFade;
     ctx.font = hudFont(5);
     ctx.fillStyle='rgba(255,255,255,0.6)';
     ctx.textAlign='right';
-    ctx.fillText(hudFitText(ctx, `SEED ${this.seed}`, 220*k, 5), CANVAS_W - 8, CANVAS_H - 7);
+    ctx.fillText(hudFitText(ctx, seedHint, 300*k, 5), CANVAS_W - 8, CANVAS_H - 7);
     ctx.textAlign='left';
+    ctx.restore();
   }
 
   isHudPauseHit(x,y){
