@@ -3244,3 +3244,115 @@ details > summary { cursor: pointer; min-height: 2.75em; display: flex; align-it
 }
 
 
+
+/* =========================================================================
+   CARDS DE PERSONAGEM — atualização de conteúdo e leitura
+   ========================================================================= */
+.character-panel{ max-width: 1040px; }
+.character-select.large{ gap:14px; padding:16px; }
+.character-select.large .char-card{
+  min-height: 190px;
+  padding: 14px 15px 36px;
+  display: flex;
+  flex-direction: column;
+}
+.character-select.large .char-card .char-desc{
+  flex: 1;
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  min-height: 0;
+}
+.char-chips{ display:flex; gap:5px; flex-wrap:wrap; margin-top:8px; }
+.char-chip{
+  font-family: system-ui, sans-serif;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.06);
+  color: #e6e0f2;
+  white-space: nowrap;
+}
+@media (max-width: 1100px){ .character-panel{ max-width: 94vw; } }
+@media (max-width: 768px){
+  .character-panel{ max-width: 96vw; }
+  .character-select.large .char-card{ min-height: 0; }
+}
+
+/* =========================================================================
+   GAME OVER / VITÓRIA — painel largo, legível e com cara de relatório
+   ========================================================================= */
+#gameOverScreen{ padding: clamp(12px, 3vw, 28px); }
+.gameover-panel{
+  max-width: 920px;
+  padding: 30px clamp(18px, 4vw, 48px) 26px;
+  position: relative;
+  overflow: hidden;
+  text-align: center;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(122,242,255,0.10), transparent 60%),
+    linear-gradient(180deg, #221d3a 0%, #171528 60%, #100e1b 100%);
+  border: 1px solid rgba(255,255,255,0.13);
+  box-shadow: 0 26px 70px rgba(0,0,0,0.72), inset 0 1px 0 rgba(255,255,255,0.08), 0 0 46px rgba(122,242,255,0.05);
+}
+.gameover-panel::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  opacity:0.6;
+  background: repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 4px);
+}
+.gameover-panel > *{ position: relative; z-index: 1; }
+.gameover-kicker{
+  display:inline-block;
+  font-family: system-ui, sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  color: #8ee9ff;
+  background: rgba(122,242,255,0.08);
+  border: 1px solid rgba(122,242,255,0.22);
+  border-radius: 999px;
+  padding: 5px 12px;
+  margin-bottom: 14px;
+}
+#gameOverTitle{
+  font-size: clamp(1.6rem, 4.2vw, 2.5rem);
+  line-height: 1.18;
+  letter-spacing: 0.05em;
+  margin: 0 0 8px;
+  text-shadow: 0 3px 0 #000, 0 0 26px currentColor;
+}
+#gameOverTitle[style]{ filter: drop-shadow(0 0 18px currentColor); }
+.gameover-rule{
+  width: min(420px, 80%);
+  height: 1px;
+  margin: 14px auto 18px;
+  background: linear-gradient(90deg, transparent, rgba(122,242,255,0.55), rgba(255,215,0,0.45), transparent);
+}
+#gameOverStats{
+  max-width: 780px;
+  margin: 0 auto 24px;
+  padding: clamp(14px, 2.6vw, 24px) clamp(14px, 3vw, 28px);
+  background: rgba(0,0,0,0.26);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  font-size: 1rem;
+  line-height: 1.7;
+  color: #e6dff2;
+  text-align: center;
+  text-wrap: pretty;
+}
+#gameOverStats b{ color: #ffd76a; }
+#gameOverScreen .menu-buttons{ flex-direction: row; flex-wrap: wrap; gap: 12px; margin-top: 4px; }
+#gameOverScreen .menu-buttons .btn{ flex: 1 1 220px; width: auto; min-width: 0; }
+#gameOverScreen .gameover-panel{ max-height: 96dvh; overflow-y: auto; }
+@media (max-width: 560px){
+  .gameover-panel{ padding: 24px 16px 20px; border-radius: 14px; }
+  #gameOverStats{ font-size: 0.9375rem; line-height: 1.6; padding: 14px; }
+  #gameOverScreen .menu-buttons{ flex-direction: column; }
+  #gameOverScreen .menu-buttons .btn{ width: 100%; }
+}

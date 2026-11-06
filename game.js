@@ -247,8 +247,8 @@ const GATO_ANTIVIRUS_RETURN_COOLDOWN = 2000; // 2 segundos parado perto do jogad
 const GATO_ANTIVIRUS_ATTACK_RANGE = 22; // distância para encostar e atacar (configurável)
 
 // --- Configurações Barbosa Ferraz (item especial do NPC Borzuk - Sala Setch) ---
-const BARBOSA_FERRAZ_COOLDOWN = 16000;            // recarga para invocar Borzuk novamente
-const BARBOSA_FERRAZ_ALLY_DURATION = 12000;       // tempo que o aliado Borzuk permanece em campo
+const BARBOSA_FERRAZ_COOLDOWN = 16000;            // recarga para invocar o guardião do Barbosa novamente
+const BARBOSA_FERRAZ_ALLY_DURATION = 12000;       // tempo que o guardião azul do Barbosa permanece em campo
 const BARBOSA_FERRAZ_ALLY_SPEED = 2.9;            // velocidade de perseguição
 const BARBOSA_FERRAZ_DETECT_RADIUS = 270;         // alcance de detecção de inimigos
 const BARBOSA_FERRAZ_PUNCH_RANGE = 30;            // distância para desferir soco
@@ -261,16 +261,32 @@ const BARBOSA_FERRAZ_HADOUKEN_SPEED = 6.8;        // velocidade do projétil had
 
 // --- Configurações Cyber Slow (especial exclusivo do Cyber Bug) ---
 // Sem cooldown tradicional: o custo é a barra de SOBRECARGA. Enquanto ativo,
-// inimigos e todos os projéteis rodam em câmera lenta; o jogador continua normal.
-const CYBER_SLOW_ENEMY_TIME_SCALE = 0.05;      // inimigos a 5% da velocidade normal
-const CYBER_SLOW_PROJECTILE_TIME_SCALE = 0.08; // projéteis a 8% da velocidade normal
+// inimigos e projéteis inimigos rodam em câmera lenta; o jogador (e os tiros dele)
+// continua em velocidade real.
+const CYBER_SLOW_ENEMY_TIME_SCALE = 0.02;       // inimigos a 2% da velocidade normal (quase congelados)
+const CYBER_SLOW_PROJECTILE_TIME_SCALE = 0.04;  // projéteis inimigos a 4% da velocidade normal
+// Campo de tempo ao redor do Cyber Bug: todo inimigo dentro do raio fica lento
+// (funciona para qualquer tipo, mesmo os que não têm status de slow próprio) e a
+// lentidão continua por alguns segundos depois de desligar a habilidade.
+const CYBER_SLOW_AURA_RADIUS = 340;             // raio do campo (px)
+const CYBER_SLOW_AURA_FACTOR = 0.25;            // multiplicador extra de velocidade dentro do campo
+const CYBER_SLOW_AURA_LINGER_MS = 4000;         // 4s de lentidão residual após o uso
+const CYBER_SLOW_PLAYER_SPEED_BONUS = 1.18;     // +18% de velocidade para o Cyber Bug durante o efeito
 const CYBER_SLOW_TIME_SCALE = CYBER_SLOW_ENEMY_TIME_SCALE;
 const CYBER_OVERLOAD_MAX = 100;              // barra cheia
-const CYBER_OVERLOAD_RISE_PER_SEC = 16;      // +16% por segundo ativo (~6,25s até sobrecarregar)
+const CYBER_OVERLOAD_RISE_PER_SEC = 12;      // +12% por segundo ativo (~8,3s até sobrecarregar)
 const CYBER_OVERLOAD_DECAY_PER_SEC = 22;     // -22% por segundo depois do descanso
-const CYBER_OVERLOAD_KILL_DECAY = 10;        // -10% por inimigo derrotado
-const CYBER_OVERLOAD_IDLE_GATE = 50000;      // 50s sem reativar antes da barra começar a baixar
+const CYBER_OVERLOAD_KILL_DECAY = 15;        // -15% por inimigo derrotado
+const CYBER_OVERLOAD_IDLE_GATE = 30000;      // 30s sem reativar antes da barra começar a baixar
 const CYBER_OVERLOAD_HEART_DAMAGE = 2;       // 1 coração (HP é medido em meias-corações)
+
+// --- Drone Sentinela (item especial incomum) ---
+const DRONE_SENTINELA_DURATION = 8000;       // 8s de drone ativo
+const DRONE_SENTINELA_COOLDOWN = 16000;      // 16s para invocar de novo
+const DRONE_SENTINELA_ORBIT = 46;            // raio da órbita ao redor do jogador
+const DRONE_SENTINELA_RANGE = 340;           // alcance de aquisição de alvo
+const DRONE_SENTINELA_DAMAGE = 0.7;          // laser fraco
+const DRONE_SENTINELA_FIRE_INTERVAL = 620;   // ms entre lasers
 
 // Ícone-imagem do item Barbosa Ferraz (mesma arte do botão JOGAR do menu principal)
 const SPECIAL_ICON_IMAGES = {
@@ -309,6 +325,7 @@ class SpecialItem {
     this.iconImage = config.iconImage ?? null; // ícone em imagem (opcional)
     this.description = config.description ?? '';
     this.color = config.color ?? '#ffcc00'; // cor tema para HUD/partículas
+    this.rarity = config.rarity ?? 'ESPECIAL'; // raridade exibida no pickup (ex.: INCOMUM)
     // Estado interno - controlado apenas por update(dt)
     this.cooldownRemaining = 0; // ms restantes; 0 = pronto
     this.durationRemaining = 0; // ms restantes de efeito ativo
@@ -721,10 +738,11 @@ class StandAlly {
   getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
 }
 
-// ===================== ALIADO BORZUK (BARBOSA FERRAZ) =====================
+// ===================== GUARDIÃO DO BARBOSA (BARBOSA FERRAZ) =====================
 // Invocado pelo item especial entregue pelo NPC Borzuk na Sala Setch.
-// Persegue inimigos, desfere socos de perto e dispara hadoukens de energia à distância.
-class BorzukAlly {
+// Personagem azul com a logo do Barbosa Ferraz estampada no peito: persegue
+// inimigos, desfere socos de perto e dispara hadoukens de energia à distância.
+class BarbosaAlly {
   constructor(x, y, owner, game){
     this.x = x; this.y = y;
     this.owner = owner || null;
@@ -743,7 +761,7 @@ class BorzukAlly {
     this.castFx = 0;
     this.hitFlash = 0;
     this.facing = 1;
-    this.isBorzukAlly = true;
+    this.isBarbosaAlly = true;
   }
   update(dt, enemies, walls, particles, bulletsOut){
     this.life -= dt;
@@ -885,61 +903,64 @@ class BorzukAlly {
     const flash=this.hitFlash>0 && Math.floor(this.hitFlash/40)%2===0;
     const pulse=0.5+Math.sin(this.anim*0.012)*0.35;
     ctx.fillStyle='rgba(0,0,0,0.32)'; ctx.fillRect(x+2, y+H-3, W, 4);
-    // aura prata/ciano do Borzuk
-    ctx.fillStyle=`rgba(148,163,184,${0.12+pulse*0.08})`;
+    // aura azul do guardião do Barbosa
+    ctx.fillStyle=`rgba(59,130,246,${0.14+pulse*0.10})`;
     ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.9+pulse*4, 0, Math.PI*2); ctx.fill();
-    ctx.strokeStyle=`rgba(56,189,248,${0.30+pulse*0.18})`; ctx.lineWidth=1.2;
+    ctx.strokeStyle=`rgba(96,165,250,${0.32+pulse*0.20})`; ctx.lineWidth=1.2;
     ctx.setLineDash([4,3]); ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.8, 0, Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
-    // pernas (calça preta)
-    ctx.fillStyle=flash?'#fff':'#111827'; ctx.fillRect(x+6, y+24+bob, W-12, H-27);
-    ctx.fillStyle=flash?'#334155':'#0b1220'; ctx.fillRect(x+6, y+24+bob, 2, H-27);
+    // pernas (calça azul-escura)
+    ctx.fillStyle=flash?'#fff':'#1e3a8a'; ctx.fillRect(x+6, y+24+bob, W-12, H-27);
+    ctx.fillStyle=flash?'#93c5fd':'#0f2557'; ctx.fillRect(x+6, y+24+bob, 2, H-27);
     // sapatos
-    ctx.fillStyle='#0a0a0a'; ctx.fillRect(x+4, y+H-4, W-8, 2.5);
-    // camisa branca
-    ctx.fillStyle=flash?'#fff':'#f8fafc'; ctx.fillRect(x+7, y+12+bob, W-14, 13);
-    ctx.fillStyle='#e2e8f0'; ctx.fillRect(x+7, y+23+bob, W-14, 1.5);
-    // jaqueta preta nas laterais
-    ctx.fillStyle=flash?'#475569':'#111827';
+    ctx.fillStyle='#0b1b3a'; ctx.fillRect(x+4, y+H-4, W-8, 2.5);
+    // uniforme azul do guardião
+    ctx.fillStyle=flash?'#fff':'#2563eb'; ctx.fillRect(x+7, y+12+bob, W-14, 13);
+    ctx.fillStyle=flash?'#dbeafe':'#3b82f6'; ctx.fillRect(x+7, y+12+bob, W-14, 4);
+    // jaqueta azul-escura nas laterais
+    ctx.fillStyle=flash?'#64748b':'#1e40af';
     ctx.fillRect(x+3, y+11+bob, 5, 15);
     ctx.fillRect(x+W-8, y+11+bob, 5, 15);
-    ctx.fillStyle=flash?'#64748b':'#1f2937';
+    ctx.fillStyle=flash?'#93c5fd':'#60a5fa';
     ctx.fillRect(x+8, y+12+bob, 2, 9); ctx.fillRect(x+W-10, y+12+bob, 2, 9);
     // cinto
-    ctx.fillStyle='#0b1220'; ctx.fillRect(x+7, y+24+bob, W-14, 2);
-    ctx.fillStyle='#94a3b8'; ctx.fillRect(x+W/2-1.5, y+24+bob, 3, 2);
-    // cabeça (pele meio escura)
-    ctx.fillStyle=flash?'#fff':'#a9714b'; ctx.fillRect(x+8, y+3+bob, W-16, 10);
-    // cabelo meio cinza
-    ctx.fillStyle=flash?'#e5e7eb':'#9ca3af'; ctx.fillRect(x+7, y+1+bob, W-14, 3);
+    ctx.fillStyle='#0b1b3a'; ctx.fillRect(x+7, y+24+bob, W-14, 2);
+    ctx.fillStyle='#93c5fd'; ctx.fillRect(x+W/2-1.5, y+24+bob, 3, 2);
+    // LOGO DO BARBOSA estampada no peito
+    this.drawEmblem(ctx, this.x, y+18.8+bob);
+    // cabeça azul
+    ctx.fillStyle=flash?'#fff':'#60a5fa'; ctx.fillRect(x+8, y+3+bob, W-16, 10);
+    ctx.fillStyle=flash?'#bfdbfe':'#3b82f6'; ctx.fillRect(x+8, y+3+bob, W-16, 2);
+    // cabelo/elmo azul-escuro
+    ctx.fillStyle=flash?'#e5e7eb':'#0f2557'; ctx.fillRect(x+7, y+1+bob, W-14, 3);
     ctx.fillRect(x+7, y+3+bob, 2, 4); ctx.fillRect(x+W-9, y+3+bob, 2, 4);
     // boca
-    ctx.fillStyle='#5b3a2a'; ctx.fillRect(x+W/2-2, y+9.4+bob, 4, 1);
-    // olhos
+    ctx.fillStyle='#0f2557'; ctx.fillRect(x+W/2-2, y+9.4+bob, 4, 1);
+    // olhos (visor ciano)
     const ex=this.facing*0.8;
-    ctx.fillStyle='#1a0a00';
+    ctx.fillStyle='#e0f2fe';
     ctx.fillRect(x+11+ex, y+6+bob, 2.2, 2.4);
     ctx.fillRect(x+W-13.2+ex, y+6+bob, 2.2, 2.4);
-    ctx.fillStyle='#4b5563';
+    ctx.fillStyle='#38bdf8';
     ctx.fillRect(x+10.5+ex, y+5+bob, 3, 0.9);
     ctx.fillRect(x+W-13.5+ex, y+5+bob, 3, 0.9);
     // braços / pose de ataque
     if(this.castFx>0){
-      ctx.fillStyle='#111827'; ctx.fillRect(x+W-3, y+13+bob, 5, 5);
-      ctx.fillStyle='#a9714b'; ctx.fillRect(x+W+1, y+14+bob, 4, 3);
+      ctx.fillStyle='#1d4ed8'; ctx.fillRect(x+W-3, y+13+bob, 5, 5);
+      ctx.fillStyle='#93c5fd'; ctx.fillRect(x+W+1, y+14+bob, 4, 3);
       const g=0.4+Math.sin(this.anim*0.04)*0.3;
       ctx.fillStyle=`rgba(125,211,252,${g})`;
       ctx.beginPath(); ctx.arc(x+W+7, y+15.5+bob, 5+this.castFx*0.01, 0, Math.PI*2); ctx.fill();
       ctx.fillStyle='rgba(255,255,255,0.9)';
       ctx.beginPath(); ctx.arc(x+W+7, y+15.5+bob, 2, 0, Math.PI*2); ctx.fill();
     } else {
-      ctx.fillStyle='#111827'; ctx.fillRect(x+1, y+13+bob, 4, 7);
-      ctx.fillStyle='#a9714b'; ctx.fillRect(x+1, y+19+bob, 4, 3);
+      ctx.fillStyle='#1d4ed8'; ctx.fillRect(x+1, y+13+bob, 4, 7);
+      ctx.fillStyle='#93c5fd'; ctx.fillRect(x+1, y+19+bob, 4, 3);
       const punchOut = this.punchFx>0 ? 6 : 0;
       const dir = this.facing;
-      ctx.fillStyle='#111827';
+      ctx.fillStyle='#1d4ed8';
       ctx.fillRect(dir>0 ? x+W-5 : x+1, y+12+bob, 4+punchOut, 5);
       const fx = dir>0 ? x+W-1+punchOut : x-4-punchOut;
-      ctx.fillStyle='#a9714b'; ctx.fillRect(fx, y+12.5+bob, 4, 4);
+      ctx.fillStyle='#93c5fd'; ctx.fillRect(fx, y+12.5+bob, 4, 4);
       if(this.punchFx>0){
         ctx.fillStyle='rgba(226,232,240,0.7)';
         ctx.beginPath(); ctx.arc(fx+2, y+14.5+bob, 5, 0, Math.PI*2); ctx.fill();
@@ -948,9 +969,30 @@ class BorzukAlly {
     // barra de duração
     const pct=clamp(this.life/this.duration,0,1);
     ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(x, y-8+bob, W, 4);
-    ctx.fillStyle=pct>0.5?'#94a3b8':pct>0.25?'#facc15':'#ef4444'; ctx.fillRect(x, y-8+bob, W*pct, 4);
-    ctx.fillStyle='rgba(255,255,255,0.9)'; ctx.font='5px monospace'; ctx.textAlign='center';
-    ctx.fillText('BORZUK', this.x, y-10+bob); ctx.textAlign='left';
+    ctx.fillStyle=pct>0.5?'#60a5fa':pct>0.25?'#facc15':'#ef4444'; ctx.fillRect(x, y-8+bob, W*pct, 4);
+    ctx.fillStyle='rgba(224,242,254,0.95)'; ctx.font='5px monospace'; ctx.textAlign='center';
+    ctx.fillText('BARBOSA', this.x, y-10+bob); ctx.textAlign='left';
+  }
+  // Logo do Barbosa Ferraz (mesma arte do ícone do item/botão JOGAR), com fallback "BF"
+  drawEmblem(ctx, cx, cy){
+    const r = 5.6;
+    ctx.save();
+    ctx.fillStyle='rgba(224,242,254,0.95)';
+    ctx.beginPath(); ctx.arc(cx, cy, r+1, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.clip();
+    const logo = getSpecialIconImage(SPECIAL_ICON_IMAGES.barbosa_ferraz);
+    if(logo && logo.complete && logo.naturalWidth > 0){
+      ctx.drawImage(logo, cx-r, cy-r, r*2, r*2);
+    } else {
+      ctx.fillStyle='#1d4ed8'; ctx.fillRect(cx-r, cy-r, r*2, r*2);
+      ctx.fillStyle='#e0f2fe'; ctx.font='bold 6px monospace';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('BF', cx, cy+0.5);
+      ctx.textBaseline='alphabetic';
+    }
+    ctx.restore();
+    ctx.strokeStyle='rgba(224,242,254,0.85)'; ctx.lineWidth=0.7;
+    ctx.beginPath(); ctx.arc(cx, cy, r+1, 0, Math.PI*2); ctx.stroke();
   }
   getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
 }
@@ -1874,8 +1916,8 @@ class GiroAureo extends SpecialItem {
 }
 
 // ===================== BARBOSA FERRAZ (PRESENTE DO BORZUK - SALA SETCH) =====================
-// Item especial exclusivo entregue pelo NPC Borzuk. Invoca o aliado Borzuk,
-// que persegue inimigos e luta com socos e hadoukens.
+// Item especial exclusivo entregue pelo NPC Borzuk. Invoca um guardião azul
+// com a logo do Barbosa Ferraz no peito, que luta com socos e hadoukens.
 class BarbosaFerraz extends SpecialItem {
   constructor(){
     super({
@@ -1886,17 +1928,17 @@ class BarbosaFerraz extends SpecialItem {
       duration: BARBOSA_FERRAZ_ALLY_DURATION,
       icon: '🥊',
       iconImage: SPECIAL_ICON_IMAGES.barbosa_ferraz,
-      description: 'Invoca o aliado Borzuk, que luta com socos e hadouken',
+      description: 'Invoca um guardião azul com a logo do Barbosa, que luta com socos e hadouken',
       color: '#7dd3fc'
     });
     this.ally = null;
   }
   hasActiveAlly(game){
-    return !!(game && game.allies && game.allies.some(a => a && a.isBorzukAlly && !a.dead && a.life>0));
+    return !!(game && game.allies && game.allies.some(a => a && a.isBarbosaAlly && !a.dead && a.life>0));
   }
   tryActivate(player, game){
     if(this.hasActiveAlly(game)){
-      if(game && game.showToast) game.showToast('🥊 Borzuk já está lutando ao seu lado!', 1400);
+      if(game && game.showToast) game.showToast('🔵 O guardião do Barbosa já está lutando ao seu lado!', 1400);
       return false;
     }
     return super.tryActivate(player, game);
@@ -1914,17 +1956,17 @@ class BarbosaFerraz extends SpecialItem {
     }
     sx=clamp(sx, WALL_THICK+22, CANVAS_W-WALL_THICK-22);
     sy=clamp(sy, WALL_THICK+22, CANVAS_H-WALL_THICK-22);
-    const ally = new BorzukAlly(sx, sy, player, game);
+    const ally = new BarbosaAlly(sx, sy, player, game);
     this.ally = ally;
     game.allies.push(ally);
     // Efeito de invocação
     for(let k=0;k<22;k++){
       const ang=Math.random()*Math.PI*2;
-      game.particles.push(new Particle(sx,sy, Math.cos(ang)*randRange(1.2,3.8), Math.sin(ang)*randRange(1.2,3.8), 460, k%2?'#7dd3fc':'#cbd5e1', 2.8));
+      game.particles.push(new Particle(sx,sy, Math.cos(ang)*randRange(1.2,3.8), Math.sin(ang)*randRange(1.2,3.8), 460, k%2?'#60a5fa':'#e0f2fe', 2.8));
     }
     for(let k=0;k<8;k++) game.particles.push(new Particle(sx,sy, randRange(-1,1), randRange(-1,0.6), 350, '#ffffff', 2));
     game.shake=Math.max(game.shake||0, 65);
-    if(game.showToast) game.showToast('🥊 BARBOSA FERRAZ! Borzuk entrou na luta!', 1900);
+    if(game.showToast) game.showToast('🔵 BARBOSA FERRAZ! O guardião azul entrou na luta!', 1900);
   }
   onDeactivate(player, game){
     if(this.ally && !this.ally.dead){
@@ -1932,26 +1974,29 @@ class BarbosaFerraz extends SpecialItem {
       if(game && game.particles){
         for(let k=0;k<14;k++){
           const ang=Math.random()*Math.PI*2;
-          game.particles.push(new Particle(this.ally.x, this.ally.y, Math.cos(ang)*randRange(0.8,2.6), Math.sin(ang)*randRange(0.8,2.6), 340, k%2?'#7dd3fc':'#94a3b8', 2));
+          game.particles.push(new Particle(this.ally.x, this.ally.y, Math.cos(ang)*randRange(0.8,2.6), Math.sin(ang)*randRange(0.8,2.6), 340, k%2?'#60a5fa':'#93c5fd', 2));
         }
       }
     }
     this.ally = null;
   }
   getStatusText(){
-    if(this.isActive) return `Ativo: ${Math.ceil(this.durationRemaining/1000)}s • Borzuk lutando`;
+    if(this.isActive) return `Ativo: ${Math.ceil(this.durationRemaining/1000)}s • guardião azul lutando`;
     if(this.isOnCooldown()) return `Cooldown: ${this.getRemainingSeconds()}s`;
-    return 'Pronto! Invoca Borzuk';
+    return 'Pronto! Invoca o guardião do Barbosa';
   }
   playEffects(player, game){}
 }
 
 // ===================== CYBER BUG - CYBER SLOW (ESPECIAL) =====================
-//  improvisado: câmera lenta para inimigos e todos os projéteis.
+//  improvisado: câmera lenta para inimigos e projéteis inimigos (os tiros do
+//  jogador seguem em velocidade real para o especial não cortar o próprio DPS).
 // Sem cooldown: E liga/desliga. A barra de sobrecarga sobe enquanto ativo;
 // se chegar a 100%, o corpo paga 1 coração e o sistema desliga.
-// Depois de desligar, a barra fica travada por 50s sem reativar; só então começa
-// a esfriar. Reativar antes disso reinicia a contagem dos 50s.
+// Depois de desligar, a barra fica travada por 30s sem reativar; só então começa
+// a esfriar. Reativar antes disso reinicia a contagem dos 30s.
+// Ativar também solta um pulso de tempo que apaga os projéteis inimigos próximos
+// — a entrada no slow motion tem impacto, sem paralisar ninguém.
 class CyberSlow extends SpecialItem {
   constructor(){
     super({
@@ -1961,7 +2006,7 @@ class CyberSlow extends SpecialItem {
       cooldown: 0,
       duration: 0,
       icon: '⏣',
-      description: 'Câmera lenta extrema: inimigos a 5% e projéteis a 8% • cada abate alivia 10% da sobrecarga • 100% custa 1 coração',
+      description: 'Câmera lenta extrema: inimigos a 2% e projéteis inimigos a 4% • campo de tempo deixa TODOS os inimigos ao redor lentos (e por 4s após desligar) • corpo 18% mais rápido durante o efeito • seus tiros em velocidade real • pulso de tempo apaga tiros próximos • cada abate alivia 15% da sobrecarga • 100% custa 1 coração',
       color: '#22d3ee'
     });
     this.overload = 0;          // 0..100
@@ -2019,8 +2064,9 @@ class CyberSlow extends SpecialItem {
   }
   activate(player, game){
     player.cyberSlowActive = true;
+    player.cyberSlowLinger = CYBER_SLOW_AURA_LINGER_MS;
     if(!player.cyberSlowTrail) player.cyberSlowTrail = [];
-    if(game && game.showToast) game.showToast('⏣ CYBER SLOW ATIVO — inimigos a 5% e projéteis a 8% [E desliga]', 1700);
+    if(game && game.showToast) game.showToast('⏣ CYBER SLOW ATIVO — pulso de tempo! inimigos a 2% • projéteis inimigos a 4% [E desliga]', 1900);
   }
   onActivated(player, game){
     if(!game) return;
@@ -2032,6 +2078,29 @@ class CyberSlow extends SpecialItem {
         Math.cos(ang)*randRange(0.8,2.4), Math.sin(ang)*randRange(0.8,2.4),
         320, k%3===0 ? '#f0abfc' : k%2 ? '#22d3ee' : '#a5f3fc', 2
       ));
+    }
+    // ===== PULSO DE TEMPO =====
+    // A ativação não é só um interruptor: varre os tiros inimigos já no ar.
+    // Nada de paralisia — quem controla o ritmo é o campo de tempo.
+    const pulseRadius = 210;
+    if(game.bullets){
+      for(let i=game.bullets.length-1;i>=0;i--){
+        const b = game.bullets[i];
+        if(!b || b.dead || b.owner!=='enemy') continue;
+        if(dist(b.x,b.y,player.x,player.y) > pulseRadius) continue;
+        b.dead = true;
+        for(let k=0;k<4;k++) game.particles.push(new Particle(b.x,b.y, randRange(-1.4,1.4), randRange(-1.4,0.6), 240, k%2?'#22d3ee':'#f0abfc', 1.8));
+      }
+    }
+    if(game.currentRoom){
+      game.currentRoom.explosions.push({x:player.x, y:player.y, radius:18, life:520, max:520, isCyberSlowPulse:true});
+      // Sem paralisia: o pulso só limpa projéteis e marca visualmente quem está
+      // perto. Quem controla o ritmo é o campo de tempo.
+      for(const e of game.currentRoom.enemies){
+        if(!e || e.dead) continue;
+        if(dist(e.x,e.y,player.x,player.y) > pulseRadius) continue;
+        for(let k=0;k<4;k++) game.particles.push(new Particle(e.x,e.y, randRange(-1.2,1.2), randRange(-1.2,0.5), 220, k%2?'#a5f3fc':'#22d3ee', 1.8));
+      }
     }
     game.shake = Math.max(game.shake||0, 45);
   }
@@ -2053,8 +2122,8 @@ class CyberSlow extends SpecialItem {
     }
     game.shake = Math.max(game.shake||0, 35);
     if(game.showToast){
-      if(reason==='overload') game.showToast('⏣ SOBRECARGA! -1 coração • espere 50s sem usar para a barra baixar', 2000);
-      else if(reason==='manual') game.showToast(`⏣ Cyber Slow desligado • sobrecarga ${Math.round(this.overload)}% • descanso 50s`, 1500);
+      if(reason==='overload') game.showToast('⏣ SOBRECARGA! -1 coração • espere 30s sem usar para a barra baixar', 2000);
+      else if(reason==='manual') game.showToast(`⏣ Cyber Slow desligado • sobrecarga ${Math.round(this.overload)}% • descanso 30s`, 1500);
     }
   }
   onActiveTick(dt, player, game){
@@ -2118,6 +2187,142 @@ class CyberSlow extends SpecialItem {
   }
 }
 
+// ===================== DRONE SENTINELA (ITEM INCOMUM) =====================
+// Invoca um drone por 8s que orbita o jogador e dispara lasers fracos teleguiados.
+// Usa game.allies (já atualizado/desenhado pelo Game) para não duplicar loops.
+class DroneSentinelaAlly {
+  constructor(player){
+    this.player = player;
+    this.isDroneSentinela = true;
+    this.x = player.x;
+    this.y = player.y - 24;
+    this.w = 24; this.h = 18;
+    this.life = DRONE_SENTINELA_DURATION;
+    this.maxLife = DRONE_SENTINELA_DURATION;
+    this.orbitAngle = Math.random()*Math.PI*2;
+    this.fireTimer = 350;
+    this.muzzle = 0;
+    this.anim = Math.random()*1000;
+    this.dead = false;
+  }
+  update(dt, enemies, walls, particles, bullets){
+    this.life -= dt;
+    this.anim += dt;
+    if(this.life <= 0){ this.dead = true; return false; }
+    const p = this.player;
+    this.orbitAngle += dt * 0.0024;
+    const tx = p.x + Math.cos(this.orbitAngle) * DRONE_SENTINELA_ORBIT;
+    const ty = p.y - 16 + Math.sin(this.orbitAngle) * DRONE_SENTINELA_ORBIT * 0.60;
+    const follow = Math.min(1, dt * 0.007);
+    this.x += (tx - this.x) * follow;
+    this.y += (ty - this.y) * follow;
+    if(this.muzzle > 0) this.muzzle -= dt;
+    let target = null, best = DRONE_SENTINELA_RANGE;
+    for(const e of enemies || []){
+      if(!e || e.dead) continue;
+      const d = dist(this.x, this.y, e.x, e.y);
+      if(d < best){ best = d; target = e; }
+    }
+    this.fireTimer -= dt;
+    if(target && this.fireTimer <= 0 && bullets){
+      const ang = Math.atan2(target.y - this.y, target.x - this.x);
+      bullets.push(new Bullet(this.x, this.y, Math.cos(ang), Math.sin(ang), 'player', {
+        speed: 8.5,
+        damage: DRONE_SENTINELA_DAMAGE,
+        range: 430,
+        size: 2.2,
+        color: '#67e8f9',
+        glow: 'rgba(103,232,249,0.40)',
+        isMiniRay: true
+      }));
+      this.fireTimer = DRONE_SENTINELA_FIRE_INTERVAL;
+      this.muzzle = 110;
+      if(particles){
+        for(let k=0;k<3;k++) particles.push(new Particle(this.x, this.y, Math.cos(ang)*randRange(0.8,1.6)+randRange(-0.4,0.4), Math.sin(ang)*randRange(0.8,1.6)+randRange(-0.4,0.4), 140, '#a5f3fc', 1.5));
+      }
+    }
+    return !this.dead;
+  }
+  draw(ctx){
+    const pct = clamp(this.life / this.maxLife, 0, 1);
+    const bob = Math.sin(this.anim*0.006)*2;
+    ctx.strokeStyle = 'rgba(103,232,249,0.22)';
+    ctx.lineWidth = 0.8;
+    ctx.setLineDash([3,4]);
+    ctx.beginPath(); ctx.moveTo(this.x, this.y+bob); ctx.lineTo(this.player.x, this.player.y); ctx.stroke();
+    ctx.setLineDash([]);
+    const glow = ctx.createRadialGradient(this.x,this.y+bob,2,this.x,this.y+bob,24);
+    glow.addColorStop(0,'rgba(103,232,249,0.30)');
+    glow.addColorStop(1,'rgba(103,232,249,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(this.x,this.y+bob,24,0,Math.PI*2); ctx.fill();
+    ctx.save(); ctx.translate(this.x, this.y+bob);
+    ctx.fillStyle = '#0f2230';
+    ctx.strokeStyle = '#67e8f9'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.ellipse(0,0,11,7,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(165,243,252,0.75)';
+    ctx.beginPath(); ctx.moveTo(-15,-4); ctx.lineTo(-9,-4); ctx.moveTo(9,-4); ctx.lineTo(15,-4); ctx.stroke();
+    const spin = this.anim*0.02;
+    ctx.fillStyle = 'rgba(165,243,252,0.55)';
+    ctx.fillRect(-16 + Math.sin(spin)*2, -5.4, 8, 1.2);
+    ctx.fillRect(8 + Math.cos(spin)*2, -5.4, 8, 1.2);
+    ctx.fillStyle = '#67e8f9';
+    ctx.beginPath(); ctx.arc(0,0,2.4,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(-0.6,-0.6,0.9,0,Math.PI*2); ctx.fill();
+    if(this.muzzle > 0){
+      ctx.fillStyle = `rgba(224,255,255,${clamp(this.muzzle/110,0,1).toFixed(2)})`;
+      ctx.beginPath(); ctx.arc(0,4,3.4,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(this.x-12, this.y+bob+12, 24, 3);
+    ctx.fillStyle = pct > 0.35 ? '#67e8f9' : '#f87171';
+    ctx.fillRect(this.x-12, this.y+bob+12, 24*pct, 3);
+  }
+}
+
+class DroneSentinela extends SpecialItem {
+  constructor(){
+    super({
+      id: 'drone_sentinela',
+      name: 'DRONE SENTINELA',
+      key: 'e',
+      cooldown: DRONE_SENTINELA_COOLDOWN,
+      duration: DRONE_SENTINELA_DURATION,
+      icon: '🛸',
+      description: 'Invoca um drone por 8s que orbita você e dispara lasers fracos teleguiados',
+      color: '#67e8f9',
+      rarity: 'INCOMUM'
+    });
+  }
+  activate(player, game){
+    if(!game) return;
+    if(!game.allies) game.allies = [];
+    for(const a of game.allies) if(a && a.isDroneSentinela) a.dead = true;
+    game.allies.push(new DroneSentinelaAlly(player));
+    player.droneSentinelaActive = true;
+  }
+  onActivated(player, game){
+    if(!game) return;
+    for(let k=0;k<16;k++){
+      const ang = Math.random()*Math.PI*2;
+      game.particles.push(new Particle(player.x + Math.cos(ang)*10, player.y + Math.sin(ang)*10, Math.cos(ang)*randRange(0.8,2.4), Math.sin(ang)*randRange(0.8,2.4), 320, k%2 ? '#67e8f9' : '#a5f3fc', 1.8));
+    }
+    game.shake = Math.max(game.shake||0, 24);
+    if(game.showToast) game.showToast('🛸 DRONE SENTINELA ativo por 8s!', 1600);
+  }
+  onDeactivate(player, game){
+    player.droneSentinelaActive = false;
+    if(game && game.allies) for(const a of game.allies) if(a && a.isDroneSentinela) a.dead = true;
+  }
+  getStatusText(){
+    if(this.isActive) return `Ativo: ${Math.ceil(this.durationRemaining/1000)}s • drone`;
+    if(this.isOnCooldown()) return `Cooldown: ${this.getRemainingSeconds()}s`;
+    return 'Pronto!';
+  }
+}
+
 // Registro modular: facilita adicionar novos itens sem reescrever Game/Player
 // Basta criar classe nova extends SpecialItem e adicionar aqui.
 const SPECIAL_REGISTRY = {
@@ -2130,6 +2335,7 @@ const SPECIAL_REGISTRY = {
   'giro_aureo':        () => new GiroAureo(),
   'barbosa_ferraz':      () => new BarbosaFerraz(),
   'cyber_slow':          () => new CyberSlow(),
+  'drone_sentinela':     () => new DroneSentinela(),
 };
 function createSpecialItem(id){
   const factory = SPECIAL_REGISTRY[id];
@@ -2138,6 +2344,8 @@ function createSpecialItem(id){
 }
 // Lista para spawn aleatório / debug
 const SPECIAL_ITEM_IDS = Object.keys(SPECIAL_REGISTRY);
+// Especiais que pertencem a um personagem e NÃO devem aparecer nas salas de item.
+const CHARACTER_EXCLUSIVE_SPECIALS = new Set(['farmar_aura','oli_xadrez','giro_aureo','barbosa_ferraz','cyber_slow']);
 
 // ===================== SISTEMA DE MELHORIAS (UPGRADES) =====================
 // 4 níveis de raridade com cores distintas (requisito)
@@ -4745,7 +4953,7 @@ const CHARACTER_DEFS = {
     starterSpecial: null,
     allowedWeapons: ['BASTAO'], // lock exclusivo - evita duplicação e mantém identidade
     exclusive: 'bastao',
-    description: '2 ♥ • Casaco cinza, camisa amarela (muda ao arremessar), calça azul-escuro, sem boné • Bastão giratório dano ida/volta e reflete tiros • Rápido com bastão, lento sem',
+    description: '2 ♥ • Casaco cinza, camisa amarela (muda ao arremessar), calça azul-escuro, sem boné • Bastão: golpe rápido e arremesso refletem tiros inimigos • Rápido com bastão, lento sem',
     speedWithBastao: JG_SPEED_WITH_BASTAO,
     speedWithoutBastao: JG_SPEED_WITHOUT_BASTAO,
     chargeTime: JG_BASTAO_CHARGE_TIME
@@ -4763,7 +4971,7 @@ const CHARACTER_DEFS = {
     starterSpecial: null,
     allowedWeapons: ['ESPADA'], // só espada, não pode equipar outras
     exclusive: 'cavaleiro',
-    description: '3 ♥ + 1 ♥ Cibernético • Só Espada • Tanque leal • Um pouco mais lento (armadura pesada)'
+    description: '3 ♥ + 1 ♥ Cibernético (+2 HP = 4 corações no total) • Só Espada • Tanque leal • 14% mais lento (armadura pesada)'
   },
   jl: {
     id: 'jl',
@@ -4862,13 +5070,13 @@ const CHARACTER_DEFS = {
     color: '#22d3ee',
     bg: 'rgba(34,211,238,0.16)',
     border: 'rgba(34,211,238,0.45)',
-    maxHp: 4, // 2 corações - vidro, mas com controle de tempo
+    maxHp: 6, // 3 corações - vidro com controle de tempo, mas com pulso que protege na ativação
     boneHearts: 0,
     starterWeapon: 'NORMAL',
     starterSpecial: 'cyber_slow', // especial exclusivo - Sandevistan improvisado
     allowedWeapons: null, // pode usar qualquer arma, foco é o Cyber Slow
     exclusive: 'cyber_slow',
-    description: '2 ♥ • Humano cibernético com capuz, viseira e implantes neon • E: Cyber Slow - inimigos a 5% e todos os projéteis a 8% da velocidade • Rastro neon no chão e imagens duplicadas • Cada abate alivia 10% da sobrecarga • Sem cooldown, mas a barra enche: 100% custa 1 coração e trava 50s'
+    description: '3 ♥ • Humano cibernético com capuz, viseira e implantes neon • E: Cyber Slow - inimigos a 2% e projéteis inimigos a 4% da velocidade • Campo de tempo (340px) deixa todos os inimigos ao redor lentos, e por 4s após desligar • Corpo 18% mais rápido durante o efeito • Seus tiros seguem em velocidade real • Pulso de tempo (210px) apaga tiros próximos • Cada abate alivia 15% da sobrecarga • A barra sobe 12%/s (~8s): a 100% custa 1 coração • Após desligar, aguarde 30s sem reativar para a barra começar a baixar, depois esfria 22%/s'
   }
 };
 const CHARACTER_IDS = Object.keys(CHARACTER_DEFS);
@@ -4996,6 +5204,7 @@ function applyCharacterToPlayer(player, characterId){
   // Cyber Bug - estado visual do Cyber Slow (sempre limpo ao aplicar personagem)
   player.cyberSlowActive = false;
   player.cyberSlowTrail = [];
+  player.cyberSlowLinger = 0;
   // Reseta contaminação de outros personagens
   player.cyberHp = 0;
   player.maxCyberHp = CYBER_HEART_MAX_CYBER;
@@ -9269,7 +9478,7 @@ class Bullet {
     this.isSwordWave = !!opts.isSwordWave; // corte de vento da espada
     this.isRayMatematico = !!opts.isRayMatematico; // Dev principal
     this.isMiniRay = !!opts.isMiniRay; // Sobremesa mini
-    this.isHadouken = !!opts.isHadouken; // Hadouken do aliado Borzuk
+    this.isHadouken = !!opts.isHadouken; // Hadouken do guardião do Barbosa
     this.explosionRadius = opts.explosionRadius ?? 96;
     this.explosionDamage = opts.explosionDamage ?? 4;
     // ===== ASPECTOS DE ARMAS (traits copiadas de outra arma) =====
@@ -9428,7 +9637,7 @@ class Bullet {
     if (this.x < -20 || this.x > CANVAS_W + 20 || this.y < -20 || this.y > CANVAS_H + 20) this.dead = true;
   }
   draw(ctx) {
-    // Hadouken do aliado Borzuk: esfera de energia ciano com rastro
+    // Hadouken do guardião do Barbosa: esfera de energia azul com rastro
     if(this.isHadouken){
       const ang=Math.atan2(this.dirY,this.dirX);
       ctx.strokeStyle=this.glow;
@@ -10085,6 +10294,10 @@ class MeleeSwing {
     const alpha=0.82*(1-prog*0.62);
     const baseAng=Math.atan2(this.dirY,this.dirX);
     const halfRad=(this.angle/2)*Math.PI/180;
+    if(this.weaponName==='BASTAO'){
+      this.drawBastaoSlash(ctx, prog, alpha, baseAng, halfRad);
+      return;
+    }
     if(this.isSword){
       this.drawSwordSlash(ctx, prog, alpha, baseAng, halfRad);
       return;
@@ -10108,6 +10321,81 @@ class MeleeSwing {
     }
     // center dot
     ctx.fillStyle='rgba(255,255,255,0.72)'; ctx.beginPath(); ctx.arc(this.x,this.y,1.8,0,Math.PI*2); ctx.fill();
+  }
+  // JG - Bastão dourado: leque de energia, silhueta do bastão com fantasmas de
+  // movimento e faíscas. Substitui o arco branco genérico do golpe rápido.
+  drawBastaoSlash(ctx, prog, alpha, baseAng, halfRad){
+    const t=1-Math.pow(1-clamp(prog,0,1),2.6);
+    const curAng=lerp(baseAng-halfRad, baseAng+halfRad, t);
+    const trailAng=lerp(baseAng-halfRad, curAng, 0.42);
+    const a0=clamp(alpha,0.25,1);
+    const r=this.range;
+    ctx.save();
+    // leque dourado
+    const grad=ctx.createRadialGradient(this.x,this.y,r*0.30,this.x,this.y,r*1.04);
+    grad.addColorStop(0,'rgba(250,204,21,0)');
+    grad.addColorStop(0.55,`rgba(250,204,21,${(0.10+a0*0.12).toFixed(3)})`);
+    grad.addColorStop(0.92,`rgba(255,240,150,${(0.16+a0*0.16).toFixed(3)})`);
+    grad.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.fillStyle=grad;
+    ctx.beginPath();
+    ctx.arc(this.x,this.y,r*1.02,Math.min(baseAng-halfRad,trailAng),Math.max(baseAng-halfRad,curAng));
+    ctx.arc(this.x,this.y,r*0.42,curAng,trailAng,true);
+    ctx.closePath(); ctx.fill();
+    // arcos de velocidade
+    for(let i=0;i<4;i++){
+      ctx.strokeStyle=`rgba(250,204,21,${(a0*(0.45-i*0.09)).toFixed(3)})`;
+      ctx.lineWidth=(2.6-i*0.45);
+      ctx.beginPath();
+      ctx.arc(this.x,this.y,r*(1.0-i*0.13),Math.min(baseAng-halfRad,trailAng),Math.max(baseAng-halfRad,curAng));
+      ctx.stroke();
+    }
+    // silhueta do bastão com fantasmas de movimento
+    const bat=(ang,a,scale=1)=>{
+      ctx.save();
+      ctx.translate(this.x,this.y);
+      ctx.rotate(ang);
+      ctx.scale(scale,scale);
+      const L=r*0.9;
+      ctx.fillStyle=`rgba(250,204,21,${(a*0.20).toFixed(3)})`;
+      ctx.fillRect(6,-6.5,L-4,13);
+      ctx.beginPath();
+      ctx.moveTo(4,-2.1); ctx.lineTo(L*0.72,-3.4); ctx.lineTo(L*0.94,-4.6);
+      ctx.lineTo(L,0); ctx.lineTo(L*0.94,4.6); ctx.lineTo(L*0.72,3.4); ctx.lineTo(4,2.1);
+      ctx.closePath();
+      ctx.fillStyle=`rgba(58,46,0,${a})`; ctx.fill();
+      ctx.strokeStyle=`rgba(255,251,235,${a*0.9})`; ctx.lineWidth=1; ctx.stroke();
+      ctx.fillStyle=`rgba(250,204,21,${a})`;
+      ctx.fillRect(6,-1.2,L*0.8,2.4);
+      ctx.fillStyle=`rgba(255,255,255,${a*0.85})`;
+      ctx.fillRect(9,-0.45,L*0.62,0.9);
+      ctx.fillStyle=`rgba(26,21,0,${a})`;
+      ctx.fillRect(0,-2.8,5,5.6);
+      ctx.restore();
+    };
+    for(let i=3;i>=1;i--) bat(curAng-i*0.11,a0*(0.20-i*0.04),1-i*0.035);
+    bat(curAng,a0,1);
+    // ponta acesa
+    const tx=this.x+Math.cos(curAng)*r*0.96;
+    const ty=this.y+Math.sin(curAng)*r*0.96;
+    ctx.fillStyle=`rgba(255,255,255,${a0})`;
+    ctx.beginPath(); ctx.arc(tx,ty,3,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle=`rgba(255,255,255,${a0*0.8})`; ctx.lineWidth=1.2;
+    ctx.beginPath(); ctx.moveTo(tx-Math.cos(curAng)*7,ty-Math.sin(curAng)*7); ctx.lineTo(tx+Math.cos(curAng)*4,ty+Math.sin(curAng)*4); ctx.stroke();
+    // faíscas
+    for(let i=0;i<9;i++){
+      const sa=lerp(baseAng-halfRad,curAng,Math.random());
+      const rr=r*randRange(0.55,1.03);
+      const sx=this.x+Math.cos(sa)*rr;
+      const sy=this.y+Math.sin(sa)*rr;
+      ctx.fillStyle=`rgba(${i%2? '255,251,235':'250,204,21'},${(Math.random()*a0*0.9).toFixed(3)})`;
+      ctx.fillRect(sx+randRange(-1,1),sy+randRange(-1,1),randRange(0.8,1.9),randRange(0.8,1.9));
+    }
+    // anel de choque rasteiro
+    ctx.strokeStyle=`rgba(250,204,21,${(a0*0.18).toFixed(3)})`;
+    ctx.lineWidth=1.4;
+    ctx.beginPath(); ctx.arc(this.x,this.y,r*0.62,baseAng-halfRad*0.7,baseAng+halfRad*0.7); ctx.stroke();
+    ctx.restore();
   }
   drawSwordSlash(ctx, prog, alpha, baseAng, halfRad){
     const t=1-Math.pow(1-clamp(prog,0,1),3);
@@ -10399,6 +10687,61 @@ class RocketFist {
   getRect(){ return {x:this.x-this.size,y:this.y-this.size,w:this.size*2,h:this.size*2}; }
 }
 
+// ===================== REFLEXO DO BASTÃO (JG) =====================
+// O golpe rápido do bastão rebate os tiros inimigos que entram no leque: o
+// projétil muda de dono, ganha dano/velocidade e é mirado no inimigo mais próximo
+// (ou volta pelo caminho contrário se não houver alvo).
+function reflectBastaoBullets(game, source, range, angle, dirX, dirY){
+  if(!game || !game.bullets || !game.currentRoom) return 0;
+  const enemies = game.currentRoom.enemies || [];
+  const baseAng = Math.atan2(dirY, dirX);
+  const half = (angle/2)*Math.PI/180 + 0.10;
+  let reflected = 0;
+  for(let i=game.bullets.length-1;i>=0;i--){
+    const eb = game.bullets[i];
+    if(!eb || eb.dead || eb.owner !== 'enemy') continue;
+    const dx = eb.x - source.x, dy = eb.y - source.y;
+    const d = Math.hypot(dx, dy);
+    if(d > range + (eb.size||4) + 6) continue;
+    if(d > 14){
+      const diff = Math.abs(Math.atan2(Math.sin(Math.atan2(dy,dx)-baseAng), Math.cos(Math.atan2(dy,dx)-baseAng)));
+      if(diff > half) continue;
+    }
+    // Mira no inimigo mais próximo para o tiro voltar com intenção.
+    let target = null, best = Infinity;
+    for(const e of enemies){
+      if(!e || e.dead) continue;
+      const dd = dist(eb.x, eb.y, e.x, e.y);
+      if(dd < best){ best = dd; target = e; }
+    }
+    let ang;
+    if(target && best < 560) ang = Math.atan2(target.y - eb.y, target.x - eb.x);
+    else ang = Math.atan2(-eb.dirY, -eb.dirX);
+    eb.owner = 'player';
+    eb.dirX = Math.cos(ang); eb.dirY = Math.sin(ang);
+    eb.damage = Math.max((eb.damage||1)*1.4, (source.damage||2)*0.9);
+    eb.color = '#facc15';
+    eb.glow = 'rgba(250,204,21,0.38)';
+    eb.speed = Math.max((eb.speed||4)*1.2, 7.5);
+    if(eb.hitEnemies) eb.hitEnemies.clear();
+    eb.traveled = 0;
+    eb.range = Math.max(eb.range||0, 460);
+    eb.isReflected = true;
+    reflected++;
+    if(game.particles){
+      for(let k=0;k<8;k++){
+        game.particles.push(new Particle(eb.x, eb.y,
+          Math.cos(ang)*randRange(0.8,1.6)+randRange(-0.5,0.5),
+          Math.sin(ang)*randRange(0.8,1.6)+randRange(-0.5,0.5),
+          220, k%2 ? '#facc15' : '#fff8a0', 1.8));
+      }
+      for(let k=0;k<4;k++) game.particles.push(new Particle(source.x, source.y, randRange(-1.2,1.2), randRange(-0.8,0.4), 180, '#fff8a0', 1.6));
+    }
+  }
+  if(reflected) game.shake = Math.max(game.shake||0, 26);
+  return reflected;
+}
+
 // ===================== BASTÃO PROJECTILE (JG EXCLUSIVO) =====================
 // Onda de energia do retorno: quando o bastão volta pra mão, explode uma onda
 // radial que empurra e paralisa (atordoa) os inimigos por 1.5s.
@@ -10524,43 +10867,66 @@ class BastaoProjectile {
     return !this.dead;
   }
   draw(ctx){
-    // rastro
-    for(const t of this.trail){
-      const a=clamp(t.life/180,0,1);
-      ctx.fillStyle=`rgba(250,204,21,${a*0.22})`;
-      ctx.beginPath(); ctx.arc(t.x,t.y, (this.size+6)*a,0,Math.PI*2); ctx.fill();
+    const tNow=Date.now();
+    // rastro de fantasmas girando
+    for(let i=0;i<this.trail.length;i++){
+      const tr=this.trail[i];
+      const a=clamp(tr.life/180,0,1);
+      ctx.fillStyle=`rgba(250,204,21,${(a*0.18).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(tr.x,tr.y,(this.size+7)*a,0,Math.PI*2); ctx.fill();
+      ctx.save();
+      ctx.translate(tr.x,tr.y);
+      ctx.rotate(this.spin - i*0.22);
+      ctx.globalAlpha=a*0.42;
+      ctx.fillStyle='#facc15';
+      ctx.fillRect(-11,-2.2,22,4.4);
+      ctx.fillStyle='#fff7cc';
+      ctx.fillRect(-10,-0.8,20,1.6);
+      ctx.restore();
     }
+    // halo pulsante
+    const pulse=0.5+Math.sin(tNow*0.012)*0.5;
+    const halo=ctx.createRadialGradient(this.x,this.y,2,this.x,this.y,this.size+14);
+    halo.addColorStop(0,`rgba(255,255,255,${(0.30+pulse*0.18).toFixed(3)})`);
+    halo.addColorStop(0.45,'rgba(250,204,21,0.22)');
+    halo.addColorStop(1,'rgba(250,204,21,0)');
+    ctx.fillStyle=halo;
+    ctx.beginPath(); ctx.arc(this.x,this.y,this.size+14,0,Math.PI*2); ctx.fill();
+    // anéis de vento girando
+    ctx.strokeStyle=`rgba(255,237,128,${(0.30+pulse*0.25).toFixed(3)})`;
+    ctx.lineWidth=1.4;
+    ctx.beginPath(); ctx.arc(this.x,this.y,this.size+7,this.spin,this.spin+Math.PI*1.35); ctx.stroke();
+    ctx.beginPath(); ctx.arc(this.x,this.y,this.size+7,this.spin+Math.PI,this.spin+Math.PI*2.35); ctx.stroke();
     ctx.save();
     ctx.translate(this.x,this.y);
     ctx.rotate(this.spin);
-    // glow externo rotativo
-    ctx.fillStyle=this.glow;
-    ctx.fillRect(-14,-3,28,6);
-    ctx.fillStyle='rgba(250,204,21,0.14)';
-    ctx.beginPath(); ctx.arc(0,0, this.size+10,0,Math.PI*2); ctx.fill();
-    // corpo bastão (retângulo arredondado girando)
+    // rastro de movimento atrás do corpo
+    ctx.fillStyle='rgba(250,204,21,0.22)';
+    ctx.fillRect(-19,-5,30,10);
+    // corpo do bastão com contorno dourado e núcleo branco
     ctx.fillStyle='#3a2e00';
-    ctx.fillRect(-12,-4,24,8);
-    ctx.fillStyle=this.color;
-    ctx.fillRect(-11,-3,22,6);
+    ctx.fillRect(-12,-4.5,24,9);
+    ctx.fillStyle='#facc15';
+    ctx.fillRect(-11,-3.4,22,6.8);
     ctx.fillStyle='#fffbeb';
-    ctx.fillRect(-10,-1,20,2);
-    // detalhes extremidades
+    ctx.fillRect(-10,-1.3,20,2.6);
     ctx.fillStyle='#1a1500';
-    ctx.fillRect(-12,-4,3,8);
-    ctx.fillRect(9,-4,3,8);
-    // brilho central quando girando rápido
+    ctx.fillRect(-12,-4.5,3,9);
+    ctx.fillRect(9,-4.5,3,9);
+    ctx.strokeStyle='rgba(255,255,255,0.75)';
+    ctx.lineWidth=0.8;
+    ctx.strokeRect(-11,-3.4,22,6.8);
     if(Math.floor(this.spin*2)%2===0){
-      ctx.fillStyle='rgba(255,255,255,0.88)';
-      ctx.fillRect(-2,-3,4,6);
+      ctx.fillStyle='rgba(255,255,255,0.95)';
+      ctx.fillRect(-2.5,-3.2,5,6.4);
     }
     ctx.restore();
-    // núcleo central brilhante
-    ctx.fillStyle='rgba(255,255,255,0.9)';
-    ctx.beginPath(); ctx.arc(this.x,this.y,2.2,0,Math.PI*2); ctx.fill();
-    ctx.strokeStyle='rgba(250,204,21,0.55)';
+    // núcleo central + anel externo
+    ctx.fillStyle='rgba(255,255,255,0.95)';
+    ctx.beginPath(); ctx.arc(this.x,this.y,2.4,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle=`rgba(250,204,21,${(0.45+pulse*0.30).toFixed(3)})`;
     ctx.lineWidth=1.2;
-    ctx.beginPath(); ctx.arc(this.x,this.y,this.size+2,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(this.x,this.y,this.size+2.5,0,Math.PI*2); ctx.stroke();
   }
   getRect(){ return {x:this.x-this.size,y:this.y-this.size,w:this.size*2,h:this.size*2}; }
 }
@@ -12810,6 +13176,7 @@ class SpecialItemPickup extends Item {
     this.specialIcon = tmp ? tmp.icon : '★';
     this.specialIconImage = tmp ? tmp.iconImage : null;
     this.specialColor = tmp ? tmp.color : '#ffcc00';
+    this.specialRarity = tmp ? (tmp.rarity || 'ESPECIAL') : 'ESPECIAL';
     this.isSpecialPickup = true;
   }
   onCollect(player){
@@ -12836,6 +13203,7 @@ class SpecialItemPickup extends Item {
     this.specialIcon = tmp ? tmp.icon : '★';
     this.specialIconImage = tmp ? tmp.iconImage : null;
     this.specialColor = tmp ? tmp.color : '#ffcc00';
+    this.specialRarity = tmp ? (tmp.rarity || 'ESPECIAL') : 'ESPECIAL';
     this.type = 'special_'+newSpecialId;
     // spawnDelay evita re-pega instantânea (anti-duplicação/exploit)
     this.spawnDelay = 360;
@@ -12908,6 +13276,13 @@ class SpecialItemPickup extends Item {
       ctx.fillText(this.specialIcon, x, y+4);
     }
     ctx.textAlign='left';
+    // raridade (ex.: INCOMUM) acima do ícone
+    if(this.specialRarity && this.specialRarity!=='ESPECIAL'){
+      const rr = RARITY[this.specialRarity];
+      ctx.fillStyle = rr ? rr.color : 'rgba(229,231,235,0.9)';
+      ctx.font='3.5px "Press Start 2P"';
+      ctx.fillText(this.specialRarity, x, y - s/2 - 4);
+    }
     // tecla E indicada
     ctx.fillStyle='#fff';
     ctx.font='4px "Press Start 2P"';
@@ -15361,6 +15736,11 @@ class Player {
     // ===== Técnica Secreta Joestar - bônus velocidade 5s quando ativo (item comum) =====
     if(this.hasJoestarTechnique && this.joestarActive && this.joestarTimer > 0){
       this.speed += JOESTAR_SPEED_BONUS;
+    }
+    // ===== Cyber Bug - o corpo acelera durante o Cyber Slow =====
+    // Aumento leve para o personagem conseguir atravessar o campo de tempo.
+    if(this.characterId==='cyberbug' && this.equippedSpecial && this.equippedSpecial.id==='cyber_slow' && this.equippedSpecial.isActive){
+      this.speed *= CYBER_SLOW_PLAYER_SPEED_BONUS;
     }
     // Motosserra - barra de cura por agressividade: decai se ficar idle
     if(this.motosserraCharge>0){
@@ -17856,6 +18236,28 @@ class Player {
         const px=this.x + randRange(-9,9);
         const py=y + randRange(-5,2)+bob;
         ctx.fillRect(px,py,1,1);
+      }
+      // mira do arremesso: linha de energia que cresce com a carga
+      if(this.bastaoChargeDir){
+        const cd=this.bastaoChargeDir;
+        const ang=Math.atan2(cd.y,cd.x);
+        const len=34+prog*38;
+        ctx.save();
+        ctx.strokeStyle=`rgba(250,204,21,${(0.22+prog*0.5).toFixed(3)})`;
+        ctx.lineWidth=1+prog*1.4;
+        ctx.setLineDash([4,4]);
+        ctx.lineDashOffset=-this.animTime*0.02;
+        ctx.beginPath();
+        ctx.moveTo(this.x+Math.cos(ang)*14, this.y+Math.sin(ang)*14+bob);
+        ctx.lineTo(this.x+Math.cos(ang)*len, this.y+Math.sin(ang)*len+bob);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        if(prog>=0.99){
+          const ex=this.x+Math.cos(ang)*len, ey=this.y+Math.sin(ang)*len+bob;
+          ctx.strokeStyle='rgba(255,255,255,0.85)'; ctx.lineWidth=1.4;
+          ctx.beginPath(); ctx.arc(ex,ey,4,0,Math.PI*2); ctx.stroke();
+        }
+        ctx.restore();
       }
     }
     // GYRO - barra de carga prateada da Bola de Aço + indicador das 2 bolas
@@ -20652,7 +21054,7 @@ class OliNPC extends SetchVendor {
 
 // ===================== BORZUK NPC - BARBOSA FERRAZ (SALA SETCH) =====================
 // NPC que entrega o item especial exclusivo Barbosa Ferraz (BarbosaFerraz):
-// invoca o aliado Borzuk, que luta com socos e hadouken.
+// invoca o guardião azul com a logo do Barbosa, que luta com socos e hadouken.
 // Aparência: cabelo meio cinza, pele meio escura, roupa branca com detalhes
 // pretos, calça preta e jaqueta preta. Um pouco maior que o jogador.
 class BorzukNPC extends SetchVendor {
@@ -21194,29 +21596,30 @@ class Room {
        }
      }
     // ===== ITENS ESPECIAIS (E) - Sistema modular =====
-    // Chance balanceada: ~5% por sala normal, 10% em treasure, inclui Flecha Stand incomum + Power Star raro
-    // Flecha Stand é incomum: aparece com boa frequência para testar, mas não toda sala
-    const specialChance = this.type==='treasure' ? 0.10 : 0.05;
-    if(rng() < specialChance && !this.isRare && !this.isMiniboss && !this.isBossStair && !this.isPartyHorde && this.items.length < 4){
-      const rollSpecial = rng();
-      // Distribuição: espada, escudo e flecha_stand (incomum)
-      // Fácil alterar: ajuste limites abaixo para mudar chance
-      let pickId;
-      if(rollSpecial < 0.28) pickId='espada_flamejante';
-      else if(rollSpecial < 0.56) pickId='escudo_magico';
-      else pickId='flecha_stand';
-      // Evita duplicar mesmo tipo no chão da mesma sala
-      if(!this.items.some(it=> it.isSpecialPickup && it.specialId===pickId)){
-        // Se jogador já possui esse especial, tenta oferecer outro (70% chance) para variedade
-        let finalId = pickId;
-        const owned = (typeof window!=='undefined' && window.game && window.game.player) ? window.game.player.equippedSpecial?.id : null;
-        if(owned===pickId && rng()<0.70){
-          const pool=['espada_flamejante','escudo_magico','flecha_stand'].filter(id=>id!==owned);
-          finalId = pool[Math.floor(rng()*pool.length)];
-        }
-        const it = new SpecialItemPickup(randRange(140, CANVAS_W-140), randRange(100, CANVAS_H-100), finalId);
-        tryPlace(it);
-      }
+    // Salas de item agora usam o catálogo genérico completo: todos os especiais
+    // MENOS os exclusivos de personagem (Farmar Aura, Xadrez, Giro Áureo,
+    // Barbosa Ferraz e Cyber Slow). O Drone Sentinela entra como incomum.
+    const specialChance = this.type==='treasure' ? 0.35 : 0.06;
+    const spawnGenericSpecial = () => {
+      const generic = SPECIAL_ITEM_IDS.filter(id => !CHARACTER_EXCLUSIVE_SPECIALS.has(id));
+      if(!generic.length) return false;
+      const weightOf = (id)=> id==='power_star' ? 1 : (id==='drone_sentinela' || id==='flecha_stand') ? 3 : 4;
+      const owned = (typeof window!=='undefined' && window.game && window.game.player) ? window.game.player.equippedSpecial?.id : null;
+      let pool = generic.filter(id => id!==owned && !this.items.some(it=>it.isSpecialPickup && it.specialId===id));
+      if(!pool.length) pool = generic;
+      let total = 0; for(const id of pool) total += weightOf(id);
+      let r = rng()*total, pickId = pool[pool.length-1];
+      for(const id of pool){ r -= weightOf(id); if(r<=0){ pickId=id; break; } }
+      const it = new SpecialItemPickup(randRange(140, CANVAS_W-140), randRange(100, CANVAS_H-100), pickId);
+      tryPlace(it);
+      return true;
+    };
+    if(rng() < specialChance && !this.isRare && !this.isMiniboss && !this.isBossStair && !this.isPartyHorde && this.items.length < 5){
+      spawnGenericSpecial();
+    }
+    // Sala de item (treasure) melhora a recompensa: garante um especial genérico.
+    if(this.type==='treasure' && !this.items.some(it=>it.isSpecialPickup)){
+      spawnGenericSpecial();
     }
     // Gato Antivírus - passiva incomum (companheiro azul) - item normal, não especial
     const gatoChance = this.type==='treasure' ? 0.06 : 0.028; // 2.8% normal, 6% treasure (incomum)
@@ -21881,7 +22284,7 @@ const it = items[i];
     // NPC Oli - dá o item especial de Xadrez (Torre/Bispo/Rainha/Rei)
     this.oliNPC = new OliNPC(CANVAS_W/2 - 196, CANVAS_H/2 + 60);
     this.oliGiftGiven = false;
-    // NPC Borzuk - dá o item especial Barbosa Ferraz (invoca aliado com socos/hadouken)
+    // NPC Borzuk - dá o item especial Barbosa Ferraz (invoca o guardião azul com socos/hadouken)
     this.borzukNPC = new BorzukNPC(CANVAS_W/2 + 196, CANVAS_H/2 + 66);
     this.borzukGiftGiven = false;
     // referência da sala nos NPCs (falas, gestos e desenho do prompt do copinho)
@@ -22155,35 +22558,41 @@ const it = items[i];
     const hackerBoss = this.enemies.find(e=> e.type==='hacker');
     const hackerWaitingDialog = hackerBoss && this.isHacker && !hackerBoss.battleStarted && hackerBoss.dialogTimer>0;
     for (const e of this.enemies) {
+      // Campo de tempo do Cyber Bug: TODO inimigo dentro do raio do jogador fica
+      // lento, inclusive tipos que não têm o status de slow próprio. Depois que a
+      // habilidade desliga, o campo continua por alguns segundos (cyberSlowLinger).
+      const inCyberAura = !!(player && (player.cyberSlowActive || (player.cyberSlowLinger||0) > 0)
+        && dist(e.x, e.y, player.x, player.y) <= CYBER_SLOW_AURA_RADIUS);
+      const eDt = inCyberAura ? enemyDt * CYBER_SLOW_AURA_FACTOR : enemyDt;
       if(e.type==='stair_boss'){
         if(bossWaitingDialog) {
           // Só animação leve, não ataca
-          e.anim+=enemyDt;
-          e.leftHand.anim+=enemyDt;
-          e.rightHand.anim+=enemyDt;
+          e.anim+=eDt;
+          e.leftHand.anim+=eDt;
+          e.rightHand.anim+=eDt;
           continue;
         }
-        e.update(enemyDt, player, this.walls, enemyBulletsOut, pendingSummons, this.enemies, globalParticles, this);
+        e.update(eDt, player, this.walls, enemyBulletsOut, pendingSummons, this.enemies, globalParticles, this);
       } else if(e.type==='hacker'){
         // Hacker tem diálogo inicial com Dark Vírus
         if(hackerWaitingDialog){
           // mantém animação mas pausa ataque já feita dentro do hacker update
         }
-        e.update(enemyDt, player, this.walls, enemyBulletsOut, pendingSummons, this.enemies, globalParticles, this);
+        e.update(eDt, player, this.walls, enemyBulletsOut, pendingSummons, this.enemies, globalParticles, this);
         // glitch code chuva na sala do hacker
         if(this.isHacker && e.battleStarted && Math.random()<0.12){
           const gx=randRange(WALL_THICK+12, CANVAS_W-WALL_THICK-12);
           const gy=WALL_THICK+8;
           globalParticles.push(new Particle(gx, gy, randRange(-0.3,0.3), randRange(1.2,2.4), 420, HACKER_ROOM_GLITCH_COLORS[randInt(0,HACKER_ROOM_GLITCH_COLORS.length-1)], 1.2));
         }
-      } else if (e.type==='fugitive') e.update(enemyDt, player, this.walls, enemyBulletsOut);
-      else if (e.type==='xshooter') e.update(enemyDt, player, this.walls, enemyBulletsOut);
-      else if (e.type==='kamikaze') e.update(enemyDt, player, this.walls);
-      else if (e.type==='summoner') e.update(enemyDt, player, this.walls, pendingSummons, this.enemies);
-      else if (e.type==='miniboss') e.update(enemyDt, player, this.walls, enemyBulletsOut, pendingSummons, this.enemies, globalParticles);
-      else if (e.type==='dash') e.update(enemyDt, player, this.walls);
-      else if (e.type==='macaco' || e.type==='bored_ape' || e.type==='ape_nft') e.update(enemyDt, player, this.walls);
-      else e.update(enemyDt, player, this.walls);
+      } else if (e.type==='fugitive') e.update(eDt, player, this.walls, enemyBulletsOut);
+      else if (e.type==='xshooter') e.update(eDt, player, this.walls, enemyBulletsOut);
+      else if (e.type==='kamikaze') e.update(eDt, player, this.walls);
+      else if (e.type==='summoner') e.update(eDt, player, this.walls, pendingSummons, this.enemies);
+      else if (e.type==='miniboss') e.update(eDt, player, this.walls, enemyBulletsOut, pendingSummons, this.enemies, globalParticles);
+      else if (e.type==='dash') e.update(eDt, player, this.walls);
+      else if (e.type==='macaco' || e.type==='bored_ape' || e.type==='ape_nft') e.update(eDt, player, this.walls);
+      else e.update(eDt, player, this.walls);
     }
     // Motosserra sangramento: aplica DoT serragem
     for(const e of this.enemies){
@@ -23375,7 +23784,7 @@ if(e.canDamageHead()){
     ctx.textAlign = 'left';
   }
 
-  drawSetchPosters(ctx){
+  drawSetchPosters(ctx, opts = {}){
     const img = getSpecialIconImage(SETCH_POSTER_IMAGE);
     const ready = !!(img && img.complete && img.naturalWidth > 0);
     const posters = [
@@ -23411,6 +23820,74 @@ if(e.canDamageHead()){
       ctx.fillStyle = 'rgba(255,255,255,0.22)';
       ctx.fillRect(-outer/2 + 2, -outer/2 - 2, 16, 5);
       ctx.fillRect(outer/2 - 18, outer/2 - 3, 16, 5);
+      ctx.restore();
+    }
+    // ===== EFEITO VERDE DE "CÓDIGO CORRIGIDO" =====
+    // Usado na sala da porta quando todas as salas foram limpas: scanlines,
+    // glifos de código sendo corrigidos, varredura e um selo verde.
+    if(opts && opts.codeFix){
+      const t = Date.now()*0.001;
+      const left = CANVAS_W/2 - 300, areaTop = 38, areaW = 600, areaH = 122;
+      ctx.save();
+      // brilho verde atrás dos cartazes
+      const glow = ctx.createRadialGradient(CANVAS_W/2, 104, 26, CANVAS_W/2, 104, 330);
+      glow.addColorStop(0, `rgba(74,222,128,${(0.12 + Math.sin(t*3)*0.03).toFixed(3)})`);
+      glow.addColorStop(0.6, 'rgba(34,197,94,0.05)');
+      glow.addColorStop(1, 'rgba(34,197,94,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(CANVAS_W/2-340, areaTop-16, 680, 200);
+      // scanlines de terminal
+      ctx.globalAlpha = 0.20;
+      ctx.fillStyle = '#4ade80';
+      const off = (t*24) % 7;
+      for(let y = areaTop + off; y < areaTop + areaH; y += 7) ctx.fillRect(left, y, areaW, 1);
+      ctx.globalAlpha = 1;
+      // varredura vertical
+      const sweep = areaTop + ((t*46) % areaH);
+      const sg = ctx.createLinearGradient(0, sweep-12, 0, sweep+12);
+      sg.addColorStop(0,'rgba(74,222,128,0)');
+      sg.addColorStop(0.5,'rgba(134,239,172,0.26)');
+      sg.addColorStop(1,'rgba(74,222,128,0)');
+      ctx.fillStyle = sg;
+      ctx.fillRect(left, sweep-12, areaW, 24);
+      // glifos de código sendo corrigidos
+      const glyphs = ['{','}','</>','01','✓','++','&&',';','()','if','=>','✓'];
+      ctx.font = '7px monospace';
+      ctx.textAlign = 'center';
+      for(let i=0;i<glyphs.length;i++){
+        const gx = left + ((i*97 + Math.sin(t*0.8+i)*22) % areaW);
+        const gy = areaTop + 10 + ((i*31 + t*(9+(i%4)*5)) % (areaH-14));
+        const ga = 0.22 + 0.18*Math.sin(t*2.2 + i*1.7);
+        ctx.fillStyle = `rgba(134,239,172,${Math.max(0.07,ga).toFixed(3)})`;
+        ctx.fillText(glyphs[i], gx, gy);
+      }
+      // cantos verdes "corrigidos" em cada cartaz
+      for(const p of posters){
+        const outer = p.s + 10;
+        const c = 10, x0 = p.x - outer/2, y0 = p.y - outer/2, x1 = p.x + outer/2, y1 = p.y + outer/2;
+        ctx.strokeStyle = `rgba(74,222,128,${(0.55+0.25*Math.sin(t*4)).toFixed(3)})`;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(x0, y0+c); ctx.lineTo(x0, y0); ctx.lineTo(x0+c, y0);
+        ctx.moveTo(x1-c, y0); ctx.lineTo(x1, y0); ctx.lineTo(x1, y0+c);
+        ctx.moveTo(x0, y1-c); ctx.lineTo(x0, y1); ctx.lineTo(x0+c, y1);
+        ctx.moveTo(x1-c, y1); ctx.lineTo(x1, y1); ctx.lineTo(x1, y1-c);
+        ctx.stroke();
+      }
+      // selo de código corrigido
+      const bw2 = 268, bx2 = CANVAS_W/2 - bw2/2, by2 = 174;
+      ctx.fillStyle = 'rgba(4,20,10,0.72)';
+      ctx.fillRect(bx2, by2, bw2, 22);
+      ctx.strokeStyle = 'rgba(74,222,128,0.72)';
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(bx2+0.5, by2+0.5, bw2-1, 21);
+      ctx.font = '8px "Press Start 2P"';
+      ctx.fillStyle = `rgba(134,239,172,${(0.86+0.14*Math.sin(t*4)).toFixed(3)})`;
+      ctx.fillText('✓ CÓDIGO CORRIGIDO', CANVAS_W/2, by2+14);
+      ctx.font = '5px monospace';
+      ctx.fillStyle = 'rgba(190,255,214,0.78)';
+      ctx.fillText('TODAS AS SALAS LIMPAS • SETCH', CANVAS_W/2, by2+30);
+      ctx.textAlign = 'left';
       ctx.restore();
     }
   }
@@ -23472,6 +23949,13 @@ if(e.canDamageHead()){
     const doorRects = this.getDoorRects();
     const locked = !this.isCleared();
     for (const d of doorRects) this.drawDoor(ctx, d, locked, theme);
+
+    // ===================== CARTAZES DA SETCH NA SALA DA PORTA =====================
+    // A sala do portal (a "sala da porta") ganha os cartazes da Setch em TODAS as
+    // fases, mas só depois que a fase inteira estiver limpa de inimigos.
+    if(this.isExit && game && typeof game.isFloorCleared === 'function' && game.isFloorCleared()){
+      this.drawSetchPosters(ctx, { codeFix: true });
+    }
 
     // decoração sala rara (fundo distinto dourado/roxo)
     if(this.isRare){
@@ -24545,6 +25029,26 @@ if(e.canDamageHead()){
 
     // inimigos
     for (const e of this.enemies) e.draw(ctx);
+    // Campo de tempo do Cyber Bug: anel ciano em TODOS os inimigos ao redor
+    const auraP = game && game.player ? game.player : null;
+    if(auraP && (auraP.cyberSlowActive || (auraP.cyberSlowLinger||0) > 0)){
+      const tAura = Date.now()*0.006;
+      for(const e of this.enemies){
+        if(!e || e.dead) continue;
+        if(dist(e.x,e.y,auraP.x,auraP.y) > CYBER_SLOW_AURA_RADIUS) continue;
+        const rr=Math.max(e.w||16,e.h||16)*0.62+4+Math.sin(tAura+e.x*0.02)*1.5;
+        ctx.save();
+        ctx.strokeStyle='rgba(34,211,238,0.55)';
+        ctx.lineWidth=1.4;
+        ctx.setLineDash([5,4]);
+        ctx.lineDashOffset=-tAura*8;
+        ctx.beginPath(); ctx.arc(e.x,e.y,rr,0,Math.PI*2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle='rgba(34,211,238,0.10)';
+        ctx.beginPath(); ctx.arc(e.x,e.y,rr,0,Math.PI*2); ctx.fill();
+        ctx.restore();
+      }
+    }
     // Chapéu de festa para horda
     if(this.isPartyHorde){
       for(const e of this.enemies){
@@ -27483,15 +27987,19 @@ class Game {
     // CYBER SLOW: deriva o fator do frame do especial realmente equipado (troca de item = reset seguro).
     const cyberActive = !!(this.player.equippedSpecial && this.player.equippedSpecial.id==='cyber_slow' && this.player.equippedSpecial.isActive);
     this.player.cyberSlowActive = cyberActive;
+    // Campo de tempo: renova enquanto ativo e mantém os inimigos ao redor lentos
+    // por alguns segundos depois de desligar.
+    if(cyberActive) this.player.cyberSlowLinger = CYBER_SLOW_AURA_LINGER_MS;
+    else this.player.cyberSlowLinger = Math.max(0, (this.player.cyberSlowLinger||0) - dt);
     const enemyTimeScale = cyberActive ? (this.player.equippedSpecial.timeScale || CYBER_SLOW_ENEMY_TIME_SCALE) : 1;
     const projectileTimeScale = cyberActive ? (this.player.equippedSpecial.projectileTimeScale || CYBER_SLOW_PROJECTILE_TIME_SCALE) : 1;
-    // Atualiza aliados (Flecha Stand e Barbosa Ferraz/Borzuk) - duração e IA própria
+    // Atualiza aliados (Flecha Stand, Drone Sentinela e guardião do Barbosa) - duração e IA própria
     for(let i=this.allies.length-1;i>=0;i--){
       const al=this.allies[i];
       const alive=al.update(dt, this.currentRoom.enemies, walls, this.particles, this.bullets);
       if(!alive || al.dead){
         // efeito desaparecimento
-        const col = al.isBorzukAlly ? '#7dd3fc' : '#a78bfa';
+        const col = al.isDroneSentinela ? '#67e8f9' : (al.isBarbosaAlly ? '#60a5fa' : '#a78bfa');
         for(let k=0;k<10;k++) this.particles.push(new Particle(al.x,al.y, randRange(-1.2,1.2), randRange(-1.2,0.4), 280, col, 2));
         this.allies.splice(i,1);
       }
@@ -27843,7 +28351,11 @@ class Game {
               // Tap rápido virou melee
               this.meleeSwings.push(result);
               const dir={x: result.dirX, y: result.dirY};
-              for(let i=0;i<3;i++) this.particles.push(new Particle(this.player.x+dir.x*16, this.player.y+dir.y*16, dir.x*randRange(1.2,2.8)+randRange(-0.8,0.8), dir.y*randRange(1.2,2.8)+randRange(-0.8,0.8), 150, '#facc15', 2.1));
+              for(let i=0;i<7;i++){
+                const ang=Math.atan2(dir.y,dir.x)+randRange(-0.5,0.5);
+                this.particles.push(new Particle(this.player.x+dir.x*15, this.player.y+dir.y*15, Math.cos(ang)*randRange(1.2,3), Math.sin(ang)*randRange(1.2,3), randRange(160,260), i%3===0?'#ffffff':i%2?'#fde68a':'#facc15', randRange(1.6,2.6)));
+              }
+              this.currentRoom.explosions.push({x:this.player.x+dir.x*38, y:this.player.y+dir.y*38, radius:8, life:200, max:200, isBastaoSwing:true});
               this.shake=48;
             }
           }
@@ -28230,8 +28742,9 @@ class Game {
     const enemyNewBullets=[];
     // Nota: enemy bullets serão adicionadas via Room.update -> enemyBulletsOut, mas também precisamos tratar bullets já existentes como enemy
     for(const b of this.bullets){
-      // Cyber Slow desacelera todos os projéteis (inimigos e tiros do jogador).
-      const bulletDt = dt * projectileTimeScale;
+      // Cyber Slow: só os projéteis inimigos entram em câmera lenta. Os tiros do
+      // jogador continuam em velocidade real para o especial não cortar o DPS.
+      const bulletDt = dt * (b.owner === 'enemy' ? projectileTimeScale : 1);
       b.update(bulletDt, walls, this.player);
       // ASPECTO "PRESA NA PAREDE": o projétil cravou -> puxa o jogador até ele
       if(b.anchored){
@@ -28473,6 +28986,8 @@ class Game {
     for(let i=this.meleeSwings.length-1;i>=0;i--){
       const m=this.meleeSwings[i];
       m.x=this.player.x; m.y=this.player.y;
+      // JG: o golpe rápido do bastão também rebate os tiros inimigos no leque.
+      if(m.weaponName==='BASTAO') reflectBastaoBullets(this, m, m.range, m.angle, m.dirX, m.dirY);
       if(!m.update(dt)) this.meleeSwings.splice(i,1);
     }
     for(let i=this.fists.length-1;i>=0;i--){
@@ -29243,6 +29758,29 @@ class Game {
     ctx.restore();
   }
 
+  // Anel do campo de tempo: mostra o alcance da lentidão ao redor do jogador.
+  // Também aparece durante a lentidão residual depois que o especial desliga.
+  drawCyberSlowAura(ctx){
+    const p = this.player;
+    const sp = p && p.equippedSpecial;
+    if(!sp || sp.id!=='cyber_slow') return;
+    if(!p.cyberSlowActive && (p.cyberSlowLinger||0) <= 0) return;
+    const t = performance.now();
+    const pulse = 0.5 + Math.sin(t*0.006)*0.5;
+    const a = p.cyberSlowActive ? 1 : clamp((p.cyberSlowLinger||0)/CYBER_SLOW_AURA_LINGER_MS, 0, 1);
+    ctx.save();
+    ctx.strokeStyle = `rgba(34,211,238,${((0.16+pulse*0.14)*a).toFixed(3)})`;
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([12,10]);
+    ctx.lineDashOffset = -t*0.05;
+    ctx.beginPath(); ctx.arc(p.x, p.y, CYBER_SLOW_AURA_RADIUS, 0, Math.PI*2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = `rgba(240,171,252,${((0.08+pulse*0.08)*a).toFixed(3)})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(p.x, p.y, CYBER_SLOW_AURA_RADIUS-8, 0, Math.PI*2); ctx.stroke();
+    ctx.restore();
+  }
+
   draw(){
     const ctx=this.ctx;
     let _saved=false;
@@ -29419,6 +29957,7 @@ class Game {
       }catch(e){ console.error('Motosserra zone draw error', e); }
       for(const p of this.particles) p.draw(ctx);
       this.drawCyberSlowOverlay(ctx);
+      this.drawCyberSlowAura(ctx);
       // ===================== HUD =====================
       // Tudo cabe dentro da faixa da parede (0..WALL_THICK): não cobre o chão, os itens
       // derrubados e o vão da porta de cima (janela livre HUD_LEFT_MAX..HUD_RIGHT_MIN).
