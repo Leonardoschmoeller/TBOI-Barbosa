@@ -1,6 +1,6 @@
 /* 
-  Cyber Requiem - Roguelike 2D Completo v6.2 - Mineradora Fase 6 + Bored Ape só Fase 6 + Sala Setch 100% Fase5/6 (2x) + Indiana Jones/Chicote + Hacker + Lazer Codificado com mecânica Laser
-  Arquitetura: Game, Player, Chaser, Fugitive, Kamikaze, Summoner, Bullet, Room, MapGenerator, Particle, InputHandler, Item/HealingItem/WeaponItem/FlameTrailItem/SwiftBootsItem/DoubleShotItem, FirePatch, Spike, BoredApe/Macaco (NFT) só Fase6, SetchNPC/SetchCupGame+IndianaJonesNPC/ChicoteWhip, LazerCodificado com LaserChargeSystem/LaserTimingMinigame (barra + zona verde), Lazer (WEAPON_LASER) removida
+  Cyber Requiem - Roguelike 2D Completo v6.2 - Mineradora Fase 6 + Bored Ape só Fase 6 + Sala Setec 100% Fase5/6 (2x) + Indiana Jones/Chicote + Hacker + Lazer Codificado com mecânica Laser
+  Arquitetura: Game, Player, Chaser, Fugitive, Kamikaze, Summoner, Bullet, Room, MapGenerator, Particle, InputHandler, Item/HealingItem/WeaponItem/FlameTrailItem/SwiftBootsItem/DoubleShotItem, FirePatch, Spike, BoredApe/Macaco (NFT) só Fase6, SetecNPC/SetecCupGame+IndianaJonesNPC/ChicoteWhip, LazerCodificado com LaserChargeSystem/LaserTimingMinigame (barra + zona verde), Lazer (WEAPON_LASER) removida
   Controles: WASD mover, Setas atirar 8 direções (segurar = carregar CARREGADA), Shift dash, Q troca com arma no chão próxima (58px, hint, sem duplicação)
   Novidades v5.1: Arma comum CARREGADA com mecânica de carregamento (segurar seta carrega dano 1→4, barra roxa, cancela ao trocar) + Q troca robusta (reutiliza objeto, sem duplicação/desaparecimento/infinito, hint)
   Novidades v5: HUD topo compacto, Q troca com arma no chão (sem duplicação), Tiro Duplo lado a lado (WEAPON_NORMAL melhorada), Metralhadora rara com aquecimento (TEMP bar) e redução velocidade
@@ -71,8 +71,8 @@ function keyTag(key){
 const PLAYER_SIZE = 24;
 const PLAYER_SPEED = 3.0;
 const JL_SPEED_FACTOR = 0.89;       // JL ~11% mais lento que base (um pouco mais lento conforme pedido)
-const KINIGHT_SPEED_FACTOR = 0.86;  // Kinight ~14% mais lento (tanque, armadura pesada)
-const NEUTRO_SPEED_FACTOR = 1.06;   // Neutro ~6% mais rápido (compensa não ter especial/exclusivo)
+const KINIGHT_SPEED_FACTOR = 0.88;  // Kinight ~12% mais lento (tanque, armadura pesada) - menos punitivo
+const NEUTRO_SPEED_FACTOR = 1.08;   // Neutro ~8% mais rápido (compensa não ter especial/exclusivo)
 const DASH_SPEED = 8.5;
 const DASH_DURATION = 160; // ms
 const DASH_COOLDOWN = 900;
@@ -246,7 +246,7 @@ const GATO_ANTIVIRUS_STUN_DURATION = 1800; // ms atordoado após ataque (1.8s, c
 const GATO_ANTIVIRUS_RETURN_COOLDOWN = 2000; // 2 segundos parado perto do jogador após voltar (requisito fixo, configurável)
 const GATO_ANTIVIRUS_ATTACK_RANGE = 22; // distância para encostar e atacar (configurável)
 
-// --- Configurações Barbosa Ferraz (item especial do NPC Borzuk - Sala Setch) ---
+// --- Configurações Barbosa Ferraz (item especial do NPC Borzuk - Sala Setec) ---
 const BARBOSA_FERRAZ_COOLDOWN = 16000;            // recarga para invocar o guardião do Barbosa novamente
 const BARBOSA_FERRAZ_ALLY_DURATION = 12000;       // tempo que o guardião azul do Barbosa permanece em campo
 const BARBOSA_FERRAZ_ALLY_SPEED = 2.9;            // velocidade de perseguição
@@ -263,21 +263,25 @@ const BARBOSA_FERRAZ_HADOUKEN_SPEED = 6.8;        // velocidade do projétil had
 // Sem cooldown tradicional: o custo é a barra de SOBRECARGA. Enquanto ativo,
 // inimigos e projéteis inimigos rodam em câmera lenta; o jogador (e os tiros dele)
 // continua em velocidade real.
-const CYBER_SLOW_ENEMY_TIME_SCALE = 0.02;       // inimigos a 2% da velocidade normal (quase congelados)
-const CYBER_SLOW_PROJECTILE_TIME_SCALE = 0.04;  // projéteis inimigos a 4% da velocidade normal
-// Campo de tempo ao redor do Cyber Bug: todo inimigo dentro do raio fica lento
-// (funciona para qualquer tipo, mesmo os que não têm status de slow próprio) e a
-// lentidão continua por alguns segundos depois de desligar a habilidade.
-const CYBER_SLOW_AURA_RADIUS = 340;             // raio do campo (px)
-const CYBER_SLOW_AURA_FACTOR = 0.25;            // multiplicador extra de velocidade dentro do campo
-const CYBER_SLOW_AURA_LINGER_MS = 4000;         // 4s de lentidão residual após o uso
-const CYBER_SLOW_PLAYER_SPEED_BONUS = 1.18;     // +18% de velocidade para o Cyber Bug durante o efeito
+// Velocidade base dos inimigos durante o efeito. Antes o valor era 2% (praticamente
+// congelado), mas a lentidão só afetava timers/animações e o movimento continuava
+// em velocidade real. Agora o deslocamento também é escalado (ver Room.update).
+const CYBER_SLOW_ENEMY_TIME_SCALE = 0.30;       // inimigos a 30% da velocidade (70% mais lentos)
+const CYBER_SLOW_PROJECTILE_TIME_SCALE = 0.30;  // projéteis inimigos a 30% da velocidade
+// Campo de tempo ao redor do Cyber Bug: todo inimigo dentro do raio fica ainda mais
+// lento (funciona para qualquer tipo) e a lentidão continua por alguns segundos
+// depois de desligar a habilidade.
+const CYBER_SLOW_AURA_RADIUS = 320;             // raio do campo (px)
+const CYBER_SLOW_AURA_FACTOR = 0.60;            // multiplicador extra dentro do campo (30% * 60% = 18%)
+const CYBER_SLOW_AURA_LINGER_MS = 3000;         // 3s de lentidão residual após o uso
+const CYBER_SLOW_PLAYER_SPEED_BONUS = 1.15;     // +15% de velocidade para o Cyber Bug durante o efeito
+const CYBER_SLOW_BOSS_RESISTANCE = 0.45;        // bosses sofrem só 45% da lentidão (não trivializa lutas)
 const CYBER_SLOW_TIME_SCALE = CYBER_SLOW_ENEMY_TIME_SCALE;
 const CYBER_OVERLOAD_MAX = 100;              // barra cheia
-const CYBER_OVERLOAD_RISE_PER_SEC = 12;      // +12% por segundo ativo (~8,3s até sobrecarregar)
-const CYBER_OVERLOAD_DECAY_PER_SEC = 22;     // -22% por segundo depois do descanso
-const CYBER_OVERLOAD_KILL_DECAY = 15;        // -15% por inimigo derrotado
-const CYBER_OVERLOAD_IDLE_GATE = 30000;      // 30s sem reativar antes da barra começar a baixar
+const CYBER_OVERLOAD_RISE_PER_SEC = 14;      // +14% por segundo ativo (~7,1s até sobrecarregar)
+const CYBER_OVERLOAD_DECAY_PER_SEC = 20;     // -20% por segundo depois do descanso
+const CYBER_OVERLOAD_KILL_DECAY = 10;        // -10% por inimigo derrotado
+const CYBER_OVERLOAD_IDLE_GATE = 20000;      // 20s sem reativar antes da barra começar a baixar
 const CYBER_OVERLOAD_HEART_DAMAGE = 2;       // 1 coração (HP é medido em meias-corações)
 
 // --- Drone Sentinela (item especial incomum) ---
@@ -739,7 +743,7 @@ class StandAlly {
 }
 
 // ===================== GUARDIÃO DO BARBOSA (BARBOSA FERRAZ) =====================
-// Invocado pelo item especial entregue pelo NPC Borzuk na Sala Setch.
+// Invocado pelo item especial entregue pelo NPC Borzuk na Sala Setec.
 // Personagem azul com a logo do Barbosa Ferraz estampada no peito: persegue
 // inimigos, desfere socos de perto e dispara hadoukens de energia à distância.
 class BarbosaAlly {
@@ -1915,7 +1919,7 @@ class GiroAureo extends SpecialItem {
   }
 }
 
-// ===================== BARBOSA FERRAZ (PRESENTE DO BORZUK - SALA SETCH) =====================
+// ===================== BARBOSA FERRAZ (PRESENTE DO BORZUK - SALA SETEC) =====================
 // Item especial exclusivo entregue pelo NPC Borzuk. Invoca um guardião azul
 // com a logo do Barbosa Ferraz no peito, que luta com socos e hadoukens.
 class BarbosaFerraz extends SpecialItem {
@@ -1993,8 +1997,8 @@ class BarbosaFerraz extends SpecialItem {
 //  jogador seguem em velocidade real para o especial não cortar o próprio DPS).
 // Sem cooldown: E liga/desliga. A barra de sobrecarga sobe enquanto ativo;
 // se chegar a 100%, o corpo paga 1 coração e o sistema desliga.
-// Depois de desligar, a barra fica travada por 30s sem reativar; só então começa
-// a esfriar. Reativar antes disso reinicia a contagem dos 30s.
+// Depois de desligar, a barra fica travada por 20s sem reativar; só então começa
+// a esfriar. Reativar antes disso reinicia a contagem dos 20s.
 // Ativar também solta um pulso de tempo que apaga os projéteis inimigos próximos
 // — a entrada no slow motion tem impacto, sem paralisar ninguém.
 class CyberSlow extends SpecialItem {
@@ -2006,7 +2010,7 @@ class CyberSlow extends SpecialItem {
       cooldown: 0,
       duration: 0,
       icon: '⏣',
-      description: 'Câmera lenta extrema: inimigos a 2% e projéteis inimigos a 4% • campo de tempo deixa TODOS os inimigos ao redor lentos (e por 4s após desligar) • corpo 18% mais rápido durante o efeito • seus tiros em velocidade real • pulso de tempo apaga tiros próximos • cada abate alivia 15% da sobrecarga • 100% custa 1 coração',
+      description: 'Câmera lenta: inimigos a 30% e projéteis inimigos a 30% da velocidade • campo de tempo deixa TODOS os inimigos ao redor mais lentos (18% da velocidade, e por 3s após desligar) • chefes resistem 45% do efeito • corpo 15% mais rápido durante o efeito • seus tiros em velocidade real • pulso de tempo apaga tiros próximos • cada abate alivia 10% da sobrecarga • 100% custa 1 coração',
       color: '#22d3ee'
     });
     this.overload = 0;          // 0..100
@@ -2066,7 +2070,7 @@ class CyberSlow extends SpecialItem {
     player.cyberSlowActive = true;
     player.cyberSlowLinger = CYBER_SLOW_AURA_LINGER_MS;
     if(!player.cyberSlowTrail) player.cyberSlowTrail = [];
-    if(game && game.showToast) game.showToast('⏣ CYBER SLOW ATIVO — pulso de tempo! inimigos a 2% • projéteis inimigos a 4% [E desliga]', 1900);
+    if(game && game.showToast) game.showToast('⏣ CYBER SLOW ATIVO — pulso de tempo! inimigos a 30% • no campo a 18% [E desliga]', 1900);
   }
   onActivated(player, game){
     if(!game) return;
@@ -2122,8 +2126,8 @@ class CyberSlow extends SpecialItem {
     }
     game.shake = Math.max(game.shake||0, 35);
     if(game.showToast){
-      if(reason==='overload') game.showToast('⏣ SOBRECARGA! -1 coração • espere 30s sem usar para a barra baixar', 2000);
-      else if(reason==='manual') game.showToast(`⏣ Cyber Slow desligado • sobrecarga ${Math.round(this.overload)}% • descanso 30s`, 1500);
+      if(reason==='overload') game.showToast('⏣ SOBRECARGA! -1 coração • espere 20s sem usar para a barra baixar', 2000);
+      else if(reason==='manual') game.showToast(`⏣ Cyber Slow desligado • sobrecarga ${Math.round(this.overload)}% • descanso 20s`, 1500);
     }
   }
   onActiveTick(dt, player, game){
@@ -2365,7 +2369,7 @@ const RARITY = {
 const ASPECT_BULLET_WEAPONS = ['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA'];
 const ASPECT_FANTASMA_WEAPONS = [...ASPECT_BULLET_WEAPONS, 'RAIO_MATEMATICO'];
 // Todas as armas do jogo (aspectos que não dependem de projétil: escudo, gato, io-io)
-const ASPECT_ALL_WEAPONS = ['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS','RAIO_MATEMATICO','CHICOTE'];
+const ASPECT_ALL_WEAPONS = ['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS','RAIO_MATEMATICO','CHICOTE','FIREWALL'];
 const ASPECT_CATEGORY = 'ASPECT';
 // Valores balanceados facilmente editáveis por raridade/arma (requisito balanceamento)
 const UPGRADE_VALUES = {
@@ -2750,42 +2754,58 @@ const UPGRADE_DEFS = [
       w.ricochet = (WEAPON_BOLAS.ricochet||0) + UPGRADE_VALUES.BOLAS_MUITO_RARA_RICOCHET;
   }},
 
+  // ===== LANÇA-CHAMAS FIREWALL - melhorias exclusivas =====
+  { id:'firewall_alcance_comum', weapon:'FIREWALL', compatible:['FIREWALL'], rarity:'COMUM', name:'Bico Longo', desc:'Alcance do jato +15% / +30% / +50%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.ALCANCE, apply:(w, level)=>{
+      const v=[0.15,0.30,0.50][level-1]||0;
+      w.range = Math.round(WEAPON_FIREWALL.range * (1+v));
+  }},
+  { id:'firewall_duracao_incomum', weapon:'FIREWALL', compatible:['FIREWALL'], rarity:'INCOMUM', name:'Combustível Pesado', desc:'Fogo no chão dura +30% / +60% / +90% e fica maior', maxLevel:3, apply:(w, level)=>{
+      const v=[0.30,0.60,0.90][level-1]||0;
+      w.patchDuration = Math.round(WEAPON_FIREWALL.patchDuration * (1+v));
+      w.patchRadius = WEAPON_FIREWALL.patchRadius * (1+v*0.25);
+  }},
+  { id:'firewall_dano_rara', weapon:'FIREWALL', compatible:['FIREWALL'], rarity:'RARA', name:'Núcleo Incandescente', desc:'+25% dano no jato e nas poças • +2 poças por jato', apply:(w)=>{
+      w.damage = (w.damage||WEAPON_FIREWALL.damage) * 1.25;
+      w.patchDamage = (w.patchDamage||WEAPON_FIREWALL.patchDamage) * 1.25;
+      w.patches = (w.patches||WEAPON_FIREWALL.patches) + 2;
+      w.maxPatches = (w.maxPatches||WEAPON_FIREWALL.maxPatches) + 4;
+  }},
   // ===== NOVO SISTEMA COMUM/INCOMUM COM NÍVEIS (até 3) - modular =====
   // Alcance aumentado - todas as armas
-  { id:'alcance_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS'], rarity:'COMUM', name:'Mira Alongada', desc:'Alcance +15% / +30% / +50%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.ALCANCE, apply:(w, level)=>{
+  { id:'alcance_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS','FIREWALL'], rarity:'COMUM', name:'Mira Alongada', desc:'Alcance +15% / +30% / +50%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.ALCANCE, apply:(w, level)=>{
       const v = UPGRADE_LEVEL_VALUES.ALCANCE[level-1] || 0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS,FIREWALL:WEAPON_FIREWALL};
       const base = baseMap[w.name] ? baseMap[w.name].range : (w.range||60);
       // aplica nível atual (não cumulativo, sobrescreve)
       const factor = 1 + v;
       w.range = Math.min(base * factor, base * UPGRADE_CAPS.MAX_RANGE_FACTOR);
   }},
   // Recarga rápida - todas
-  { id:'recarga_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS'], rarity:'COMUM', name:'Recarga Ágil', desc:'Recarga -10% / -20% / -30%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.RECARGA, apply:(w, level)=>{
+  { id:'recarga_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS','FIREWALL'], rarity:'COMUM', name:'Recarga Ágil', desc:'Recarga -10% / -20% / -30%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.RECARGA, apply:(w, level)=>{
       const v = UPGRADE_LEVEL_VALUES.RECARGA[level-1] || 0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS,FIREWALL:WEAPON_FIREWALL};
       const base = baseMap[w.name] ? baseMap[w.name].cooldown : (w.cooldown||600);
       w.cooldown = Math.max(Math.round(base * (1 - v)), Math.round(base * UPGRADE_CAPS.MIN_COOLDOWN_FACTOR));
   }},
   // Cadência aumentada - todas (similar recarga, mas para cadência)
-  { id:'cadencia_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS'], rarity:'COMUM', name:'Gatilho Veloz', desc:'Cadência -8% / -15% / -25%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.CADENCIA, apply:(w, level)=>{
+  { id:'cadencia_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS','FIREWALL'], rarity:'COMUM', name:'Gatilho Veloz', desc:'Cadência -8% / -15% / -25%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.CADENCIA, apply:(w, level)=>{
       const v = UPGRADE_LEVEL_VALUES.CADENCIA[level-1] || 0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS,FIREWALL:WEAPON_FIREWALL};
       const base = baseMap[w.name] ? baseMap[w.name].cooldown : (w.cooldown||600);
       // cadência é mesmo que recarga mas com valores menores
       w.cooldown = Math.max(Math.round(base * (1 - v)), Math.round(base * UPGRADE_CAPS.MIN_COOLDOWN_FACTOR));
   }},
   // Dano aumentado - todas
-  { id:'dano_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS'], rarity:'COMUM', name:'Munição Potente', desc:'Dano +15% / +30% / +50%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.DANO, apply:(w, level)=>{
+  { id:'dano_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS','FIREWALL'], rarity:'COMUM', name:'Munição Potente', desc:'Dano +15% / +30% / +50%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.DANO, apply:(w, level)=>{
       const v = UPGRADE_LEVEL_VALUES.DANO[level-1] || 0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS,FIREWALL:WEAPON_FIREWALL};
       const base = baseMap[w.name] ? baseMap[w.name].damage : (w.damage||1.5);
       w.damage = Math.min(base * (1 + v), base * UPGRADE_CAPS.MAX_DANO_FACTOR);
   }},
   // Projétil mais rápido - todas
-  { id:'velocidade_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS'], rarity:'COMUM', name:'Propulsor Leve', desc:'Vel. projétil +10% / +20% / +35%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.VELOCIDADE, apply:(w, level)=>{
+  { id:'velocidade_comum', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS','FIREWALL'], rarity:'COMUM', name:'Propulsor Leve', desc:'Vel. projétil +10% / +20% / +35%', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.VELOCIDADE, apply:(w, level)=>{
       const v = UPGRADE_LEVEL_VALUES.VELOCIDADE[level-1] || 0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS,FIREWALL:WEAPON_FIREWALL};
       const base = baseMap[w.name] ? baseMap[w.name].bulletSpeed : (w.bulletSpeed||8);
       w.bulletSpeed = Math.min(base * (1 + v), base * UPGRADE_CAPS.MAX_BULLET_SPEED_FACTOR);
   }},
@@ -2877,26 +2897,26 @@ const UPGRADE_DEFS = [
       w.pochitaGlow='rgba(255,180,60,0.38)';
   }},
   // ===== NOVAS MELHORIAS GERAIS (balanceadas, todas as armas) =====
-  { id:'geral_comum_poder', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS'], rarity:'COMUM', name:'Núcleo de Poder', desc:'+12% dano (todas)', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.DANO, apply:(w, level)=>{
+  { id:'geral_comum_poder', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS','FIREWALL'], rarity:'COMUM', name:'Núcleo de Poder', desc:'+12% dano (todas)', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.DANO, apply:(w, level)=>{
       const v=[0.12,0.24,0.36][level-1]||0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS,FIREWALL:WEAPON_FIREWALL};
       const base=baseMap[w.name]?baseMap[w.name].damage:(w.damage||1);
       w.damage=Math.min(base*(1+v), base*UPGRADE_CAPS.MAX_DANO_FACTOR);
   }},
-  { id:'geral_comum_alcance', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS'], rarity:'COMUM', name:'Mira Estabilizadora', desc:'+15% alcance (todas)', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.ALCANCE, apply:(w, level)=>{
+  { id:'geral_comum_alcance', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS','FIREWALL'], rarity:'COMUM', name:'Mira Estabilizadora', desc:'+15% alcance (todas)', maxLevel:3, levelValues: UPGRADE_LEVEL_VALUES.ALCANCE, apply:(w, level)=>{
       const v=UPGRADE_LEVEL_VALUES.ALCANCE[level-1]||0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS,FIREWALL:WEAPON_FIREWALL};
       const base=baseMap[w.name]?baseMap[w.name].range:(w.range||60);
       w.range=Math.min(base*(1+v), base*UPGRADE_CAPS.MAX_RANGE_FACTOR);
   }},
-  { id:'geral_incomum_recarga', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS'], rarity:'INCOMUM', name:'Recarga Quântica', desc:'-15% recarga (todas)', maxLevel:3, levelValues: [0.15,0.28,0.40], apply:(w, level)=>{
+  { id:'geral_incomum_recarga', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS','FIREWALL'], rarity:'INCOMUM', name:'Recarga Quântica', desc:'-15% recarga (todas)', maxLevel:3, levelValues: [0.15,0.28,0.40], apply:(w, level)=>{
       const v=[0.15,0.28,0.40][level-1]||0;
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS};
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS,FIREWALL:WEAPON_FIREWALL};
       const base=baseMap[w.name]?baseMap[w.name].cooldown:(w.cooldown||600);
       w.cooldown=Math.max(Math.round(base*(1-v)), Math.round(base*UPGRADE_CAPS.MIN_COOLDOWN_FACTOR));
   }},
-  { id:'geral_rara_critico', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS'], rarity:'RARA', name:'Sobrecarga Prismática', desc:'+28% dano raro (todas)', apply:(w)=>{
-      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS};
+  { id:'geral_rara_critico', weapon:'ALL', compatible:['NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','MOTOSSERRA','BASTAO','BOLAS','FIREWALL'], rarity:'RARA', name:'Sobrecarga Prismática', desc:'+28% dano raro (todas)', apply:(w)=>{
+      const baseMap={NORMAL:WEAPON_NORMAL,SHOTGUN:WEAPON_SHOTGUN,RAIO:WEAPON_RAIO,METRALHADORA:WEAPON_METRALHADORA,CARREGADA:WEAPON_CARREGADA,BAZUCA:WEAPON_BAZUCA,ESPADA:WEAPON_ESPADA,LUVA:WEAPON_LUVA,MOTOSSERRA:WEAPON_MOTOSSERRA,BASTAO:WEAPON_BASTAO,RAIO_MATEMATICO:WEAPON_RAIO_MATEMATICO, CHICOTE:WEAPON_CHICOTE, BOLAS:WEAPON_BOLAS,FIREWALL:WEAPON_FIREWALL};
       const base=baseMap[w.name]?baseMap[w.name].damage:(w.damage||1);
       w.damage=Math.min(w.damage*1.28, base*UPGRADE_CAPS.MAX_DANO_FACTOR);
   }},
@@ -3391,33 +3411,33 @@ const PAINEL_CODES = {
 };
 const PAINEL_CODE_LIST = Object.keys(PAINEL_CODES);
 
-// ===================== SALA SETCH (2x TAMANHO) =====================
-const SETCH_POSTER_IMAGE = 'img/Gemini_Generated_Image_1dg0en1dg0en1dg0.jpg';
-const SETCH_ROOM_CHANCE = 1.0; // 100% por andar quando elegível (Fase 5 ou 6) - requisito: 100% ou na fase 5 ou na fase 6
-const SETCH_ROOM_FLOORS = [5,6]; // só aparece em Fase 5 ou 6
-const SETCH_ROOM_MIN_DISTANCE = 2; // distância mínima do start
-const SETCH_CUP_COUNT = 3;
-const SETCH_SHUFFLE_MOVES = 7; // número de trocas de copos (fallback; por rodada usa SETCH_ROUND_CONFIG)
-const SETCH_SHUFFLE_SPEED = 420; // ms por troca (fallback)
-const SETCH_SHOW_BALL_TIME = 900; // ms mostra bolinha antes de esconder (fallback)
-const SETCH_NPC_SIZE_W = 26;
-const SETCH_NPC_SIZE_H = 32;
-const SETCH_REWARD_UPGRADE_CHANCE = 0.50; // 50% upgrade, 50% vida cibernética
+// ===================== SALA SETEC (2x TAMANHO) =====================
+const SETEC_POSTER_IMAGE = 'img/Gemini_Generated_Image_1dg0en1dg0en1dg0.jpg';
+const SETEC_ROOM_CHANCE = 1.0; // 100% por andar quando elegível (Fase 5 ou 6) - requisito: 100% ou na fase 5 ou na fase 6
+const SETEC_ROOM_FLOORS = [5,6]; // só aparece em Fase 5 ou 6
+const SETEC_ROOM_MIN_DISTANCE = 2; // distância mínima do start
+const SETEC_CUP_COUNT = 3;
+const SETEC_SHUFFLE_MOVES = 7; // número de trocas de copos (fallback; por rodada usa SETEC_ROUND_CONFIG)
+const SETEC_SHUFFLE_SPEED = 420; // ms por troca (fallback)
+const SETEC_SHOW_BALL_TIME = 900; // ms mostra bolinha antes de esconder (fallback)
+const SETEC_NPC_SIZE_W = 26;
+const SETEC_NPC_SIZE_H = 32;
+const SETEC_REWARD_UPGRADE_CHANCE = 0.50; // 50% upgrade, 50% vida cibernética
 // --- Interação com a mesa (novo) ---
-const SETCH_TABLE_CX_RATIO = 0.5;      // centro X da mesa (fracção do canvas)
-const SETCH_CUP_SPACING = 88;          // distância entre copos
-const SETCH_CUP_PICK_RANGE = 70;       // distância para o [E] "escolher pelo copo mais perto"
-const SETCH_TABLE_KEEP_RANGE = 230;    // além disso o jogador está "longe" (Setch cobra a presença)
-const SETCH_NAG_COOLDOWN = 2600;       // ms entre os avisos de "fica perto"
-const SETCH_ARC_FX = 620;              // duração do arco visual da troca (ms)
-const SETCH_GHOST_HAND_FX = 520;       // duração das mãos fantasma sobre os copos (ms)
-// ===== DISQUETE DA VIDA - também ganhävel no Jogo do Copinho da Sala Setch =====
+const SETEC_TABLE_CX_RATIO = 0.5;      // centro X da mesa (fracção do canvas)
+const SETEC_CUP_SPACING = 88;          // distância entre copos
+const SETEC_CUP_PICK_RANGE = 70;       // distância para o [E] "escolher pelo copo mais perto"
+const SETEC_TABLE_KEEP_RANGE = 230;    // além disso o jogador está "longe" (Setec cobra a presença)
+const SETEC_NAG_COOLDOWN = 2600;       // ms entre os avisos de "fica perto"
+const SETEC_ARC_FX = 620;              // duração do arco visual da troca (ms)
+const SETEC_GHOST_HAND_FX = 520;       // duração das mãos fantasma sobre os copos (ms)
+// ===== DISQUETE DA VIDA - também ganhävel no Jogo do Copinho da Sala Setec =====
 // Rolagem de 3 resultados (não 2): disquete é o prize mais raro dos três.
 //   [0, D)                            -> 'disquete'  (continue)
 //   [D, D+U)                          -> 'upgrade'
 //   [D+U, 1)                          -> 'cyber'     (Vida Cibernética)
-const SETCH_REWARD_DISQUETE_CHANCE = 0.20; // 20% de chance de sair o Disquete da Vida
-const SETCH_INTERACT_RANGE = 64;
+const SETEC_REWARD_DISQUETE_CHANCE = 0.20; // 20% de chance de sair o Disquete da Vida
+const SETEC_INTERACT_RANGE = 64;
 // ===== JOGO DO COPINHO - rodadas, escalada de dificuldade e prêmios =====
 // O minigame virou uma partida de 3 rodadas: cada rodada embaralha mais e mais rápido.
 // Só a vitória na RODADA FINAL libera as portas e entrega o prêmio grande.
@@ -3426,19 +3446,19 @@ const SETCH_INTERACT_RANGE = 64;
 //   speed      -> ms entre trocas
 //   show       -> ms mostrando a bolinha antes de esconder (sobe nas rodadas = tempo de memória)
 //   choose     -> ms para escolher
-//   double     -> chance da troca vir em par (2 trocas coladas: a "trapaça" do Setch)
+//   double     -> chance da troca vir em par (2 trocas coladas: a "trapaça" do Setec)
 //   ballMix    -> chance de a troca envolver a bolinha (evita sequências paradas/trapaceiras)
 //   label      -> nome da rodada no HUD
-const SETCH_ROUNDS = 3;
-const SETCH_ROUND_CONFIG = [
+const SETEC_ROUNDS = 3;
+const SETEC_ROUND_CONFIG = [
   { moves: 5,  speed: 470, show: 1150, choose: 9000, double: 0.00, ballMix: 0.55, label: 'AQUECIMENTO' },
   { moves: 8,  speed: 400, show: 950,  choose: 7400, double: 0.28, ballMix: 0.66, label: 'EMBARALHANDO' },
   { moves: 12, speed: 315, show: 720,  choose: 6000, double: 0.52, ballMix: 0.80, label: 'FINAL' },
 ];
-const SETCH_FAST_CHOOSE_TIME = 2600;   // escolher até aqui = bônus de resposta rápida
-const SETCH_STREAK_DISQUETE_BONUS = 0.18; // +18% de chance de Disquete se acertar 2+ rodadas seguidas
-const SETCH_ROUND_WIN_HEAL = 1;         // acerto no meio da partida cura 1 coração
-const SETCH_STREAK_HEAL_BONUS = 1;      // +1 coração extra por rodada vencida com sequência >= 2
+const SETEC_FAST_CHOOSE_TIME = 2600;   // escolher até aqui = bônus de resposta rápida
+const SETEC_STREAK_DISQUETE_BONUS = 0.18; // +18% de chance de Disquete se acertar 2+ rodadas seguidas
+const SETEC_ROUND_WIN_HEAL = 1;         // acerto no meio da partida cura 1 coração
+const SETEC_STREAK_HEAL_BONUS = 1;      // +1 coração extra por rodada vencida com sequência >= 2
 
 // --- Fase 4: Miniboss (configurável) ---
 const MINIBOSS_ROOM_CHANCE = 0.35; // 35% de chance de gerar sala miniboss na Fase 4 (fácil alterar)
@@ -3476,6 +3496,24 @@ const XSHOOTER_BULLET_SPEED = 3.4;
 const XSHOOTER_BULLET_RANGE = 380;
 const XSHOOTER_BULLET_SIZE = 6;
 const XSHOOTER_BULLET_DAMAGE = 1;
+
+// ===================== CORROMPIDO (FASES 2-6) =====================
+// Anda aleatoriamente, NÃO atira. Deixa um rastro de corrupção que causa
+// meio coração (1 HP) ao jogador e, quando fica perto, faz uma investida.
+const CORRUPTED_SIZE = 30;
+const CORRUPTED_HP = 4;
+const CORRUPTED_WANDER_SPEED = 1.05;
+const CORRUPTED_CHARGE_DETECT = 165;
+const CORRUPTED_CHARGE_PREP = 420;        // ms parado antes da investida
+const CORRUPTED_CHARGE_SPEED = 5.6;
+const CORRUPTED_CHARGE_DURATION = 360;    // ms de investida
+const CORRUPTED_CHARGE_COOLDOWN = 1500;   // ms entre investidas
+const CORRUPTED_TRAIL_INTERVAL = 150;     // ms entre nós do rastro andando
+const CORRUPTED_TRAIL_CHARGE_INTERVAL = 55; // mais denso durante a investida
+const CORRUPTED_TRAIL_LIFE = 4200;        // ms que o rastro permanece no chão
+const CORRUPTED_TRAIL_RADIUS = 12;
+const CORRUPTED_TRAIL_DAMAGE = 1;         // 1 HP = meio coração
+const CORRUPTED_SPAWN_FLOORS = [2,3,4,5,6];
 
 // ===================== VARIAÇÕES DE INIMIGOS (VIDA / DANO) =====================
 // Sistema leve e configurável: ao spawnar, inimigos comuns têm chance de virar variação.
@@ -4538,7 +4576,7 @@ const WEAPON_BASTAO = {
 };
 // Constantes balanceáveis JG
 const JG_SPEED_WITH_BASTAO = 4.45; // muito rápido com bastão (PLAYER_SPEED 3.0 base + bonus)
-const JG_SPEED_WITHOUT_BASTAO = 2.05; // mais lento sem bastão
+const JG_SPEED_WITHOUT_BASTAO = 2.30; // mais lento sem bastão (menos punitivo durante o arremesso)
 const JG_BASTAO_CHARGE_TIME = 520; // ms para carregar arremesso (segurar)
 const JG_BASTAO_RETURN_SPEED = 10.5;
 const JG_BASTAO_DAMAGE = 2.8;
@@ -4622,6 +4660,38 @@ const GIRO_AUREO = {
 // - Tremor refinado (menos caótico) e recuo sutil para feedback sem perder controle
 // - Centro do retângulo causa +25% dano crítico (precisão recompensada)
 // - Barra: 6 hits = cura, preenche só com acertos precisos
+// ===================== LANÇA-CHAMAS FIREWALL (COMUM - FASES 3 E 6) =====================
+// Curto alcance, sem projétil: jato em cone que queima na hora e deixa poças de
+// fogo no chão (reutiliza FirePatch / room.fires, o mesmo sistema do Rastro de Fogo).
+// DPS alvo ~4.0: jato rápido + dano contínuo das poças. Não machuca o jogador.
+const WEAPON_FIREWALL = {
+  name: 'FIREWALL',
+  displayName: 'LANÇA-CHAMAS FIREWALL',
+  cooldown: 120,          // cadência do jato
+  range: 132,             // alcance curto do cone
+  damage: 0.6,            // dano imediato por jato em quem estiver no cone
+  count: 1,
+  spread: 0.46,           // abertura total do cone (radianos)
+  coneAngle: 0.46,        // metade do ângulo usado na checagem
+  bulletSpeed: 0,
+  bulletSize: 0,
+  color: '#ff6a00',
+  glow: 'rgba(255,106,0,0.35)',
+  pierce: false,
+  isFirewall: true,
+  patches: 3,             // poças criadas por jato
+  patchStart: 26,         // distância da primeira poça
+  patchStep: 34,          // espaçamento entre poças
+  patchRadius: 20,
+  patchDamage: 0.75,      // dano por tick de cada poça
+  patchDuration: 1900,    // ms que a poça fica no chão
+  patchTick: 320,         // ms entre ticks
+  maxPatches: 14          // limite por sala (performance)
+};
+const FIREWALL_SPAWN_NORMAL = 0.055;   // 5.5% por sala normal
+const FIREWALL_SPAWN_TREASURE = 0.11;  // 11% em sala de tesouro
+const FIREWALL_SPAWN_FLOORS = [3,6];   // identidade das fases 3 e 6 (chance dobrada lá)
+
 const WEAPON_MOTOSSERRA = {
   name: 'MOTOSSERRA',
   cooldown: 0, // sem cooldown - dano por tick
@@ -4971,7 +5041,7 @@ const CHARACTER_DEFS = {
     starterSpecial: null,
     allowedWeapons: ['ESPADA'], // só espada, não pode equipar outras
     exclusive: 'cavaleiro',
-    description: '3 ♥ + 1 ♥ Cibernético (+2 HP = 4 corações no total) • Só Espada • Tanque leal • 14% mais lento (armadura pesada)'
+    description: '3 ♥ + 1 ♥ Cibernético (+2 HP = 4 corações no total) • Só Espada • Tanque leal • 12% mais lento (armadura pesada)'
   },
   jl: {
     id: 'jl',
@@ -5001,7 +5071,7 @@ const CHARACTER_DEFS = {
     starterSpecial: null, // sem habilidade exclusiva - puro equilíbrio
     allowedWeapons: null, // pode usar qualquer arma
     exclusive: 'neutro',
-    description: '3 ♥ • Pistola padrão • +6% velocidade • Sem exclusivos - equilíbrio puro, ideal para iniciantes'
+    description: '3 ♥ • Pistola padrão • +8% velocidade • Sem exclusivos - equilíbrio puro, ideal para iniciantes'
   },
   oli: {
     id: 'oli',
@@ -5076,7 +5146,7 @@ const CHARACTER_DEFS = {
     starterSpecial: 'cyber_slow', // especial exclusivo - Sandevistan improvisado
     allowedWeapons: null, // pode usar qualquer arma, foco é o Cyber Slow
     exclusive: 'cyber_slow',
-    description: '3 ♥ • Humano cibernético com capuz, viseira e implantes neon • E: Cyber Slow - inimigos a 2% e projéteis inimigos a 4% da velocidade • Campo de tempo (340px) deixa todos os inimigos ao redor lentos, e por 4s após desligar • Corpo 18% mais rápido durante o efeito • Seus tiros seguem em velocidade real • Pulso de tempo (210px) apaga tiros próximos • Cada abate alivia 15% da sobrecarga • A barra sobe 12%/s (~8s): a 100% custa 1 coração • Após desligar, aguarde 30s sem reativar para a barra começar a baixar, depois esfria 22%/s'
+    description: '3 ♥ • Humano cibernético com capuz, viseira e implantes neon • E: Cyber Slow - inimigos e projéteis inimigos a 30% da velocidade • Campo de tempo (320px) deixa todos os inimigos ao redor a 18% da velocidade, e por 3s após desligar • Chefes resistem 45% do efeito • Corpo 15% mais rápido durante o efeito • Seus tiros seguem em velocidade real • Pulso de tempo (210px) apaga tiros próximos • Cada abate alivia 10% da sobrecarga • A barra sobe 14%/s (~7s): a 100% custa 1 coração • Após desligar, aguarde 20s sem reativar para a barra começar a baixar, depois esfria 20%/s'
   }
 };
 const CHARACTER_IDS = Object.keys(CHARACTER_DEFS);
@@ -5209,7 +5279,7 @@ function applyCharacterToPlayer(player, characterId){
   player.cyberHp = 0;
   player.maxCyberHp = CYBER_HEART_MAX_CYBER;
   // Arma inicial - inclui RAIO_MATEMATICO exclusivo Dev
-  const wMap = { NORMAL: WEAPON_NORMAL, SHOTGUN: WEAPON_SHOTGUN, RAIO: WEAPON_RAIO, METRALHADORA: WEAPON_METRALHADORA, CARREGADA: WEAPON_CARREGADA, BAZUCA: WEAPON_BAZUCA, ESPADA: WEAPON_ESPADA, LUVA: WEAPON_LUVA, BASTAO: WEAPON_BASTAO, MOTOSSERRA: WEAPON_MOTOSSERRA, RAIO_MATEMATICO: WEAPON_RAIO_MATEMATICO, CHICOTE: WEAPON_CHICOTE, BOLAS: WEAPON_BOLAS };
+  const wMap = { NORMAL: WEAPON_NORMAL, SHOTGUN: WEAPON_SHOTGUN, RAIO: WEAPON_RAIO, METRALHADORA: WEAPON_METRALHADORA, CARREGADA: WEAPON_CARREGADA, BAZUCA: WEAPON_BAZUCA, ESPADA: WEAPON_ESPADA, LUVA: WEAPON_LUVA, BASTAO: WEAPON_BASTAO, MOTOSSERRA: WEAPON_MOTOSSERRA, RAIO_MATEMATICO: WEAPON_RAIO_MATEMATICO, CHICOTE: WEAPON_CHICOTE, BOLAS: WEAPON_BOLAS, FIREWALL: WEAPON_FIREWALL };
   // limpa upgrades anteriores? Mantém? No startGame já reseta, mas aqui reconstrói com upgrades se houver
   // Starter weapon com upgrades vinculados (se já houver upgrades coletados, buildUpgraded)
   if(def.starterWeapon && wMap[def.starterWeapon]){
@@ -5293,6 +5363,7 @@ function playWeaponSound(type, heavy=false){
     else if(type==='RAIO') freq=720;
     else if(type==='RAIO_MATEMATICO') freq = heavy? 480 : 660;
     else if(type==='BAZUCA') freq=90;
+    else if(type==='FIREWALL') freq=300;
     o.frequency.value=freq;
     g.gain.value=0.09;
     o.connect(g); g.connect(ctx.destination);
@@ -5520,6 +5591,13 @@ function shadeColor(hex, amt){
   else { r*=(1+amt); g*=(1+amt); b*=(1+amt); }
   const h=v=>clamp(Math.round(v),0,255).toString(16).padStart(2,'0');
   return `#${h(r)}${h(g)}${h(b)}`;
+}
+// Hash estável (mesma posição = mesmo valor) usado nas decorações de piso por fase.
+// Evita Math.random() por frame: o chão não "pisca" nem treme enquanto o jogador anda.
+function themeHash(x, y, seed=0){
+  let h = (Math.floor(x)*374761 + Math.floor(y)*668265 + seed*144269) | 0;
+  h = (h ^ (h >> 13)) * 1274126177;
+  return ((h ^ (h >> 16)) >>> 0) / 4294967295;
 }
 // Encaixa texto numa largura máxima: reduz a fonte e, se preciso, corta com reticências
 function fitText(ctx, text, maxW, font=6, family='"Press Start 2P"', minFont=3.5){
@@ -6083,13 +6161,15 @@ class StarParticle {
 
 // ===================== FIRE PATCH (Rastro de Fogo) =====================
 class FirePatch {
-  constructor(x, y) {
+  constructor(x, y, opts = {}) {
     this.x = x; this.y = y;
-    this.radius = fireRadius;
-    this.damage = fireDamage;
-    this.duration = fireDuration;
-    this.tickRate = fireTickRate;
-    this.life = fireDuration;
+    // opções permitem que armas (Lança-chamas Firewall) criem poças próprias
+    this.radius = opts.radius != null ? opts.radius : fireRadius;
+    this.damage = opts.damage != null ? opts.damage : fireDamage;
+    this.duration = opts.duration != null ? opts.duration : fireDuration;
+    this.tickRate = opts.tickRate != null ? opts.tickRate : fireTickRate;
+    this.isFirewall = !!opts.isFirewall;
+    this.life = this.duration;
     this.tickTimer = 0; // pronto para dar dano imediato
     this.anim = Math.random()*Math.PI*2;
     this.dead = false;
@@ -6127,6 +6207,72 @@ class FirePatch {
     ctx.strokeStyle = `rgba(255,60,0,${alpha*0.5})`;
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2); ctx.stroke();
+  }
+}
+
+// ===================== RASTRO DE CORRUPÇÃO (INIMIGO CORROMPIDO) =====================
+// Poça de código corrompido deixada pelo Corrompido. Causa meio coração (1 HP)
+// ao jogador que pisar nela. Não afeta inimigos. Some suavemente após alguns segundos.
+class CorruptionTrail {
+  constructor(x, y){
+    this.x = x; this.y = y;
+    this.radius = CORRUPTED_TRAIL_RADIUS;
+    this.life = CORRUPTED_TRAIL_LIFE;
+    this.maxLife = CORRUPTED_TRAIL_LIFE;
+    this.anim = Math.random()*Math.PI*2;
+    this.seed = Math.random()*1000;
+    this.dead = false;
+  }
+  update(dt){
+    this.life -= dt;
+    this.anim += dt*0.006;
+    this.seed += dt*0.0007;
+    if(this.life <= 0){ this.dead = true; return false; }
+    return true;
+  }
+  collides(player){
+    if(!player) return false;
+    const pr = Math.max(player.w||24, player.h||24)*0.42;
+    return dist(this.x, this.y, player.x, player.y) < this.radius + pr;
+  }
+  draw(ctx){
+    const a = clamp(this.life/this.maxLife, 0, 1);
+    const pulse = 0.5 + Math.sin(this.anim*4 + this.seed)*0.5;
+    const r = this.radius;
+    // sombra/poça escura
+    ctx.globalAlpha = a*0.55;
+    ctx.fillStyle = '#12051c';
+    ctx.beginPath(); ctx.ellipse(this.x, this.y+2, r*1.35, r*0.9, 0, 0, Math.PI*2); ctx.fill();
+    // halo roxo/vermelho
+    ctx.globalAlpha = a*(0.22 + pulse*0.16);
+    ctx.fillStyle = '#7a00a8';
+    ctx.beginPath(); ctx.arc(this.x, this.y, r + 5 + pulse*2, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = a*0.45;
+    ctx.fillStyle = '#c00040';
+    ctx.beginPath(); ctx.arc(this.x, this.y, r*0.72, 0, Math.PI*2); ctx.fill();
+    // rachaduras/glitches determinísticos
+    ctx.globalAlpha = a*0.75;
+    ctx.fillStyle = '#ff2f6d';
+    for(let i=0;i<4;i++){
+      const ang = this.seed + i*1.7;
+      const rr = r*(0.25 + (i%3)*0.18);
+      ctx.fillRect(this.x + Math.cos(ang)*rr - 1, this.y + Math.sin(ang)*rr*0.7, 2, 2);
+    }
+    // núcleo pulsante
+    ctx.globalAlpha = a*(0.55 + pulse*0.35);
+    ctx.fillStyle = '#e11d48';
+    ctx.beginPath(); ctx.arc(this.x, this.y, r*0.24 + pulse*1.2, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = a*0.9;
+    ctx.fillStyle = '#ffd1dc';
+    ctx.fillRect(Math.round(this.x)-1, Math.round(this.y)-1, 2, 2);
+    ctx.globalAlpha = 1;
+    // borda tracejada (leitura de hazard)
+    ctx.strokeStyle = `rgba(255,47,109,${a*0.45})`;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3,4]);
+    ctx.lineDashOffset = -this.seed*8;
+    ctx.beginPath(); ctx.arc(this.x, this.y, r*0.92, 0, Math.PI*2); ctx.stroke();
+    ctx.setLineDash([]);
   }
 }
 
@@ -9586,8 +9732,13 @@ class Bullet {
         }
       }
     }
-    const dx = this.dirX * this.speed;
-    const dy = this.dirY * this.speed;
+    // Movimento normalizado pelo tempo do frame. O update recebe `dt` já
+    // multiplicado pelo projectileTimeScale do Cyber Slow, então projéteis
+    // inimigos realmente desaceleram (antes o dt era ignorado e só os timers
+    // ficavam lentos). Em 60 fps o passo permanece 1x, como antes.
+    const step = (typeof dt === 'number' && isFinite(dt)) ? dt / 16.667 : 1;
+    const dx = this.dirX * this.speed * step;
+    const dy = this.dirY * this.speed * step;
     this.x += dx;
     this.y += dy;
     this.traveled += Math.hypot(dx, dy);
@@ -12361,6 +12512,7 @@ class WeaponItem extends Item {
     const isMotosserra = low==='motosserra' || low===WEAPON_MOTOSSERRA.name.toLowerCase();
     const isRayMatematico = low==='raio_matematico' || low===WEAPON_RAIO_MATEMATICO.name.toLowerCase();
     const isChicote = low==='chicote' || low==='chicote_do_indiana' || low===WEAPON_CHICOTE.name.toLowerCase();
+    const isFirewall = low==='firewall' || low==='lanca_chamas' || low===WEAPON_FIREWALL.name.toLowerCase();
     const isMartelo = false;
     const isLanca = false;
     const isArco = false;
@@ -12377,6 +12529,7 @@ class WeaponItem extends Item {
     else if(isBastao) size = ITEM_SIZE_BASTAO;
     else if(isMotosserra) size = ITEM_SIZE_MOTOSSERRA;
     else if(isChicote) size = ITEM_SIZE_CHICOTE;
+    else if(isFirewall) size = 22;
     // martelo/lanca/arco/machado removidos
     super(x, y, size, size, weaponType);
     this.weaponType = weaponType;
@@ -12391,6 +12544,7 @@ class WeaponItem extends Item {
     this.isMotosserra = isMotosserra;
     this.isRayMatematico = isRayMatematico;
     this.isChicote = isChicote;
+    this.isFirewall = isFirewall;
     this.isMartelo = isMartelo;
     this.isLanca = isLanca;
     this.isArco = isArco;
@@ -12462,6 +12616,31 @@ class WeaponItem extends Item {
       const rx = x + Math.cos(this.anim*1.4)* (s*0.5);
       const ry = y + Math.sin(this.anim*1.4)* (s*0.3);
       ctx.fillRect(rx, ry, 2,1);
+    } else if(this.isFirewall){
+      const x=this.x, y=this.y + this.bob, s=this.w;
+      const pulse = 0.5 + Math.sin((this.anim||0)*3)*0.35;
+      ctx.fillStyle='rgba(0,0,0,0.28)';
+      ctx.beginPath(); ctx.ellipse(x, y+ s*0.5, s*0.5, 4, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle=`rgba(255,106,0,${0.24+pulse*0.16})`;
+      ctx.beginPath(); ctx.arc(x, y, s*0.78 + pulse*4, 0, Math.PI*2); ctx.fill();
+      // tanque de combustível
+      ctx.fillStyle='#2a0f00'; ctx.fillRect(x - s/2 +2, y -6, s-4, 14);
+      ctx.fillStyle='#c2410c'; ctx.fillRect(x - s/2 +3, y -5, s-6, 4);
+      // corpo e bico
+      ctx.fillStyle='#1a1a1a'; ctx.fillRect(x - 6, y + 1, 12, 3);
+      ctx.fillStyle='#ffcc00'; ctx.fillRect(x + 5, y + 1, 4, 2);
+      // chama saindo do bico
+      ctx.fillStyle='#ff6a00';
+      ctx.beginPath();
+      ctx.moveTo(x + 9, y + 2);
+      ctx.lineTo(x + 14 + pulse*2, y - 1);
+      ctx.lineTo(x + 12, y + 2);
+      ctx.lineTo(x + 14 + pulse*2, y + 5);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle='#ffe066'; ctx.fillRect(x + 9, y + 1, 3, 1);
+      ctx.fillStyle='#ffcc00';
+      ctx.font='4px "Press Start 2P"'; ctx.textAlign='center';
+      ctx.fillText('FIRE', x, y+ s/2 +10); ctx.textAlign='left';
     } else if(this.isNormal){
       const x=this.x, y=this.y + this.bob, s=this.w;
       const pulse = 0.5 + Math.sin(this.anim*2)*0.28;
@@ -13814,7 +13993,7 @@ class Player {
   }
   // constrói arma com todas as melhorias já obtidas para aquele tipo (reutiliza base + aplica cumulativo com caps)
   buildUpgradedWeapon(weaponName){
-    const map = { NORMAL: WEAPON_NORMAL, SHOTGUN: WEAPON_SHOTGUN, RAIO: WEAPON_RAIO, METRALHADORA: WEAPON_METRALHADORA, CARREGADA: WEAPON_CARREGADA, BAZUCA: WEAPON_BAZUCA, ESPADA: WEAPON_ESPADA, LUVA: WEAPON_LUVA, BASTAO: WEAPON_BASTAO, MOTOSSERRA: WEAPON_MOTOSSERRA, RAIO_MATEMATICO: WEAPON_RAIO_MATEMATICO, CHICOTE: WEAPON_CHICOTE, BOLAS: WEAPON_BOLAS };
+    const map = { NORMAL: WEAPON_NORMAL, SHOTGUN: WEAPON_SHOTGUN, RAIO: WEAPON_RAIO, METRALHADORA: WEAPON_METRALHADORA, CARREGADA: WEAPON_CARREGADA, BAZUCA: WEAPON_BAZUCA, ESPADA: WEAPON_ESPADA, LUVA: WEAPON_LUVA, BASTAO: WEAPON_BASTAO, MOTOSSERRA: WEAPON_MOTOSSERRA, RAIO_MATEMATICO: WEAPON_RAIO_MATEMATICO, CHICOTE: WEAPON_CHICOTE, BOLAS: WEAPON_BOLAS, FIREWALL: WEAPON_FIREWALL };
     const base = map[weaponName];
     if(!base) return null;
     const w = { ...base };
@@ -13912,7 +14091,7 @@ class Player {
       // Aspectos: valem para a lista exata de armas compatíveis (sem "todas")
       affected.push(...compatList);
     } else if(def.weapon==='ALL' || compatList.includes('ALL')){
-      affected.push('NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA');
+      affected.push('NORMAL','SHOTGUN','RAIO','METRALHADORA','CARREGADA','BAZUCA','ESPADA','LUVA','FIREWALL');
     } else {
       affected.push(...compatList);
     }
@@ -16299,6 +16478,70 @@ class Player {
         return fist ? [fist] : [];
       }
     }
+    // LANÇA-CHAMAS FIREWALL - cone curto de fogo + poças no chão (reusa room.fires)
+    if(this.weapon && this.weapon.isFirewall){
+      const n = normalize(dir.x, dir.y);
+      this.shootCooldown = this.weapon.cooldown;
+      this.lastDir.x = n.x; this.lastDir.y = n.y;
+      if(n.x!==0) this.facing = n.x>0?1:-1;
+      this.meleeAnim = 90;
+      this.meleeDir = {x:n.x, y:n.y};
+      const g = (typeof window!=='undefined') ? window.game : null;
+      const room = g && g.currentRoom;
+      const baseAng = Math.atan2(n.y, n.x);
+      const halfAngle = this.weapon.coneAngle || 0.46;
+      const reach = this.weapon.range || 132;
+      const dmg = this.weapon.damage || 0.6;
+      if(room && room.enemies){
+        for(const e of room.enemies){
+          if(e.dead) continue;
+          const dx = e.x-this.x, dy = e.y-this.y;
+          const d = Math.hypot(dx,dy);
+          if(d > reach + (e.w||16)*0.4) continue;
+          let diff = Math.abs(Math.atan2(dy,dx) - baseAng);
+          if(diff > Math.PI) diff = Math.PI*2 - diff;
+          if(diff > halfAngle) continue;
+          const died = e.takeDamage(dmg);
+          e.hitFlash = Math.max(e.hitFlash||0, 90);
+          if(g && g.particles) for(let k=0;k<4;k++) g.particles.push(new Particle(e.x, e.y, randRange(-1.4,1.4), randRange(-1.6,-0.2), 260, k%2?'#ff8c00':'#ffcc00', 2));
+          if(died && g && g.particles){
+            for(let k=0;k<10;k++){ const a2=Math.random()*Math.PI*2; g.particles.push(new Particle(e.x, e.y, Math.cos(a2)*randRange(1,2.6), Math.sin(a2)*randRange(1,2.6), 320, '#ff6a00', 3)); }
+          }
+        }
+      }
+      // poças de fogo à frente do jato (limitadas por sala)
+      if(room && room.fires){
+        const maxP = this.weapon.maxPatches || 14;
+        const count = this.weapon.patches || 3;
+        const perpX=-n.y, perpY=n.x;
+        for(let i=0;i<count;i++){
+          if(room.fires.length >= maxP) break;
+          const ahead = (this.weapon.patchStart||26) + i*(this.weapon.patchStep||34);
+          const px = this.x + n.x*ahead + perpX*randRange(-7,7);
+          const py = this.y + n.y*ahead + perpY*randRange(-7,7);
+          const r = this.weapon.patchRadius || 20;
+          let onWall=false;
+          for(const w of (room.walls||[])){
+            if(rectCollide(px-r, py-r, r*2, r*2, w.x, w.y, w.w, w.h)){ onWall=true; break; }
+          }
+          if(onWall) continue;
+          room.fires.push(new FirePatch(px, py, {
+            radius: r,
+            damage: this.weapon.patchDamage || 0.75,
+            duration: this.weapon.patchDuration || 1900,
+            tickRate: this.weapon.patchTick || 320,
+            isFirewall: true
+          }));
+        }
+      }
+      if(g && g.particles){
+        for(let k=0;k<5;k++){
+          g.particles.push(new Particle(this.x + n.x*14 + randRange(-5,5), this.y + n.y*14 + randRange(-4,4), n.x*randRange(0.6,1.7)+randRange(-0.5,0.5), n.y*randRange(0.6,1.7)-0.2, 200, k%2?'#ff8c00':'#ffcc00', 2));
+        }
+      }
+      try{ playWeaponSound('FIREWALL', false); }catch(e){}
+      return [];
+    }
     // Armas corpo a corpo instantâneas (martelo, lança, machado) - espada leve também mas pesada via charge
     if(this.weapon && this.weapon.isMelee && !this.weapon.isSword){
       const swing=this.createMeleeSwing(dir,false);
@@ -17041,6 +17284,7 @@ class Player {
     const isMotosserra = this.weapon.name==='MOTOSSERRA';
     const isRayMatematico = this.weapon.name==='RAIO_MATEMATICO';
     const isChicote = !!this.weapon.isChicote;
+    const isFirewall = this.weapon.name==='FIREWALL' || !!this.weapon.isFirewall;
     const isMartelo = false;
     const isLanca = false;
     const isArco = false;
@@ -17060,7 +17304,8 @@ class Player {
       const prog = this.isCharging ? this.getChargeProgress() : 0;
       if(this.isCharging) ctx.fillStyle = prog > 0.85 ? '#d8b4fe' : prog > 0.5 ? '#a78bfa' : '#7c3aed';
       else ctx.fillStyle = '#7c3aed';
-    } else if (isBazuca) ctx.fillStyle = '#ff3b30';
+    }    else if (isBazuca) ctx.fillStyle = '#ff3b30';
+    else if (isFirewall) ctx.fillStyle = '#ff6a00';
     else if (isEspada) {
       const prog=this.isSwordCharging? this.getSwordChargeProgress():0;
       if(this.isSwordCharging) ctx.fillStyle = prog>0.85 ? '#ffffff' : prog>0.5 ? '#e8e8e8' : '#a0a0b8';
@@ -17181,6 +17426,17 @@ class Player {
       ctx.fillRect(x+14, y+7 + bob, 2, 2);
       ctx.fillStyle='#555';
       ctx.fillRect(x+7, y+13 + bob, 10, 1);
+    } else if (isFirewall) {
+      // LANÇA-CHAMAS FIREWALL - tanque, bico e chama curta
+      ctx.fillStyle='#2a0f00'; ctx.fillRect(x+4, y+8+bob, 6, 10);
+      ctx.fillStyle='#c2410c'; ctx.fillRect(x+5, y+9+bob, 4, 3);
+      ctx.fillStyle='#1a1a1a'; ctx.fillRect(x+9, y+11+bob, 11, 3);
+      ctx.fillStyle='#ffcc00'; ctx.fillRect(x+19, y+11+bob, 3, 2);
+      const fp = 0.6+Math.sin(this.animTime*0.05)*0.4;
+      ctx.fillStyle=`rgba(255,106,0,${0.55+fp*0.35})`;
+      ctx.beginPath(); ctx.moveTo(x+22, y+11.5+bob); ctx.lineTo(x+27+fp*3, y+9+bob); ctx.lineTo(x+26, y+11.5+bob); ctx.lineTo(x+27+fp*3, y+14+bob); ctx.closePath(); ctx.fill();
+      ctx.fillStyle='#ffe066';
+      ctx.fillRect(x+22, y+11+bob, 2, 1.5);
     } else if (isEspada) {
       // espada: lâmina + guarda + brilho de carga pesada
       const prog=this.isSwordCharging? this.getSwordChargeProgress():0;
@@ -18507,6 +18763,292 @@ class Player {
   getRect() { return { x: this.x - this.w/2, y: this.y - this.h/2, w: this.w, h: this.h }; }
 }
 
+// ===================== CORROMPIDO (NOVO INIMIGO — FASES 2-6) =====================
+// Comportamento:
+// - Anda aleatoriamente pelo mapa (não persegue direto, não atira).
+// - Deixa um rastro de corrupção no chão; encostar nele custa meio coração.
+// - Quando o jogador chega perto, para, telegrafa e faz uma investida curta.
+class Corrupted {
+  constructor(x, y){
+    this.x = x; this.y = y;
+    this.w = CORRUPTED_SIZE; this.h = CORRUPTED_SIZE;
+    this.hp = CORRUPTED_HP; this.maxHp = CORRUPTED_HP;
+    this.speed = CORRUPTED_WANDER_SPEED;
+    this._baseSpeed = CORRUPTED_WANDER_SPEED;
+    this.dead = false;
+    this.type = 'corrupted';
+    this.collisionDamage = 1; // encostar também tira meio coração
+    this.damageCooldown = 0;
+    this.hitFlash = 0;
+    this.anim = Math.random()*1000;
+    this.variation = null;
+    this.slowTimer = 0; this.slowFactor = 1; this.stunTimer = 0;
+    // IA: wander -> prep -> charge -> recover
+    this.aiState = 'wander';
+    this.stateTimer = 0;
+    this.chargeCooldown = randRange(400, 1100);
+    this.chargeDir = {x:0,y:0};
+    this.wanderAngle = Math.random()*Math.PI*2;
+    this.wanderTimer = randRange(500, 1400);
+    this.trailTimer = 0;
+  }
+  takeDamage(dmg){
+    this.hp -= dmg; this.hitFlash = 170;
+    if(this.hp <= 0){ this.dead = true; return true; }
+    return false;
+  }
+  canDamage(){ return this.damageCooldown <= 0; }
+  resetDamageCooldown(){ this.damageCooldown = ENEMY_DAMAGE_COOLDOWN; }
+  collidesWalls(nx, ny, walls){
+    const hw=this.w/2, hh=this.h/2, rx=nx-hw, ry=ny-hh;
+    for(const w of walls) if(rectCollide(rx, ry, this.w, this.h, w.x, w.y, w.w, w.h)) return true;
+    return false;
+  }
+  // Move por eixos separados; retorna true se bateu em parede.
+  moveBy(vx, vy, walls){
+    let hit = false;
+    const nx = this.x + vx, ny = this.y + vy;
+    if(!this.collidesWalls(nx, this.y, walls)) this.x = nx; else hit = true;
+    if(!this.collidesWalls(this.x, ny, walls)) this.y = ny; else hit = true;
+    this.x = clamp(this.x, WALL_THICK + this.w/2, CANVAS_W - WALL_THICK - this.w/2);
+    this.y = clamp(this.y, WALL_THICK + this.h/2, CANVAS_H - WALL_THICK - this.h/2);
+    return hit;
+  }
+  spawnTrail(room){
+    if(!room) return;
+    if(!Array.isArray(room.corruptionTrails)) room.corruptionTrails = [];
+    const tx = clamp(this.x + randRange(-4,4), WALL_THICK + CORRUPTED_TRAIL_RADIUS, CANVAS_W - WALL_THICK - CORRUPTED_TRAIL_RADIUS);
+    const ty = clamp(this.y + this.h*0.28 + randRange(-3,3), WALL_THICK + CORRUPTED_TRAIL_RADIUS, CANVAS_H - WALL_THICK - CORRUPTED_TRAIL_RADIUS);
+    const last = room.corruptionTrails[room.corruptionTrails.length-1];
+    if(last && dist(last.x, last.y, tx, ty) < 6) return;
+    room.corruptionTrails.push(new CorruptionTrail(tx, ty));
+  }
+  update(dt, player, walls, room){
+    this.anim += dt;
+    if(this.hitFlash > 0) this.hitFlash -= dt;
+    if(this.damageCooldown > 0) this.damageCooldown -= dt;
+    if(this.chargeCooldown > 0) this.chargeCooldown -= dt;
+    if(this.trailTimer > 0) this.trailTimer -= dt;
+    // Flecha Stand - paralisia
+    if(this.stunTimer > 0){ this.stunTimer -= dt; if(this.stunTimer <= 0) this.stunTimer = 0; return; }
+    // Flecha Stand - lentidão
+    let effSpeed = this._baseSpeed;
+    if(this.slowTimer > 0){
+      this.slowTimer -= dt;
+      if(this.slowTimer <= 0){ this.slowTimer = 0; this.slowFactor = 1; this.speed = this._baseSpeed; }
+      else effSpeed = this._baseSpeed * this.slowFactor;
+    } else { this.speed = this._baseSpeed; }
+    if(this.dead || !player) return;
+    const pd = dist(this.x, this.y, player.x, player.y);
+
+    if(this.aiState === 'wander'){
+      this.wanderTimer -= dt;
+      if(this.wanderTimer <= 0){
+        this.wanderAngle += randRange(-1.6, 1.6);
+        this.wanderTimer = randRange(650, 1450);
+      }
+      const hit = this.moveBy(Math.cos(this.wanderAngle)*effSpeed, Math.sin(this.wanderAngle)*effSpeed, walls);
+      if(hit){
+        this.wanderAngle += Math.PI * randRange(0.55, 1.35);
+        this.wanderTimer = randRange(350, 850);
+      }
+      if(this.trailTimer <= 0){
+        this.spawnTrail(room);
+        this.trailTimer = CORRUPTED_TRAIL_INTERVAL;
+      }
+      if(pd < CORRUPTED_CHARGE_DETECT && this.chargeCooldown <= 0){
+        this.aiState = 'prep';
+        this.stateTimer = CORRUPTED_CHARGE_PREP;
+        this.chargeDir = normalize(player.x - this.x, player.y - this.y);
+      }
+    } else if(this.aiState === 'prep'){
+      this.stateTimer -= dt;
+      // Mira lentamente no jogador durante a preparação (telegrafia justa).
+      const aim = normalize(player.x - this.x, player.y - this.y);
+      this.chargeDir = normalize(lerp(this.chargeDir.x, aim.x, 0.07), lerp(this.chargeDir.y, aim.y, 0.07));
+      if(this.trailTimer <= 0){
+        this.spawnTrail(room);
+        this.trailTimer = 110;
+      }
+      if(this.stateTimer <= 0){
+        this.aiState = 'charge';
+        this.stateTimer = CORRUPTED_CHARGE_DURATION;
+        this.chargeDir = normalize(player.x - this.x, player.y - this.y);
+        this.trailTimer = 0;
+      }
+    } else if(this.aiState === 'charge'){
+      this.stateTimer -= dt;
+      const hit = this.moveBy(this.chargeDir.x*CORRUPTED_CHARGE_SPEED, this.chargeDir.y*CORRUPTED_CHARGE_SPEED, walls);
+      if(this.trailTimer <= 0){
+        this.spawnTrail(room);
+        this.trailTimer = CORRUPTED_TRAIL_CHARGE_INTERVAL;
+      }
+      if(hit || this.stateTimer <= 0){
+        this.aiState = 'recover';
+        this.stateTimer = hit ? 700 : 480;
+        this.chargeCooldown = CORRUPTED_CHARGE_COOLDOWN;
+        if(hit) this.hitFlash = Math.max(this.hitFlash, 90);
+        // poeira/estilhaços ao bater na parede
+        if(hit && room){
+          if(!Array.isArray(room.explosions)) room.explosions = [];
+          room.explosions.push({x:this.x, y:this.y, radius:8, life:240, max:240, isCorruptionImpact:true});
+        }
+      }
+    } else if(this.aiState === 'recover'){
+      this.stateTimer -= dt;
+      this.moveBy(Math.cos(this.wanderAngle)*effSpeed*0.45, Math.sin(this.wanderAngle)*effSpeed*0.45, walls);
+      if(this.stateTimer <= 0){
+        this.aiState = 'wander';
+        this.wanderTimer = randRange(450, 1100);
+      }
+    }
+  }
+  draw(ctx){
+    const W=this.w, H=this.h;
+    const x=this.x-W/2, y=this.y-H/2;
+    const bob=Math.sin(this.anim*0.01)*1.4;
+    const isFlash=this.hitFlash>0 && Math.floor(this.hitFlash/40)%2===0;
+    const pulse=0.5+Math.sin(this.anim*0.014)*0.35;
+    const charging=this.aiState==='charge';
+    const prep=this.aiState==='prep';
+    // auras de status
+    if(this.stunTimer>0){
+      ctx.fillStyle=`rgba(255,215,0,${0.18+pulse*0.12})`;
+      ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.9+pulse*3,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle='rgba(255,215,0,0.55)'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.85,0,Math.PI*2); ctx.stroke();
+    } else if(this.slowTimer>0){
+      ctx.fillStyle=`rgba(96,165,250,${0.16+pulse*0.09})`;
+      ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.85+pulse*2,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle='rgba(96,165,250,0.45)'; ctx.lineWidth=1.2;
+      ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.82,0,Math.PI*2); ctx.stroke();
+    }
+    drawVariationAura(ctx, this, bob);
+    // sombra
+    ctx.fillStyle='rgba(0,0,0,0.42)';
+    ctx.beginPath(); ctx.ellipse(this.x, y+H-1, W*0.46, 4, 0, 0, Math.PI*2); ctx.fill();
+    // aura de corrupção
+    ctx.fillStyle=`rgba(122,0,168,${0.16+pulse*0.10})`;
+    ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.92+pulse*3,0,Math.PI*2); ctx.fill();
+    // tentáculos/raízes
+    ctx.strokeStyle=charging?'rgba(255,0,64,0.75)':'rgba(168,20,220,0.55)';
+    ctx.lineWidth=1.3;
+    ctx.setLineDash([3,4]);
+    ctx.lineDashOffset=-(this.anim*0.02);
+    for(let i=0;i<4;i++){
+      const ang=this.anim*0.0016 + i*Math.PI/2;
+      const r1=W*0.36, r2=W*0.58 + Math.sin(this.anim*0.01+i)*2;
+      ctx.beginPath();
+      ctx.moveTo(this.x+Math.cos(ang)*r1, this.y+bob+Math.sin(ang)*r1*0.7);
+      ctx.lineTo(this.x+Math.cos(ang)*r2, this.y+bob+Math.sin(ang)*r2*0.7);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    // corpo irregular
+    const bodyCol = isFlash ? '#ffaaaa' : this.stunTimer>0 ? '#a1a1aa' : this.slowTimer>0 ? '#3b6fa8' : (charging?'#2c0616':'#1b0724');
+    ctx.fillStyle=bodyCol;
+    ctx.beginPath();
+    ctx.moveTo(x+4, y+9+bob);
+    ctx.lineTo(x+9, y+2+bob);
+    ctx.lineTo(x+21, y+2+bob);
+    ctx.lineTo(x+27, y+9+bob);
+    ctx.lineTo(x+26, y+21+bob);
+    ctx.lineTo(x+18, y+28+bob);
+    ctx.lineTo(x+8, y+26+bob);
+    ctx.lineTo(x+2, y+17+bob);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = isFlash ? '#ffffff' : charging ? '#ff0040' : '#8b1fb0';
+    ctx.lineWidth=1.3; ctx.stroke();
+    // placas internas
+    ctx.fillStyle = isFlash ? '#ffffff' : 'rgba(168,20,220,0.55)';
+    ctx.fillRect(x+7, y+8+bob, 5, 3);
+    ctx.fillRect(x+19, y+7+bob, 5, 3);
+    ctx.fillRect(x+11, y+22+bob, 8, 2);
+    // núcleo vermelho pulsante
+    const coreR = 3.2 + pulse*1.7 + (charging?1.4:0);
+    ctx.fillStyle=`rgba(255,0,64,${0.25+pulse*0.22})`;
+    ctx.beginPath(); ctx.arc(this.x, this.y+4+bob, coreR+3, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = isFlash ? '#ffffff' : (charging||prep) ? '#ff3355' : '#d61f4e';
+    ctx.beginPath(); ctx.arc(this.x, this.y+4+bob, coreR, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(255,220,228,0.9)';
+    ctx.beginPath(); ctx.arc(this.x-1, this.y+2.6+bob, 1, 0, Math.PI*2); ctx.fill();
+    // olhos assimétricos
+    const eyeGlow = prep ? 1 : 0.65 + pulse*0.25;
+    ctx.fillStyle=`rgba(255,60,90,${eyeGlow})`;
+    ctx.fillRect(x+7, y+11+bob, 4, 2);
+    ctx.fillRect(x+18, y+10+bob, 5, 2);
+    ctx.fillStyle='#12000a';
+    ctx.fillRect(x+9, y+11+bob, 1.5, 2);
+    ctx.fillRect(x+20.5, y+10+bob, 1.5, 2);
+    // glitches/código ao redor
+    const glyphs='01#%&{}';
+    ctx.font='5px monospace'; ctx.textAlign='center';
+    for(let i=0;i<3;i++){
+      const ga=this.anim*0.002 + i*2.1;
+      const gx=this.x + Math.cos(ga)*(W*0.62+Math.sin(this.anim*0.01+i)*3);
+      const gy=this.y + Math.sin(ga*1.3)*(H*0.48)+bob;
+      const alpha=0.25+0.4*Math.abs(Math.sin(this.anim*0.013+i));
+      ctx.fillStyle=`rgba(255,47,109,${alpha.toFixed(3)})`;
+      ctx.fillText(glyphs.charAt((Math.floor(this.anim*0.01)+i)%glyphs.length), gx, gy);
+    }
+    ctx.textAlign='left';
+    // barra de vida
+    if(this.hp < this.maxHp){
+      const hpPct=clamp(this.hp/this.maxHp,0,1);
+      ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(x, y-6+bob, W, 4);
+      ctx.fillStyle=hpPct>0.5?'#4ade80':hpPct>0.25?'#facc15':'#ef4444';
+      ctx.fillRect(x, y-6+bob, W*hpPct, 4);
+    }
+    drawVariationIcon(ctx, this, x, y, bob);
+    // telegrafia da investida
+    if(prep){
+      ctx.strokeStyle=`rgba(255,0,64,${0.35+pulse*0.35})`;
+      ctx.lineWidth=1.6;
+      ctx.setLineDash([4,4]);
+      ctx.lineDashOffset=-(this.anim*0.04);
+      ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.78+pulse*3, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(this.x, this.y+bob);
+      ctx.lineTo(this.x + this.chargeDir.x*46, this.y+bob + this.chargeDir.y*46);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle='#ff3355'; ctx.font='8px "Press Start 2P"'; ctx.textAlign='center';
+      ctx.fillText('!', this.x, y-12+bob); ctx.textAlign='left';
+    } else if(charging){
+      // rastro de velocidade atrás da investida
+      ctx.strokeStyle=`rgba(255,0,64,${0.35+pulse*0.30})`;
+      ctx.lineWidth=1.4;
+      for(let i=0;i<3;i++){
+        const off=(i-1)*4;
+        ctx.beginPath();
+        ctx.moveTo(this.x - this.chargeDir.x*12 + this.chargeDir.y*off, this.y+bob - this.chargeDir.y*12 - this.chargeDir.x*off);
+        ctx.lineTo(this.x - this.chargeDir.x*30 + this.chargeDir.y*off, this.y+bob - this.chargeDir.y*30 - this.chargeDir.x*off);
+        ctx.stroke();
+      }
+    }
+    // ícones de status
+    if(this.stunTimer>0){
+      ctx.fillStyle='#ffd700'; ctx.font='7px monospace'; ctx.textAlign='center';
+      ctx.fillText('★ ★', this.x, y-12+bob); ctx.textAlign='left';
+    } else if(this.slowTimer>0){
+      ctx.fillStyle='rgba(96,165,250,0.95)'; ctx.font='6px monospace'; ctx.textAlign='center';
+      ctx.fillText('❄', this.x, y-12+bob); ctx.textAlign='left';
+    }
+    // flash de dano
+    const hf=this.hitFlash||0;
+    if(hf>0 && Math.floor(hf/24)%2===0){
+      ctx.save(); ctx.globalCompositeOperation='lighter'; ctx.globalAlpha=0.45;
+      ctx.fillStyle='#ffffff';
+      ctx.fillRect(x-1, y+bob-1, W+2, 2);
+      ctx.fillRect(x-1, y+H+bob-2, W+2, 2);
+      ctx.fillRect(x-1, y+bob-1, 2, H+2);
+      ctx.fillRect(x+W-1, y+bob-1, 2, H+2);
+      ctx.restore();
+    }
+  }
+  getRect(){ return {x:this.x-this.w/2, y:this.y-this.h/2, w:this.w, h:this.h}; }
+}
+
 // ===================== CHASER =====================
 class Chaser {
   constructor(x, y) {
@@ -19258,7 +19800,7 @@ function playCupSfx(kind, param){
     } else if(kind === 'round'){    // passou de rodada
       o.type = 'triangle'; o.frequency.setValueAtTime(392, now); slide = [392, 587, 0.15];
       dur = 0.18; vol = 0.05;
-    } else if(kind === 'nag'){      // Setch chamando o jogador de volta
+    } else if(kind === 'nag'){      // Setec chamando o jogador de volta
       o.type = 'square'; o.frequency.setValueAtTime(240, now); slide = [240, 200, 0.09];
       dur = 0.10; vol = 0.035;
     } else if(kind === 'near'){     // entrou no raio da mesa
@@ -19272,28 +19814,28 @@ function playCupSfx(kind, param){
   }catch(e){}
 }
 
-// ===================== SALA SETCH - NPC E MINIGAME COPINHOS =====================
-// Sala Setch: tamanho equivalente a 2 salas normais (arena grande sem pilares centrais), temática misteriosa.
-// NPC Setch: personagem com chapéu, sorriso enigmático, guarda o jogo dos copinhos.
+// ===================== SALA SETEC - NPC E MINIGAME COPINHOS =====================
+// Sala Setec: tamanho equivalente a 2 salas normais (arena grande sem pilares centrais), temática misteriosa.
+// NPC Setec: robô misterioso com chapéu de bruxo, guarda o jogo dos copinhos.
 // Minigame: 3 copos, bolinha escondida sob um, shuffle visual, jogador escolhe via 1/2/3 ou E/colisão.
 // Recompensa: aleatório entre melhoria para arma equipada ou Vida Cibernética (Bone Heart). Código organizado e modular.
 // Minigame do Jogo do Copinho - versão melhorada:
-// partida de SETCH_ROUNDS rodadas com escalada (mais trocas, mais rápido, menos tempo de escolha),
+// partida de SETEC_ROUNDS rodadas com escalada (mais trocas, mais rápido, menos tempo de escolha),
 // animação de salto nos copos, rastro da bolinha, anel de contagem regressiva, prêmio por resposta
 // rápida e streak. Só vencer a rodada final libera as portas e entrega o prêmio grande.
-class SetchCupGame {
+class SetecCupGame {
   constructor(room){
     this.room = room;
     this._playerRef = null; // preenchido no update para saber de onde vem o "copo mais perto"
     this.state = 'idle'; // idle, showing, shuffling, waiting, revealing, nextRound, finishedWin, finishedLose
     this.cups = []; // [{x,y, targetX, displayX, ...}] interpolação
-    this.ballIndex = 0; // 0..SETCH_CUP_COUNT-1 onde está a bolinha
+    this.ballIndex = 0; // 0..SETEC_CUP_COUNT-1 onde está a bolinha
     this.shuffleMoves = 0;
     this.shuffleMoveIndex = 0;
     this.shuffleTimer = 0;
-    this.shuffleSpeed = SETCH_SHUFFLE_SPEED;
+    this.shuffleSpeed = SETEC_SHUFFLE_SPEED;
     this.showTimer = 0;
-    this.showTime = SETCH_SHOW_BALL_TIME;
+    this.showTime = SETEC_SHOW_BALL_TIME;
     this.chooseTime = 8000;
     this.chooseTimer = 0;
     this.revealTimer = 0;
@@ -19303,10 +19845,10 @@ class SetchCupGame {
     this.interactive = false;
     this.anim = 0;
     // --- partida ---
-    this.round = 1;          // rodada atual (1..SETCH_ROUNDS)
+    this.round = 1;          // rodada atual (1..SETEC_ROUNDS)
     this.streak = 0;         // rodadas seguidas ganhas
     this.bestStreak = 0;
-    this.fastBonus = false;  // respondeu dentro de SETCH_FAST_CHOOSE_TIME
+    this.fastBonus = false;  // respondeu dentro de SETEC_FAST_CHOOSE_TIME
     this.timedOut = false;   // o tempo acabou e o copo foi escolhido sozinho
     this.chosenIndex = -1;
     this.hoverIndex = -1;
@@ -19327,10 +19869,10 @@ class SetchCupGame {
     this.attract = 0;        // brilho do modo "chame" quando ocioso
     this.banner = null;      // {label, color, life}
     // Posições base: 3 copos igualmente espaçados na mesa
-    this.tableX = CANVAS_W * SETCH_TABLE_CX_RATIO;
+    this.tableX = CANVAS_W * SETEC_TABLE_CX_RATIO;
     this.tableY = CANVAS_H/2 + 22;
-    const spacing = SETCH_CUP_SPACING; // maior espaçamento para sala grande
-    for(let i=0;i<SETCH_CUP_COUNT;i++){
+    const spacing = SETEC_CUP_SPACING; // maior espaçamento para sala grande
+    for(let i=0;i<SETEC_CUP_COUNT;i++){
       const x = this.tableX + (i-1)*spacing;
       this.cups.push({ x: x, y: this.tableY, targetX: x, displayX: x, displayY: this.tableY, animOff: 0,
                        revealed: false, hop: 0, hopDir: 1, lift: 0, glow: 0, hover: 0, pop: 0 });
@@ -19338,10 +19880,10 @@ class SetchCupGame {
     this.ballPos = { x: this.cups[0].x, y: this.cups[0].y };
   }
   roundCfg(){
-    const i = clamp(this.round, 1, SETCH_ROUND_CONFIG.length) - 1;
-    return SETCH_ROUND_CONFIG[i];
+    const i = clamp(this.round, 1, SETEC_ROUND_CONFIG.length) - 1;
+    return SETEC_ROUND_CONFIG[i];
   }
-  isFinalRound(){ return this.round >= SETCH_ROUNDS; }
+  isFinalRound(){ return this.round >= SETEC_ROUNDS; }
   // Telas de bloqueio: enquanto uma destas estiver ativa o jogador tem que acompanhar
   blocked(){ return this.state==='showing' || this.state==='shuffling'; }
   // Telas que ainda contam tempo para o jogador decidir
@@ -19356,7 +19898,7 @@ class SetchCupGame {
     this.showTime = cfg.show;
     this.chooseTime = cfg.choose;
     // Sorteia onde está a bolinha
-    this.ballIndex = randInt(0, SETCH_CUP_COUNT-1);
+    this.ballIndex = randInt(0, SETEC_CUP_COUNT-1);
     this.state = 'showing';
     this.showTimer = this.showTime;
     this.shuffleMoveIndex = 0;
@@ -19446,7 +19988,7 @@ class SetchCupGame {
     const pair = this.pickSwapPair();
     this.shuffleSwap(pair[0], pair[1]);
     this.shuffleMoveIndex++;
-    // Na rodada final (e na do meio), o Setch às vezes troca em par: 2 trocas coladas
+    // Na rodada final (e na do meio), o Setec às vezes troca em par: 2 trocas coladas
     if(this.shuffleMoveIndex < this.shuffleMoves && Math.random() < (this.roundCfg().double||0)){
       this.swapQueue.push(true);
       return Math.max(110, this.shuffleSpeed*0.38);
@@ -19473,24 +20015,24 @@ class SetchCupGame {
     cupA.hop = 1; cupA.hopDir = 1;
     cupB.hop = 1; cupB.hopDir = -1;
     this.shakeFx = 1;
-    // arco mostrando o par trocado + "mãos fantasma" do Setch sobre os copos
+    // arco mostrando o par trocado + "mãos fantasma" do Setec sobre os copos
     this.arcA = a; this.arcB = b; this.arcT = 1;
     this.handA = a; this.handB = b; this.handT = 1;
     playCupSfx('swap', this.swapStep);
-    // o Setch faz o gesto com as mãos junto com a troca
+    // o Setec faz o gesto com as mãos junto com a troca
     if(this.room && this.room.npc && this.room.npc.onShuffleSwap) this.room.npc.onShuffleSwap(a, b, this.ballIndex);
   }
-  // O jogador está longe da mesa? (aí o Setch reclama e a contagem fica em pausa)
+  // O jogador está longe da mesa? (aí o Setec reclama e a contagem fica em pausa)
   checkNearTable(dt, player){
     const prev = this.nearTable;
-    this.nearTable = !!(player && dist(player.x, player.y, this.tableX, this.tableY) <= SETCH_TABLE_KEEP_RANGE);
+    this.nearTable = !!(player && dist(player.x, player.y, this.tableX, this.tableY) <= SETEC_TABLE_KEEP_RANGE);
     if(this.nearTable !== prev){
       if(this.nearTable) playCupSfx('near');
       else if(this.liveRound()) this.npcSay('Eita! Volta pra mesa, o jogo é aqui.');
     }
     if(this.farCd>0) this.farCd-=dt;
     if(!this.nearTable && this.liveRound() && this.farCd<=0){
-      this.farCd = SETCH_NAG_COOLDOWN;
+      this.farCd = SETEC_NAG_COOLDOWN;
       playCupSfx('nag');
       this.npcSay('Fica perto dos copos, young blood!');
     }
@@ -19504,11 +20046,11 @@ class SetchCupGame {
     this.anim+=dt;
     if(player) this._playerRef = player;
     if(this.shakeFx>0) this.shakeFx=Math.max(0, this.shakeFx-dt*0.004);
-    if(this.arcT>0) this.arcT=Math.max(0, this.arcT-dt/SETCH_ARC_FX);
-    if(this.handT>0) this.handT=Math.max(0, this.handT-dt/SETCH_GHOST_HAND_FX);
+    if(this.arcT>0) this.arcT=Math.max(0, this.arcT-dt/SETEC_ARC_FX);
+    if(this.handT>0) this.handT=Math.max(0, this.handT-dt/SETEC_GHOST_HAND_FX);
     if(this.ballPop>0) this.ballPop=Math.max(0, this.ballPop-dt*0.0016);
     if(this.banner && this.banner.life>0) this.banner.life-=dt;
-    // Modo "chame" quando ocioso: Setch fica chamando atenção com brilho
+    // Modo "chame" quando ocioso: Setec fica chamando atenção com brilho
     this.attract = this.state==='idle' ? Math.min(1, this.attract + dt*0.002) : Math.max(0, this.attract-dt*0.004);
     // Distância do jogador em relação à mesa (pausa a contagem e gera avisos)
     this.checkNearTable(dt, player);
@@ -19574,7 +20116,7 @@ class SetchCupGame {
     } else if(this.state==='waiting'){
       // Contagem regressiva: se o tempo acabar, o copo mais perto do jogador é escolhido.
       // Se o jogador fugiu da mesa a contagem PAUSA (senão o timeout seria injusto) e o
-      // Setch aparece com o "volta pra cá".
+      // Setec aparece com o "volta pra cá".
       if(this.nearTable){
         this.chooseTimer -= dt;
         if(this.chooseTimer<=1500 && this.chooseTimer>0 &&
@@ -19606,7 +20148,7 @@ class SetchCupGame {
     } else if(this.state==='nextRound'){
       this.revealTimer-=dt;
       if(this.revealTimer<=0){
-        this.round = Math.min(SETCH_ROUNDS, this.round+1);
+        this.round = Math.min(SETEC_ROUNDS, this.round+1);
         playCupSfx('round');
         this.start();
       }
@@ -19617,7 +20159,7 @@ class SetchCupGame {
           // perdeu a partida: volta ao começo (rodada 1) para tentar de novo
           this.resetToIdle();
         } else {
-          // venceu: mantém estado win, não permite rejogar (setchCleared)
+          // venceu: mantém estado win, não permite rejogar (setecCleared)
           this.interactive=false;
         }
       }
@@ -19651,7 +20193,7 @@ class SetchCupGame {
     }
     return bestIdx;
   }
-  // Chamada quando jogador escolhe um copo (0..SETCH_CUP_COUNT-1)
+  // Chamada quando jogador escolhe um copo (0..SETEC_CUP_COUNT-1)
   choose(index, player, game, room){
     if(this.state!=='waiting' || !this.interactive) return {ok:false, reason:'not_waiting'};
     if(index<0 || index>=this.cups.length) return {ok:false, reason:'bad_index'};
@@ -19662,7 +20204,7 @@ class SetchCupGame {
     playCupSfx('pick');
     //Tempo esgotado conta como errar mesmo se o copo "certo" for escolhido
     const isWin = (index===this.ballIndex) && !this.timedOut;
-    this.fastBonus = (this.chooseTimer >= (this.chooseTime - SETCH_FAST_CHOOSE_TIME)) && !this.timedOut;
+    this.fastBonus = (this.chooseTimer >= (this.chooseTime - SETEC_FAST_CHOOSE_TIME)) && !this.timedOut;
     this.result = isWin ? 'win' : 'lose';
     this.state='revealing';
     this.revealTimer = isWin ? 1700 : 1900; //winning fica um pouco mais rápido
@@ -19695,7 +20237,7 @@ class SetchCupGame {
       this.setBanner(this.timedOut ? 'TEMPO ESGOTADO!' : 'ERROU!', '#ff6b6b', 1700);
       playCupSfx('lose');
       // Perdeu: feedback, permite tentar novamente
-      const msg = this.timedOut ? 'Setch: O tempo acabou! Bora de novo...' : 'Setch: Errou! A partida volta ao começo...';
+      const msg = this.timedOut ? 'Setec: O tempo acabou! Bora de novo...' : 'Setec: Errou! A partida volta ao começo...';
       if(game && game.showToast) game.showToast(msg, 1500);
       if(game && game.particles){
         for(let k=0;k<10;k++) game.particles.push(new Particle(cup.displayX, cup.displayY-8, randRange(-1.2,1.2), randRange(-1,0.4), 240, '#ff3b30', 1.8));
@@ -19710,13 +20252,13 @@ class SetchCupGame {
     const finalRound = this.isFinalRound();
     // bônus de resposta rápida: cura 1 coração
     if(this.fastBonus && player){
-      player.hp = Math.min(player.maxHp, player.hp + SETCH_ROUND_WIN_HEAL);
+      player.hp = Math.min(player.maxHp, player.hp + SETEC_ROUND_WIN_HEAL);
     }
     if(!finalRound){
       // Rodada intermediária: cura + chance de upgrade comum/incomum (sem liberar a sala)
       let healed = 0;
       if(player){
-        healed = SETCH_ROUND_WIN_HEAL + (this.fastBonus ? SETCH_ROUND_WIN_HEAL : 0) + (this.streak>=2 ? SETCH_STREAK_HEAL_BONUS : 0);
+        healed = SETEC_ROUND_WIN_HEAL + (this.fastBonus ? SETEC_ROUND_WIN_HEAL : 0) + (this.streak>=2 ? SETEC_STREAK_HEAL_BONUS : 0);
         player.hp = Math.min(player.maxHp, player.hp + healed);
       }
       const upId = this.getRandomUpgradeForPlayer(player, ['COMUM','INCOMUM','RARA']);
@@ -19724,14 +20266,14 @@ class SetchCupGame {
         const def = UPGRADE_MAP.get(upId);
         this.rewardType = 'upgrade';
         this.lastRewardLabel = def ? def.name : upId;
-        if(game && game.showToast) game.showToast(`★ Rodada ${this.round}/${SETCH_ROUNDS}: + ${def ? def.name : upId}`, 2000);
+        if(game && game.showToast) game.showToast(`★ Rodada ${this.round}/${SETEC_ROUNDS}: + ${def ? def.name : upId}`, 2000);
         if(game && game.particles && room && room.npc){
           for(let k=0;k<12;k++) game.particles.push(new Particle(room.npc.x, room.npc.y-12, randRange(-1.4,1.4), randRange(-1.4,0.4), 340, '#a78bfa', 2));
         }
       } else {
         this.rewardType = 'heal';
         this.lastRewardLabel = 'CURA';
-        if(game && game.showToast) game.showToast(`♥ Rodada ${this.round}/${SETCH_ROUNDS}: +${healed||1} coração(ões)`, 1600);
+        if(game && game.showToast) game.showToast(`♥ Rodada ${this.round}/${SETEC_ROUNDS}: +${healed||1} coração(ões)`, 1600);
       }
       if(this.fastBonus && game && game.showToast) game.showToast('⚡ Resposta rápida! +1 coração', 1400);
       if(this.streak>=2 && game && game.showToast) game.showToast(`🔥 Sequência x${this.streak}: +1 coração extra!`, 1500);
@@ -19741,9 +20283,9 @@ class SetchCupGame {
     // ===== RODADA FINAL: prêmio grande (disquete / upgrade / vida cibernética) =====
     const roll = Math.random();
     let reward;
-    const disqueteChance = SETCH_REWARD_DISQUETE_CHANCE + (this.streak>=2 ? SETCH_STREAK_DISQUETE_BONUS : 0);
+    const disqueteChance = SETEC_REWARD_DISQUETE_CHANCE + (this.streak>=2 ? SETEC_STREAK_DISQUETE_BONUS : 0);
     if(roll < disqueteChance) reward = 'disquete';
-    else if(roll < disqueteChance + SETCH_REWARD_UPGRADE_CHANCE) reward = 'upgrade';
+    else if(roll < disqueteChance + SETEC_REWARD_UPGRADE_CHANCE) reward = 'upgrade';
     else reward = 'cyber';
     const canCyber = player && player.boneHearts < player.maxBoneHearts;
     const hasUpgradeOption = this.getRandomUpgradeForPlayer(player);
@@ -19755,7 +20297,7 @@ class SetchCupGame {
       if(upId && player && player.addUpgrade(upId)){
         const def = UPGRADE_MAP.get(upId);
         this.lastRewardLabel = def ? def.name : upId;
-        if(game && game.showToast) game.showToast(`★ Setch: + ${def ? def.name : upId}! Upgrade para ${player.weapon.name}`, 2600);
+        if(game && game.showToast) game.showToast(`★ Setec: + ${def ? def.name : upId}! Upgrade para ${player.weapon.name}`, 2600);
         if(game && game.particles && room && room.npc){
           for(let k=0;k<18;k++) game.particles.push(new Particle(room.npc.x, room.npc.y-12, randRange(-1.6,1.6), randRange(-1.6,0.4), 420, def && RARITY[def.rarity] ? RARITY[def.rarity].color : '#ffd700', 2.2));
         }
@@ -19768,14 +20310,14 @@ class SetchCupGame {
       this.giveDisqueteVida(player, game, room);
     }
     if(room){
-      room.setchRewardGiven = true;
-      room.setchCleared = true;
-      room.setchDefeated = true;
+      room.setecRewardGiven = true;
+      room.setecCleared = true;
+      room.setecDefeated = true;
     }
     playCupSfx('win');
     this.setBanner('★ SALA LIBERADA ★', '#ffd700', 3200);
     if(room && room.npc && room.npc.onFinalWin) room.npc.onFinalWin();
-    if(this.fastBonus && game && game.showToast) game.showToast('⚡ Resposta rápida na final! Bônus do Setch!', 1800);
+    if(this.fastBonus && game && game.showToast) game.showToast('⚡ Resposta rápida na final! Bônus do Setec!', 1800);
   }
   getRandomUpgradeForPlayer(player, rarityFilter, preferRare){
     if(!player || !player.weapon) return null;
@@ -19805,7 +20347,7 @@ class SetchCupGame {
     // Lógica igual ao CyberHeartItem mas direta
     if(!player) return;
     if(player.boneHearts >= player.maxBoneHearts){
-      if(game && game.showToast) game.showToast('Setch: Vida máxima! Mas ganhou ★ upgrade alternativo!', 1500);
+      if(game && game.showToast) game.showToast('Setec: Vida máxima! Mas ganhou ★ upgrade alternativo!', 1500);
       const alt = this.getRandomUpgradeForPlayer(player);
       if(alt) player.addUpgrade(alt);
       return;
@@ -19814,7 +20356,7 @@ class SetchCupGame {
     player.maxHp += 2;
     player.hp = Math.min(player.maxHp, player.hp+2);
     this.lastRewardLabel = 'VIDA CIBERNÉTICA';
-    if(game && game.showToast) game.showToast('◆ Setch: +1 Vida Cibernética! [+2 HP recipiente cinza]', 2200);
+    if(game && game.showToast) game.showToast('◆ Setec: +1 Vida Cibernética! [+2 HP recipiente cinza]', 2200);
     if(game && game.particles && room && room.npc){
       for(let k=0;k<16;k++) game.particles.push(new Particle(room.npc.x, room.npc.y-10, randRange(-1.4,1.4), randRange(-1.4,0.6), 340, '#00e5ff', 2.2));
     }
@@ -19827,7 +20369,7 @@ class SetchCupGame {
     if(typeof player.grantContinue === 'function') player.grantContinue(1);
     const total = player.continues|0;
     this.lastRewardLabel = 'DISQUETE DA VIDA';
-    if(game && game.showToast) game.showToast(`💾 Setch: DISQUETE DA VIDA! [${total} continue(s) salvo(s)]`, 3000);
+    if(game && game.showToast) game.showToast(`💾 Setec: DISQUETE DA VIDA! [${total} continue(s) salvo(s)]`, 3000);
     // partículas: chuva de 0 e 1 verdes no NPC (mesma identidade visual do item)
     if(game && game.particles && room && room.npc){
       const ox = room.npc.x, oy = room.npc.y-12;
@@ -19871,7 +20413,7 @@ class SetchCupGame {
     }
     // ==== Marcador das rodadas (pips) ====
     this.drawRoundPips(ctx);
-    // ==== Arco da troca + mãos fantasma do Setch ====
+    // ==== Arco da troca + mãos fantasma do Setec ====
     this.drawSwapFx(ctx);
     // ==== Copos ====
     for(let i=0;i<this.cups.length;i++){
@@ -19997,7 +20539,7 @@ class SetchCupGame {
     ctx.fillStyle='#fff'; ctx.font='6px "Press Start 2P"'; ctx.textAlign='center';
     if(this.state==='idle'){
       ctx.fillStyle='#ffd700';
-      ctx.fillText(this.tableX && this.nearTable ? `PRESSIONE ${keyTag('e')} PERTO DO SETCH` : 'ACHE O SETCH NESSA SALA', TX, CANVAS_H/2 + 94);
+      ctx.fillText(this.tableX && this.nearTable ? `PRESSIONE ${keyTag('e')} PERTO DO SETEC` : 'ACHE O SETEC NESSA SALA', TX, CANVAS_H/2 + 94);
     } else if(this.state==='showing'){
       ctx.fillText('MEMORIZE ONDE ESTÁ A BOLINHA...', TX, CANVAS_H/2 + 94);
     } else if(this.state==='shuffling'){
@@ -20010,7 +20552,7 @@ class SetchCupGame {
       if(this.result==='win') { ctx.fillStyle='#4ade80'; ctx.fillText('✓ ACERTOU! RECOMPENSA!', TX, CANVAS_H/2 + 94); }
       else { ctx.fillStyle='#ff6b6b'; ctx.fillText('✗ ERROU!', TX, CANVAS_H/2 + 94); }
     } else if(this.state==='nextRound'){
-      ctx.fillStyle='#4ade80'; ctx.fillText(`✓ RODADA ${this.round}/${SETCH_ROUNDS}!`, TX, CANVAS_H/2 + 94);
+      ctx.fillStyle='#4ade80'; ctx.fillText(`✓ RODADA ${this.round}/${SETEC_ROUNDS}!`, TX, CANVAS_H/2 + 94);
     } else if(this.state==='finishedWin'){
       ctx.fillStyle='#4ade80'; ctx.fillText('★ RECOMPENSA ENTREGUE ★', TX, CANVAS_H/2 + 94);
     } else if(this.state==='finishedLose'){
@@ -20045,7 +20587,7 @@ class SetchCupGame {
     }
     ctx.restore();
   }
-  // Arco ligando o par que acabou de trocar + "mãos fantasma" do Setch sobre os copos
+  // Arco ligando o par que acabou de trocar + "mãos fantasma" do Setec sobre os copos
   drawSwapFx(ctx){
     if(this.arcT>0.02 && this.arcA>=0 && this.arcB>=0){
       const ca = this.cups[this.arcA], cb = this.cups[this.arcB];
@@ -20084,9 +20626,9 @@ class SetchCupGame {
   // Marcador de rodadas (●●○) no topo da sala (fora da area do NPC e dos copos)
   drawRoundPips(ctx){
     const y = WALL_THICK + 46;
-    const x0 = CANVAS_W/2 - (SETCH_ROUNDS-1)*10;
+    const x0 = CANVAS_W/2 - (SETEC_ROUNDS-1)*10;
     ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
-    for(let i=0;i<SETCH_ROUNDS;i++){
+    for(let i=0;i<SETEC_ROUNDS;i++){
       const x = x0 + i*20;
       const done = i < (this.round-1);
       const cur = (i === this.round-1);
@@ -20098,7 +20640,7 @@ class SetchCupGame {
       }
     }
     ctx.fillStyle='rgba(255,255,255,0.8)'; ctx.font='5px monospace';
-    ctx.fillText(`RODADA ${this.round}/${SETCH_ROUNDS} • ${this.roundCfg().label}`, this.tableX, y+14);
+    ctx.fillText(`RODADA ${this.round}/${SETEC_ROUNDS} • ${this.roundCfg().label}`, this.tableX, y+14);
     ctx.textAlign='left';
     // Barra de progresso do embaralhamento da rodada (dá noção de "falta pouco")
     if(this.state==='shuffling' && this.shuffleMoves>0){
@@ -20125,7 +20667,7 @@ class SetchCupGame {
   }
 }
 
-// Uniforme dos NPCs da Sala Setch: camisa branca, calça azul e emblema "DS" no peito.
+// Uniforme dos NPCs da Sala Setec: camisa branca, calça azul e emblema "DS" no peito.
 // "Press Start 2P" avanca 1em por caractere, entao "DS" a 5px ocupa 10px: o escudo
 // precisa ter >=11px de largura para o texto nao encostar na borda. DS_BADGE_TEXT_DY
 // desloca a linha de base para centrar as letras no escudo (fonte de 5px => ~2.5px p/ centro).
@@ -20176,12 +20718,12 @@ function drawDSBadge(ctx, cx, cy, bw, bh){
   ctx.textAlign='left';
 }
 
-// ===================== BASE DOS NPCs DA SALA SETCH =====================
-// Todo NPC da Sala Setch (Setch, Indiana, JL, Oli) herda daqui o comportamento comum:
+// ===================== BASE DOS NPCs DA SALA SETEC =====================
+// Todo NPC da Sala Setec (Setec, Indiana, JL, Oli) herda daqui o comportamento comum:
 // respiration, piscada de olhos, olhar seguindo o jogador, falinhas Speech nas horas
 // mortas, destaque quando o jogador chega perto e pedestal do presente após entregar.
 // Assim cada NPC só precisa desenhar o próprio corpo e falar suas linhas.
-class SetchVendor {
+class SetecVendor {
   constructor(x, y, w, h, interactRange, cfg){
     this.x=x; this.y=y;
     this.w=w; this.h=h;
@@ -20203,16 +20745,16 @@ class SetchVendor {
     this.cfg=Object.assign({name:'NPC', color:'#a78bfa', lines:[], doneLines:[]}, cfg||{});
     this.giftIcon=null;      // rótulo do pedestal após entregar (ex.: 'CHICOTE')
     this.giftColor='#ffd700';
-    this.dealerAnim=0;       // Setch usa para o gesto de embaralhar
+    this.dealerAnim=0;       // Setec usa para o gesto de embaralhar
     this.cheerAnim=0;        // usado nas falas de parabéns
     this.alertFx=0;          // "!" de atenção ao ver o jogador chegar
-    this.face=-1;            // direção do olhar (o Setch é desenhado olhando para a esquerda)
+    this.face=-1;            // direção do olhar (o Setec é desenhado olhando para a esquerda)
     this.giftBadge=null;     // ícone do presente no pedestal e no hint
     this.hypeLines=[];       // falas curtas quando o jogador acerta uma rodada do Copinho
     this.pokeLines=[];       // falas curtas quando o jogador erra uma rodada
     this.mood=0;             // -1 decepcionado .. 0 neutro .. 1 animado (muda a boca/olhos)
     this.moodT=0;            // duração restante do humor atual
-    this.waveFx=0;           // aceno de despedida (usado pelo Setch após a final)
+    this.waveFx=0;           // aceno de despedida (usado pelo Setec após a final)
   }
   // Reação genérica à rodada do Jogo do Copinho: os NPCs da sala acompanham o jogo
   // de lado e comentam. Não segura o jogo (só fala), então nunca atrapalha o timing.
@@ -20403,10 +20945,10 @@ class SetchVendor {
   getRect(){ return {x:this.x-this.w/2,y:this.y-this.h/2,w:this.w,h:this.h}; }
 }
 
-class SetchNPC extends SetchVendor {
+class SetecNPC extends SetecVendor {
   constructor(x,y){
-    super(x, y, SETCH_NPC_SIZE_W, SETCH_NPC_SIZE_H, SETCH_INTERACT_RANGE, {
-      name:'SETCH',
+    super(x, y, SETEC_NPC_SIZE_W, SETEC_NPC_SIZE_H, SETEC_INTERACT_RANGE, {
+      name:'SETEC',
       color:'rgba(168,85,247,0.92)',
       ringColor:'rgba(255,215,0,0.75)',
       lines:[
@@ -20440,7 +20982,7 @@ class SetchNPC extends SetchVendor {
       if(this.handCupT<=0) this.handCup=0;
     }
   }
-  // Chamado pelo Jogo do Copinho a cada troca: o Setch "faz o gesto" com as mãos
+  // Chamado pelo Jogo do Copinho a cada troca: o Setec "faz o gesto" com as mãos
   // (a,b) são os índices dos copos trocados, então ele mostra o copo certo na mão.
   onShuffleSwap(a,b,ballIndex){
     this.swapFx=260;
@@ -20464,72 +21006,118 @@ class SetchNPC extends SetchVendor {
     const wave = this.waveFx>0 ? Math.sin((1400-this.waveFx)/1400*Math.PI*3)*3.2 : 0;
     // sombra
     ctx.fillStyle='rgba(0,0,0,0.32)'; ctx.fillRect(x+2, y+H-3, W, 4);
-    // aura misteriosa setch (roxo/dourado)
+    // aura misteriosa setec (roxo/dourado)
     const pulse=0.5+Math.sin(this.anim*0.011)*0.30;
     ctx.fillStyle=`rgba(168,85,247,${0.14+pulse*0.08 + this.glow*0.06})`;
     ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.92+pulse*3,0,Math.PI*2); ctx.fill();
     ctx.strokeStyle=`rgba(255,215,0,${0.22+pulse*0.10})`; ctx.lineWidth=1.1; ctx.setLineDash([4,3]);
     ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.88,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
     this.drawHighlight(ctx, x, y, W, H, bob);
-    // pernas - calça azul
-    ctx.fillStyle='#1d4ed8'; ctx.fillRect(x+4, y+22+bob, W-8, H-25);
-    ctx.fillStyle='#1e3a8a'; ctx.fillRect(x+4, y+22+bob, 1, H-25);
-    ctx.fillStyle='#172554'; ctx.fillRect(x+4, y+24+bob, W-8, 0.8);
-    // sapatos
-    ctx.fillStyle='#111827'; ctx.fillRect(x+3, y+H-4, W-6, 2);
-    // corpo - camisa branca (sobe/desce com a respiração)
-    ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+3, y+10+bob+breathe, W-6, 12);
-    ctx.fillStyle='#ffffff'; ctx.fillRect(x+3, y+10+bob+breathe, W-6, 1.5);
-    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+20.5+bob+breathe, W-6, 1.5);
-    // gola da camisa
-    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+10+bob+breathe, W-6, 1);
-    // emblema DS no peito
-    drawDSBadge(ctx, this.x, y+15.5+bob+breathe, 11, 9.8);
-    // cinto
-    ctx.fillStyle='#a16207'; ctx.fillRect(x+4, y+21.6+bob, W-8, 1.4);
-    ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.fillRect(x+4, y+21.6+bob, W-8, 0.6);
-    // cabeça
-    ctx.fillStyle='#d9b99b'; ctx.fillRect(x+4, y+2+bob, W-8, 9);
-    // chapéu setch (cartola estilosa) - mantido
-    ctx.fillStyle='#0a0a0a'; ctx.fillRect(x+2, y-1+bob, W-4, 3.5);
-    ctx.fillRect(x+6, y-5+bob, W-12, 4.5);
-    ctx.fillStyle='#a16207'; ctx.fillRect(x+6, y+1+bob, W-12, 1.2);
-    // olhos (misteriosos, brilho) - piscam e seguem o jogador
-    const eyeY=y+5.5+bob, eyeH = this.blink>0 ? 0.7 : 2.6;
-    const ex=this.lookX*0.9, ey=this.lookY*0.7;
-    // O humor altera os olhos: decepcionado deixa o olhar caído, animado abre o olho
-    const moodEye = clamp(this.mood, -1, 1);
-    const eyeH2 = eyeH * (1 + moodEye*0.22);
-    ctx.fillStyle='#1a0a00';
-    ctx.fillRect(x+7, eyeY, 2.6, eyeH2); ctx.fillRect(x+W-9.6, eyeY, 2.6, eyeH2);
+    // ===== CHASSI DO ROBÔ (visual novo do Setec) =====
+    // pernas mecânicas com joelhos brilhantes
+    ctx.fillStyle='#374151';
+    ctx.fillRect(x+4, y+22+bob, 7, H-25);
+    ctx.fillRect(x+W-11, y+22+bob, 7, H-25);
+    ctx.fillStyle='#4b5563';
+    ctx.fillRect(x+4, y+22+bob, 7, 1.6);
+    ctx.fillRect(x+W-11, y+22+bob, 7, 1.6);
+    ctx.fillStyle='#a855f7';
+    ctx.fillRect(x+6.4, y+26+bob, 2.2, 1.2);
+    ctx.fillRect(x+W-8.6, y+26+bob, 2.2, 1.2);
+    // pés metálicos
+    ctx.fillStyle='#1f2937';
+    ctx.fillRect(x+2.5, y+H-4, 9, 2.8);
+    ctx.fillRect(x+W-11.5, y+H-4, 9, 2.8);
+    ctx.fillStyle='#6b7280';
+    ctx.fillRect(x+2.5, y+H-4, 9, 0.9);
+    ctx.fillRect(x+W-11.5, y+H-4, 9, 0.9);
+    // torso blindado
+    ctx.fillStyle='#6b7280'; ctx.fillRect(x+2.5, y+10+bob+breathe, W-5, 12.5);
+    ctx.fillStyle='#9ca3af'; ctx.fillRect(x+2.5, y+10+bob+breathe, W-5, 1.6);
+    ctx.fillStyle='#374151'; ctx.fillRect(x+2.5, y+21+bob+breathe, W-5, 1.5);
+    // painel do peito + placa DS
+    ctx.fillStyle='#1f2937'; ctx.fillRect(x+5, y+13.4+bob+breathe, W-10, 5.8);
+    drawDSBadge(ctx, this.x, y+14.6+bob+breathe, 11, 6.6);
+    // núcleo de energia roxo/dourado (pulsa) abaixo da placa
+    const corePulse = 0.55+Math.sin(this.anim*0.012)*0.35;
+    ctx.fillStyle=`rgba(168,85,247,${0.35+corePulse*0.35})`;
+    ctx.beginPath(); ctx.arc(this.x, y+20.3+bob+breathe, 2.0+corePulse*0.6, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='#f5d0fe';
+    ctx.beginPath(); ctx.arc(this.x, y+20.3+bob+breathe, 0.9, 0, Math.PI*2); ctx.fill();
+    // cintura e ombros
+    ctx.fillStyle='#111827'; ctx.fillRect(x+3.5, y+21.8+bob, W-7, 1.4);
+    ctx.fillStyle='#4b5563';
+    ctx.fillRect(x+1.4, y+10.4+bob+breathe, 2.4, 2.8);
+    ctx.fillRect(x+W-3.8, y+10.4+bob+breathe, 2.4, 2.8);
+    // pescoço
+    ctx.fillStyle='#374151'; ctx.fillRect(this.x-2, y+9+bob, 4, 2);
+    // cabeça robótica
+    ctx.fillStyle='#9ca3af'; ctx.fillRect(x+4, y+2+bob, W-8, 8);
+    ctx.fillStyle='#d1d5db'; ctx.fillRect(x+4, y+2+bob, W-8, 1.2);
+    // viseira escura
+    ctx.fillStyle='#111827'; ctx.fillRect(x+5.5, y+4+bob, W-11, 4.8);
+    // olhos de LED (piscam e seguem o jogador)
+    const eyeY=y+5.6+bob, ex=this.lookX*0.8, ey=this.lookY*0.6;
+    const moodEye=clamp(this.mood, -1, 1);
+    const eyeH=(this.blink>0?0.7:1.9) * (1 + moodEye*0.18);
+    ctx.fillStyle='#0f172a';
+    ctx.fillRect(x+6.6, eyeY, 4.2, eyeH); ctx.fillRect(x+W-10.8, eyeY, 4.2, eyeH);
     if(this.blink<=0){
-      ctx.fillStyle='#ffd700';
-      ctx.fillRect(x+7.5+ex, eyeY+1+ey+moodEye*0.5, 1.3, 1.3); ctx.fillRect(x+W-9.1+ex, eyeY+1+ey+moodEye*0.5, 1.3, 1.3);
-      ctx.fillStyle='#fff';
-      ctx.fillRect(x+8+ex, eyeY+1.5+ey+moodEye*0.5, 0.6,0.6); ctx.fillRect(x+W-8.6+ex, eyeY+1.5+ey+moodEye*0.5, 0.6,0.6);
+      ctx.fillStyle='#22d3ee';
+      ctx.fillRect(x+7.2+ex, eyeY+0.55+ey+moodEye*0.35, 2.9, 0.9);
+      ctx.fillRect(x+W-10.1+ex, eyeY+0.55+ey+moodEye*0.35, 2.9, 0.9);
+      ctx.fillStyle='#e0f2fe';
+      ctx.fillRect(x+7.6+ex, eyeY+0.65+ey+moodEye*0.35, 1.1, 0.5);
+      ctx.fillRect(x+W-9.7+ex, eyeY+0.65+ey+moodEye*0.35, 1.1, 0.5);
     }
-    // sobrancelhas: sobe quando animado, desce quando decepcionado
-    ctx.fillStyle='#1a0a00';
-    const browY = y+3.4+bob - moodEye*1.1;
-    ctx.fillRect(x+6.8, browY, 3.2, 0.8); ctx.fillRect(x+W-10, browY, 3.2, 0.8);
-    // bigode estiloso
-    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+9, y+9.2+bob, W-18,0.9);
-    ctx.fillStyle='#3a1a0a'; ctx.fillRect(x+8, y+10.1+bob, W-16,0.6);
-    // boca: sorriso现在由心情控制 (curva usa path em vez de retângulo)
-    drawMoodMouth(ctx, this.x, y+11.2+bob, 8, '#7a2f1a', this.mood);
-    // arms: one holds the cup, the other does the shuffling gesture (with the wave)
-    ctx.fillStyle='#f4f7fb';
+    // orelhas/parafusos
+    ctx.fillStyle='#4b5563';
+    ctx.fillRect(x+2.4, y+4.6+bob, 1.6, 2.4);
+    ctx.fillRect(x+W-4, y+4.6+bob, 1.6, 2.4);
+    // grade do alto-falante (boca reage ao humor)
+    ctx.fillStyle='#374151'; ctx.fillRect(x+8, y+9.2+bob, W-16, 0.7);
+    drawMoodMouth(ctx, this.x, y+10.4+bob, 7.5, '#22d3ee', this.mood);
+    // ===== CHAPÉU DE BRUXO =====
+    const hatY = y+1.5+bob;
+    const hatPulse = 0.5+Math.sin(this.anim*0.01)*0.2;
+    // aba larga
+    ctx.fillStyle='#3b0764';
+    ctx.beginPath(); ctx.ellipse(this.x, hatY, W*0.64, 2.7, 0, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle=`rgba(251,191,36,${0.55+hatPulse*0.25})`; ctx.lineWidth=0.8; ctx.stroke();
+    // cone pontudo
+    ctx.beginPath();
+    ctx.moveTo(this.x, y-5.6+bob);
+    ctx.quadraticCurveTo(x+W*0.34, y-2.4+bob, x+3.4, hatY);
+    ctx.lineTo(x+W-3.4, hatY);
+    ctx.quadraticCurveTo(x+W*0.66, y-2.4+bob, this.x, y-5.6+bob);
+    ctx.closePath();
+    ctx.fillStyle='#4c1d95'; ctx.fill();
+    ctx.strokeStyle='#6b21a8'; ctx.lineWidth=0.8; ctx.stroke();
+    // faixa e fivela douradas
+    ctx.fillStyle='#6b21a8'; ctx.fillRect(x+4.6, hatY-2.4, W-9.2, 2.4);
+    ctx.fillStyle='#fbbf24'; ctx.fillRect(x+4.6, hatY-1.1, W-9.2, 1.1);
+    ctx.fillStyle='#fbbf24'; ctx.fillRect(this.x-2, hatY-2.8, 4, 3.2);
+    ctx.fillStyle='#3b0764'; ctx.fillRect(this.x-1, hatY-2.1, 2, 1.8);
+    // estrelinha no cone
+    ctx.save(); ctx.translate(x+W*0.70, y-3.2+bob); ctx.rotate(0.35);
+    ctx.fillStyle='#fde047'; ctx.fillRect(-1.1,-0.35,2.2,0.7); ctx.fillRect(-0.35,-1.1,0.7,2.2);
+    ctx.restore();
+    // braços mecânicos
+    ctx.fillStyle='#6b7280';
     ctx.fillRect(x+0.5, y+10.5+bob+breathe, 3.5, 6);
     ctx.fillRect(x+W-4, y+10.5+bob+breathe+swing*0.5, 3.5, 6);
-    ctx.fillStyle='#d9b99b';
+    ctx.fillStyle='#9ca3af';
     ctx.fillRect(x+0.5, y+15.2+bob+breathe, 3.5,4.5);
     ctx.fillRect(x+W-4, y+15.2+bob+breathe+swing, 3.5,4.5);
-    // raised hand (farewell) overrides the normal arm position
+    ctx.fillStyle='#374151';
+    ctx.fillRect(x+0.9, y+18.7+bob+breathe, 2.7, 1.2);
+    ctx.fillRect(x+W-3.6, y+18.7+bob+breathe+swing, 2.7, 1.2);
+    // aceno de despedida com braço robótico
     if(this.waveFx>0){
-      ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+W-5, y+5+bob, 3.5, 6);
-      ctx.fillStyle='#d9b99b'; ctx.fillRect(x+W-5, y+3.4+bob+wave, 3.5, 2.2);
+      ctx.fillStyle='#6b7280'; ctx.fillRect(x+W-5, y+5+bob, 3.5, 6);
+      ctx.fillStyle='#9ca3af'; ctx.fillRect(x+W-5, y+3.4+bob+wave, 3.5, 2.2);
     }
-    // copo na mão durante o embaralhamento (o "truque" do Setch)
+    // copo na mão durante o embaralhamento (o "truque" do Setec)
     if(this.handCup>0){
       const hx = this.handCup===1 ? x+0.5 : x+W-1.5;
       const hy = y+15+bob+breathe+(this.swapFx>0?swing:0)-2.5;
@@ -20550,23 +21138,23 @@ class SetchNPC extends SetchVendor {
       ctx.strokeRect(this.x-22.5, y-13.5+bob, 45, 9);
     }
     ctx.fillStyle='#ffd700'; ctx.font='5px "Press Start 2P"'; ctx.textAlign='center';
-    ctx.fillText('SETCH', this.x, y-7+bob); ctx.textAlign='left';
+    ctx.fillText('SETEC', this.x, y-7+bob); ctx.textAlign='left';
     // hint
     ctx.fillStyle='rgba(168,85,247,0.92)'; ctx.font='5px monospace'; ctx.textAlign='center';
     ctx.fillText('COPINHOS', this.x, y-17+bob); ctx.textAlign='left';
     this.drawGiftBadge(ctx, this.x, y-24+bob, '#ffd700');
     // bolha de fala + prompt quando o jogador chega perto
-    const nearSetch = !!(player && this.isNear(player));
-    const showPromptSetch = nearSetch && (st==='idle' || st==='finishedLose');
-    this.drawBubble(ctx, this.x, y-13+bob, showPromptSetch ? -16 : 0);
-    if(showPromptSetch){
+    const nearSetec = !!(player && this.isNear(player));
+    const showPromptSetec = nearSetec && (st==='idle' || st==='finishedLose');
+    this.drawBubble(ctx, this.x, y-13+bob, showPromptSetec ? -16 : 0);
+    if(showPromptSetec){
       this.drawAlert(ctx, this.x, y-13+bob);
       const label = (st==='idle') ? keyTag('e')+' JOGAR' : keyTag('e')+' REJOGAR';
       this.drawPrompt(ctx, this.x, y-22+bob, label, '#ffd700');
     }
-    // Dica: enquanto a partida está rolando, o Setch mostra o número do copo mais próximo
+    // Dica: enquanto a partida está rolando, o Setec mostra o número do copo mais próximo
     // do jogador para quem joga com o [E] em vez das teclas 1/2/3.
-    if(nearSetch && active && cg.state==='waiting' && cg.interactive){
+    if(nearSetec && active && cg.state==='waiting' && cg.interactive){
       const near = cg.nearestCupToPlayer(player);
       ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(this.x-26, y-33+bob, 52, 11);
       ctx.strokeStyle='rgba(255,215,0,0.8)'; ctx.lineWidth=0.8;
@@ -20577,11 +21165,11 @@ class SetchNPC extends SetchVendor {
   }
 }
 
-// ===================== INDIANA JONES NPC - CHICOTE 100% (SALA SETCH) =====================
-// Novo NPC na Sala Setch com visual Indiana Jones: fedora marrom, jaqueta couro, chicote no ombro.
+// ===================== INDIANA JONES NPC - CHICOTE 100% (SALA SETEC) =====================
+// Novo NPC na Sala Setec com visual Indiana Jones: fedora marrom, jaqueta couro, chicote no ombro.
 // Garante Chicote do Indiana 100% ao interagir com [E] quando próximo (requisito).
 // Itens raros mas pode aparecer em todas fases; aqui é garantido.
-class IndianaJonesNPC extends SetchVendor {
+class IndianaJonesNPC extends SetecVendor {
   constructor(x,y){
     super(x, y, INDIANA_NPC_SIZE_W, INDIANA_NPC_SIZE_H, CHICOTE_INTERACT_RANGE, {
       name:'INDIANA',
@@ -20602,7 +21190,7 @@ class IndianaJonesNPC extends SetchVendor {
     this.giftIcon='🤠'; this.giftColor='#d2a679';
     this.giftBadge='🧢';  // chapéu flutuando: mostra o que ele dá sem precisar chegar perto
     this.hypeLines=['Boa! Você tem olho de águia.','Isso é técnica, não sorte.','Boa. O chicote fica mais fácil de usar.'];
-    this.pokeLines=['Ops. Os copos te venceram dessa vez.','Relaxa, da próxima sai.','O Setch é esperto, mas é justo.'];
+    this.pokeLines=['Ops. Os copos te venceram dessa vez.','Relaxa, da próxima sai.','O Setec é esperto, mas é justo.'];
   }
   // Deixa o Chicote NO CHÃO para o jogador pegar com [Q] (não equipa na hora)
   tryGiveGift(player, game, room){
@@ -20745,10 +21333,10 @@ class IndianaJonesNPC extends SetchVendor {
   }
 }
 
-// ===================== JL NPC - PASSIVO IO-IO (SALA SETCH) =====================
-// NPC na Sala Setch que entrega o passivo IO-IO: ao levar dano o jogador invoca
+// ===================== JL NPC - PASSIVO IO-IO (SALA SETEC) =====================
+// NPC na Sala Setec que entrega o passivo IO-IO: ao levar dano o jogador invoca
 // io-ios que giram em volta dele causando dano nos inimigos.
-class JLNPC extends SetchVendor {
+class JLNPC extends SetecVendor {
   constructor(x,y){
     super(x, y, JL_NPC_SIZE_W, JL_NPC_SIZE_H, JL_INTERACT_RANGE, {
       name:'JL',
@@ -20761,7 +21349,7 @@ class JLNPC extends SetchVendor {
         'IO-IO! IO-IO! Tá sentindo?',
         'Deixa comigo que eu distraio.',
         'Se errar copinho, o io-io ainda tá aqui.',
-        'O Setch é truque, io-io é jogo limpo.',
+        'O Setec é truque, io-io é jogo limpo.',
         'Io-io não perdoa, ele só não cansa.',
       ],
       doneLines:['Cuida dele, tá voando!','IO-IO!','Bom partner.'],
@@ -20769,7 +21357,7 @@ class JLNPC extends SetchVendor {
     this.giftIcon='🪀'; this.giftColor='#e53935';
     this.giftBadge='🪀';  // io-io flutuando
     this.hypeLines=['ISSO! Io-io girou junto!','Boa, tá afiado hoje!','Acerto limpo, parceiro.'];
-    this.pokeLines=['Ah, o copinho te venceu.','Dessa vez o Setch ganhou essa.','Tá de olho ruim hoje, hein?'];
+    this.pokeLines=['Ah, o copinho te venceu.','Dessa vez o Setec ganhou essa.','Tá de olho ruim hoje, hein?'];
   }
   // Deixa o IO-IO NO CHÃO (passiva ligada ao encostar), em vez de ativar na hora
   tryGiveGift(player, game, room){
@@ -20891,10 +21479,12 @@ class JLNPC extends SetchVendor {
   }
 }
 
-// ===================== OLI NPC - ITEM ESPECIAL DE XADREZ (SALA SETCH) =====================
-// NPC na Sala Setch que entrega o item especial de Xadrez do Oli (OliXadrez):
+// ===================== OLI NPC - ITEM ESPECIAL DE XADREZ (SALA SETEC) =====================
+// Visual inspirado no Mario (boné com aba, bigode, macacão e luvas), mas com paleta
+// própria do Oli: boné/camisa em roxo/magenta, macacão teal e botões dourados.
+// NPC na Sala Setec que entrega o item especial de Xadrez do Oli (OliXadrez):
 // invoca Torre, Bispo, Rainha e Rei em ciclo - cada peça com mecânica única.
-class OliNPC extends SetchVendor {
+class OliNPC extends SetecVendor {
   constructor(x,y){
     super(x, y, OLI_NPC_SIZE_W, OLI_NPC_SIZE_H, OLI_NPC_INTERACT_RANGE, {
       name:'OLI',
@@ -20908,7 +21498,7 @@ class OliNPC extends SetchVendor {
         'Cuidado com o meu cavalo.',
         'Cada peça minha tem uma regra. Vale tentar.',
         'Torre segura, bispo atravessa, rainha manda.',
-        'Contra o Setch não dá pra jogar de rei.',
+        'Contra o Setec não dá pra jogar de rei.',
       ],
       doneLines:['Boas jogadas, meu.','O tabuleiro é seu agora.','Xeque!'],
     });
@@ -20971,39 +21561,77 @@ class OliNPC extends SetchVendor {
     ctx.strokeStyle=`rgba(216,180,254,${0.24+pulse*0.10})`; ctx.lineWidth=1.1; ctx.setLineDash([4,3]);
     ctx.beginPath(); ctx.arc(this.x, this.y+bob, W*0.89,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
     this.drawHighlight(ctx, x, y, W, H, bob);
-    // pernas - calça azul
-    ctx.fillStyle='#1d4ed8'; ctx.fillRect(x+4, y+22+bob, W-8, H-25);
-    ctx.fillStyle='#1e3a8a'; ctx.fillRect(x+4, y+22+bob, 1, H-25);
-    ctx.fillStyle='#172554'; ctx.fillRect(x+4, y+24+bob, W-8, 0.8);
-    // sapatos
-    ctx.fillStyle='#111827'; ctx.fillRect(x+3, y+H-4, W-6, 2);
-    // corpo - camisa branca
-    ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+3, y+10+bob+breathe, W-6, 12);
-    ctx.fillStyle='#ffffff'; ctx.fillRect(x+3, y+10+bob+breathe, W-6, 1.5);
-    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+20.5+bob+breathe, W-6, 1.5);
-    // gola
-    ctx.fillStyle='#d7dde6'; ctx.fillRect(x+3, y+10+bob+breathe, W-6, 1);
-    // emblema DS no peito
-    drawDSBadge(ctx, this.x, y+15.5+bob+breathe, 11, 9.8);
+    // ===== VISUAL "MARIO" DO OLI (mesmo estilo, cores trocadas) =====
+    // macacão teal e sapatos marrons
+    ctx.fillStyle='#0f766e'; ctx.fillRect(x+4, y+22+bob, W-8, H-25);
+    ctx.fillStyle='#115e59'; ctx.fillRect(x+4, y+22+bob, 1, H-25);
+    ctx.fillStyle='#134e4a'; ctx.fillRect(x+4, y+24+bob, W-8, 0.8);
+    ctx.fillStyle='#5b3a1a';
+    ctx.fillRect(x+2.5, y+H-4, 9, 2.6);
+    ctx.fillRect(x+W-11.5, y+H-4, 9, 2.6);
+    ctx.fillStyle='#7c4a20';
+    ctx.fillRect(x+2.5, y+H-4, 9, 0.9); ctx.fillRect(x+W-11.5, y+H-4, 9, 0.9);
+    // camisa magenta
+    ctx.fillStyle='#db2777'; ctx.fillRect(x+3, y+10+bob+breathe, W-6, 12);
+    ctx.fillStyle='#f472b6'; ctx.fillRect(x+3, y+10+bob+breathe, W-6, 1.5);
+    ctx.fillStyle='#9d174d'; ctx.fillRect(x+3, y+20.5+bob+breathe, W-6, 1.5);
+    // macacão por cima (bib + alças + botões dourados)
+    ctx.fillStyle='#0f766e'; ctx.fillRect(x+6, y+15+bob+breathe, W-12, 6.5);
+    ctx.fillRect(x+5, y+11+bob+breathe, 2, 5);
+    ctx.fillRect(x+W-7, y+11+bob+breathe, 2, 5);
+    ctx.fillStyle='#fbbf24';
+    ctx.fillRect(x+6.6, y+14.1+bob+breathe, 1.5, 1.5);
+    ctx.fillRect(x+W-8.1, y+14.1+bob+breathe, 1.5, 1.5);
     // cinto
-    ctx.fillStyle='#6d28d9'; ctx.fillRect(x+4, y+21.6+bob, W-8, 1.4);
-    ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.fillRect(x+4, y+21.6+bob, W-8, 0.6);
+    ctx.fillStyle='#3b2a14'; ctx.fillRect(x+4, y+21.6+bob, W-8, 1.4);
+    ctx.fillStyle='#fbbf24'; ctx.fillRect(this.x-1.4, y+21.4+bob, 2.8, 1.8);
     // cabeça
-    ctx.fillStyle='#d9b99b'; ctx.fillRect(x+4, y+2+bob, W-8, 9);
-    // cabelo castanho
-    ctx.fillStyle='#4a2c17'; ctx.fillRect(x+3, y+0.5+bob, W-6, 3.2);
-    ctx.fillRect(x+5, y-1.2+bob, 4, 2); ctx.fillRect(x+W-9, y-1.2+bob, 4, 2);
-    // olhos (violeta, brilho de xadrez) - piscam e seguem o jogador
-    const eyeY=y+5.5+bob, ex=this.lookX*0.9, ey=this.lookY*0.7;
+    ctx.fillStyle='#f2c9a0'; ctx.fillRect(x+4, y+2+bob, W-8, 9);
+    // costeletas
+    ctx.fillStyle='#3f2a1a';
+    ctx.fillRect(x+3, y+4+bob, 1.6, 3.6); ctx.fillRect(x+W-4.6, y+4+bob, 1.6, 3.6);
+    // boné roxo (estilo Mario, mas nas cores do Oli)
+    const capY=y+2.9+bob;
+    ctx.fillStyle='#7c3aed';
+    ctx.beginPath(); ctx.ellipse(this.x, capY, W*0.36, 3.1, 0, Math.PI, Math.PI*2); ctx.fill();
+    ctx.fillRect(x+4, capY-0.2, W-8, 1.6);
+    // aba frontal (o Oli olha para a esquerda)
+    ctx.fillStyle='#5b21b6';
+    ctx.beginPath(); ctx.ellipse(x+5.5, capY+1.2, 6.6, 1.5, 0, 0, Math.PI*2); ctx.fill();
+    // emblema "O" no boné
+    ctx.fillStyle='#f5f3ff';
+    ctx.beginPath(); ctx.arc(this.x, capY-0.8, 2.2, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='#4c1d95'; ctx.font='4px "Press Start 2P"'; ctx.textAlign='center';
+    ctx.fillText('O', this.x, capY+0.4); ctx.textAlign='left';
+    // nariz grande (Mario-like)
+    ctx.fillStyle='#e8b184';
+    ctx.beginPath(); ctx.arc(this.x, y+8.1+bob, 2.3, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.35)';
+    ctx.beginPath(); ctx.arc(this.x-0.8, y+7.4+bob, 0.7, 0, Math.PI*2); ctx.fill();
+    // olhos brancos com pupila (piscam e seguem o jogador)
+    const eyeY=y+5.1+bob, ex=this.lookX*0.9, ey=this.lookY*0.7;
     const moodEye=clamp(this.mood, -1, 1);
-    const eyeH=(this.blink>0?0.7:2.6) * (1 + moodEye*0.24);
-    ctx.fillStyle='#1a0a00'; ctx.fillRect(x+7, eyeY, 2.6, eyeH); ctx.fillRect(x+W-9.6, eyeY, 2.6, eyeH);
+    const eyeH=(this.blink>0?0.7:2.4) * (1 + moodEye*0.22);
+    ctx.fillStyle='#f8fafc';
+    ctx.fillRect(x+6.4, eyeY, 3.3, eyeH); ctx.fillRect(x+W-9.7, eyeY, 3.3, eyeH);
     if(this.blink<=0){
-      ctx.fillStyle='#c084fc'; ctx.fillRect(x+7.5+ex, eyeY+1+ey+moodEye*0.5, 1.3, 1.3); ctx.fillRect(x+W-9.1+ex, eyeY+1+ey+moodEye*0.5, 1.3, 1.3);
-      ctx.fillStyle='#fff'; ctx.fillRect(x+8+ex, eyeY+1.5+ey+moodEye*0.5,0.6,0.6); ctx.fillRect(x+W-8.6+ex, eyeY+1.5+ey+moodEye*0.5,0.6,0.6);
+      ctx.fillStyle='#1e3a8a';
+      ctx.fillRect(x+7.3+ex, eyeY+0.85+ey+moodEye*0.4, 1.5, 1.2);
+      ctx.fillRect(x+W-8.8+ex, eyeY+0.85+ey+moodEye*0.4, 1.5, 1.2);
+      ctx.fillStyle='#fff';
+      ctx.fillRect(x+7.6+ex, eyeY+1.05+ey+moodEye*0.4, 0.5,0.5);
+      ctx.fillRect(x+W-8.5+ex, eyeY+1.05+ey+moodEye*0.4, 0.5,0.5);
     }
-    // sorriso reage ao humor
-    drawMoodMouth(ctx, this.x, y+9.6+bob, W-18, '#8a4a3a', this.mood);
+    // sobrancelhas grossas
+    ctx.fillStyle='#3f2a1a';
+    const browY=y+3.7+bob - moodEye*1.0;
+    ctx.fillRect(x+6.4, browY, 3.4, 0.9); ctx.fillRect(x+W-9.8, browY, 3.4, 0.9);
+    // bigode clássico (duas lóbulos)
+    ctx.fillStyle='#4a2c17';
+    ctx.beginPath(); ctx.ellipse(this.x-3.4, y+9.2+bob, 4.2, 1.6, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(this.x+3.4, y+9.2+bob, 4.2, 1.6, 0, 0, Math.PI*2); ctx.fill();
+    // boca reage ao humor
+    drawMoodMouth(ctx, this.x, y+10.4+bob, 6, '#7a2f1a', this.mood);
     // mão esquerda - peça de xadrez ♞ flutuando/girando ao lado
     const px=x+2.5, py=y+13+bob+breathe, wspin=this.anim*0.012;
     const fx = this.pieceFx>0 ? 1+this.pieceFx/220 : 1;
@@ -21017,10 +21645,13 @@ class OliNPC extends SetchVendor {
     ctx.beginPath(); ctx.arc(px, py, 7.5, this.anim*0.01, this.anim*0.01+2.2); ctx.stroke();
     ctx.beginPath(); ctx.arc(px, py, 7.5, this.anim*0.01+Math.PI, this.anim*0.01+Math.PI+2.2); ctx.stroke();
     ctx.setLineDash([]);
-    // braço esquerdo
-    ctx.fillStyle='#f4f7fb'; ctx.fillRect(x+0.5, y+10.5+bob+breathe, 3.5, 6);
-    // mão direita
-    ctx.fillStyle='#d9b99b'; ctx.fillRect(x+W-4, y+11+bob+breathe, 3.5,4.5);
+    // braço esquerdo (camisa magenta + luva branca)
+    ctx.fillStyle='#db2777'; ctx.fillRect(x+0.5, y+10.5+bob+breathe, 3.5, 6);
+    ctx.fillStyle='#f8fafc'; ctx.fillRect(x+0.5, y+15.2+bob+breathe, 3.5, 2.6);
+    ctx.fillStyle='#e2e8f0'; ctx.fillRect(x+0.5, y+17.2+bob+breathe, 3.5, 0.6);
+    // mão direita (luva branca)
+    ctx.fillStyle='#f8fafc'; ctx.fillRect(x+W-4, y+11+bob+breathe, 3.5,4.5);
+    ctx.fillStyle='#e2e8f0'; ctx.fillRect(x+W-4, y+14.6+bob+breathe, 3.5, 0.9);
     this.drawCheer(ctx, this.x, this.y+bob);
     this.drawGiftPedestal(ctx, x, y);
     // nome tag
@@ -21052,12 +21683,12 @@ class OliNPC extends SetchVendor {
   }
 }
 
-// ===================== BORZUK NPC - BARBOSA FERRAZ (SALA SETCH) =====================
+// ===================== BORZUK NPC - BARBOSA FERRAZ (SALA SETEC) =====================
 // NPC que entrega o item especial exclusivo Barbosa Ferraz (BarbosaFerraz):
 // invoca o guardião azul com a logo do Barbosa, que luta com socos e hadouken.
 // Aparência: cabelo meio cinza, pele meio escura, roupa branca com detalhes
 // pretos, calça preta e jaqueta preta. Um pouco maior que o jogador.
-class BorzukNPC extends SetchVendor {
+class BorzukNPC extends SetecVendor {
   constructor(x,y){
     super(x, y, BORZUK_NPC_SIZE_W, BORZUK_NPC_SIZE_H, BORZUK_NPC_INTERACT_RANGE, {
       name:'BORZUK',
@@ -21067,7 +21698,7 @@ class BorzukNPC extends SetchVendor {
         'O punho é de ferro. O soco também.',
         'Quer lutar comigo? Então leva a minha luva.',
         'Hadouken não se aprende. Se herda.',
-        'O Setch aposta em copo. Eu aposto em soco.',
+        'O Setec aposta em copo. Eu aposto em soco.',
         'Essa jaqueta preta já viu muita briga.',
         'Pele escura, cabelo cinza, punho firme.',
       ],
@@ -21076,7 +21707,7 @@ class BorzukNPC extends SetchVendor {
     this.giftIcon='🥊'; this.giftColor='#7dd3fc';
     this.giftBadge='🥊'; // luva flutuando
     this.hypeLines=['Isso! Soco bem dado!','Hadouken limpo, jogador.','Boa luta! O Borzuk aprova.'];
-    this.pokeLines=['Copo te derrubou? Levanta e soca de novo.','Borzuk não cai fácil.','Tá apanhando do Setch? Foca, parvo.'];
+    this.pokeLines=['Copo te derrubou? Levanta e soca de novo.','Borzuk não cai fácil.','Tá apanhando do Setec? Foca, parvo.'];
     this.punchFx=0;
   }
   update(dt,player){
@@ -21234,6 +21865,7 @@ class Room {
     this.walls = [];
     this.items = []; // itens no chão
     this.fires = []; // rastros de fogo desta sala
+    this.corruptionTrails = []; // rastros de corrupção (inimigo Corrompido)
     this.spikes = []; // espinhos fase 3
     this.gravityTraps = []; // vórtices gravitacionais da fase 5
     this.explosions = []; // círculos de explosão kamikaze {x,y,r,life,max}
@@ -21269,17 +21901,17 @@ class Room {
     this.tutorial = isStart ? { moved:false, shot:false, moveFade:0, shootFade:0 } : null;
     this.anim = 0;       // relógio da sala (pulsos de decoração/placar). Antes o
                        // desenho usava this.anim sem existir, então os pisca-pisca
-                       // da Sala Setch ficavam sempre apagados (NaN % 2 === 0).
-    this.isSetch = false; // Sala Setch (2x tamanho, NPC copinhos)
+                       // da Sala Setec ficavam sempre apagados (NaN % 2 === 0).
+    this.isSetec = false; // Sala Setec (2x tamanho, NPC copinhos)
     // PAINEL CENTRAL: sala da Fase 1 com o console de códigos (sem inimigos)
     this.isPainelCentral = false;
     this.painel = { x: CANVAS_W/2, y: CANVAS_H/2, anim: Math.random()*1000, glow: 0, used: 0, scan: 0 };
-    this.setchDefeated = false; // true quando venceu minigame (sala limpa)
-    this.setchStarted = false;
-    this.setchRewardGiven = false;
-    this.setchCleared = false; // venceu e ganhou recompensa
-    this.npc = null; // SetchNPC
-    this.cupGame = null; // SetchCupGame
+    this.setecDefeated = false; // true quando venceu minigame (sala limpa)
+    this.setecStarted = false;
+    this.setecRewardGiven = false;
+    this.setecCleared = false; // venceu e ganhou recompensa
+    this.npc = null; // SetecNPC
+    this.cupGame = null; // SetecCupGame
     this.indianaNPC = null; // Indiana Jones NPC (Chicote 100%)
     this.jlNPC = null;   // JL NPC (passivo IO-IO)
     this.oliNPC = null;  // Oli NPC (item especial de Xadrez)
@@ -21316,8 +21948,8 @@ class Room {
 
     // Painel Central: sala limpa, sem pilares (o console fica no centro)
     if(this.isPainelCentral) return;
-    // Sala Setch (2x) : arena grande, sem pilares centrais para destacar tamanho duplo
-    if(this.isSetch){
+    // Sala Setec (2x) : arena grande, sem pilares centrais para destacar tamanho duplo
+    if(this.isSetec){
       // nenhum pilar central, mantém arena livre para copos e NPC
       // adiciona apenas 2 pilares decorativos nas laterais para não ficar vazia demais
       if(rng()<0.45){
@@ -21352,7 +21984,7 @@ class Room {
      // Boss da escada não spawna inimigos normais (arena própria)
      if(this.isBossStair) return;
      if(this.isHacker) return;
-     if(this.isSetch) return; // Sala Setch sem inimigos, só NPC
+     if(this.isSetec) return; // Sala Setec sem inimigos, só NPC
     if(this.isPainelCentral) return; // Painel Central sem inimigos, só o console
      if(this.isPartyHorde) return; // horda tem spawn próprio por ondas
      // dificuldade escala com fase - Fase 4 mais difícil + DashEnemy
@@ -21383,7 +22015,8 @@ class Room {
          else if(roll < 0.30) e = new XShooter(x,y); // 18% (absorveu 13% do Ape)
          else if(roll < 0.53) e = new DashEnemy(x,y); // 23%
          else if(roll < 0.67) e = new Kamikaze(x,y);
-         else if(roll < 0.79) e = new Fugitive(x,y);
+         else if(roll < 0.75) e = new Fugitive(x,y);
+         else if(roll < 0.87) e = new Corrupted(x,y); // 12% Corrompido
          else e = new Chaser(x,y);
        } else if(this.floor===3){
          // Fase 3: Bored Ape NFT removido (só Fase 6)
@@ -21392,12 +22025,14 @@ class Room {
          if(!hasSummoner && roll < 0.20) e = new Summoner(x,y);
          else if(roll < 0.38) e = new XShooter(x,y); // 18% (absorveu 12% do Ape)
          else if(roll < 0.60) e = new Kamikaze(x,y); // 22%
-         else if(roll < 0.84) e = new Fugitive(x,y);
+         else if(roll < 0.78) e = new Fugitive(x,y);
+         else if(roll < 0.90) e = new Corrupted(x,y); // 12% Corrompido
          else e = new Chaser(x,y);
        } else if(this.floor===2){
          const roll = rng();
-         if(roll < 0.26) e = new XShooter(x,y); // 26% (absorveu 12% do Ape)
-         else if(roll < 0.58) e = new Fugitive(x,y);
+         if(roll < 0.24) e = new XShooter(x,y); // 24%
+         else if(roll < 0.52) e = new Fugitive(x,y);
+         else if(roll < 0.66) e = new Corrupted(x,y); // 14% Corrompido
          else e = new Chaser(x,y);
        } else if(this.floor===5){
          // Fase 5: Bored Ape NFT removido (só Fase 6)
@@ -21407,7 +22042,8 @@ class Room {
          else if(roll < 0.28) e = new XShooter(x,y); // 18% (absorveu 14% do Ape)
          else if(roll < 0.52) e = new DashEnemy(x,y);
          else if(roll < 0.68) e = new Kamikaze(x,y);
-         else if(roll < 0.82) e = new Fugitive(x,y);
+         else if(roll < 0.78) e = new Fugitive(x,y);
+         else if(roll < 0.90) e = new Corrupted(x,y); // 12% Corrompido
          else e = new Chaser(x,y);
        } else if(this.floor===6){
          // Fase 6 Mineradora de Coins - ÚNICA fase com Bored Ape NFT (BAYC destaque) - requisito
@@ -21418,13 +22054,19 @@ class Room {
          else if(roll < 0.36) e = new XShooter(x,y);
          else if(roll < 0.48) e = new DashEnemy(x,y);
          else if(roll < 0.64) e = new Kamikaze(x,y);
-         else if(roll < 0.80) e = new Fugitive(x,y);
+         else if(roll < 0.76) e = new Fugitive(x,y);
+         else if(roll < 0.87) e = new Corrupted(x,y); // 11% Corrompido
          else e = new Chaser(x,y);
        } else {
          // Fase 1 - Sem Bored Ape (só Fase 6) - requisito
          if (rng() < 0.18) e = new Fugitive(x,y);
          else e = new Chaser(x,y);
        }
+      // Presença garantida em parte das salas das fases 2-6: o primeiro inimigo
+      // vira Corrompido com 45% de chance, para o novo inimigo ser encontrado.
+      if(i === 0 && this.type==='enemy' && CORRUPTED_SPAWN_FLOORS.includes(this.floor) && rng() < 0.45){
+        e = new Corrupted(x,y);
+      }
       if (rng() < 0.22) { e.hp = (e.maxHp||2)+1; e.maxHp = e.hp; }
       if (this.floor===2 && e.type==='chaser' && rng()<0.25) e.speed += 0.25;
       if (this.floor===3 && e.type==='chaser' && rng()<0.30) e.speed += 0.35;
@@ -21541,7 +22183,7 @@ class Room {
     }
     // ===== NOVAS ARMAS COMUNS - distribuição equilibrada (cada fase variedade) =====
     // Cada arma tem estilo único mas DPS similar para não haver superior clara (requisito balanceamento)
-    const commonPool = ['espada','luva'];
+    const commonPool = ['espada','luva','firewall'];
     const commonChance = this.type==='treasure' ? 0.22 : 0.14; // 14% normal, 22% tesouro (comum mas não flood)
     if(rng() < commonChance && !this.isRare && !this.isMiniboss && !this.isBossStair && !this.isHacker && !this.isPartyHorde && this.items.length < 4){
       // evita duplicar mesmo tipo já no chão
@@ -21586,15 +22228,25 @@ class Room {
      // LASER REMOVIDA - spawn retirado, mecânica vive no LAZER CODIFICADO
      // ===== CHICOTE DO INDIANA - RARO mas aparece em todas fases (requisito) =====
      // Pode aparecer em qualquer fase (1-6), mas raro: 2.5% normal / 5.5% tesouro (balanceado)
-     // Na Sala Setch é garantido 100% via Indiana NPC, então este spawn é para o resto do mapa
+     // Na Sala Setec é garantido 100% via Indiana NPC, então este spawn é para o resto do mapa
      const chicoteChance = this.type==='treasure' ? CHICOTE_SPAWN_TREASURE : CHICOTE_SPAWN_CHANCE;
-     if(rng() < chicoteChance && !this.isRare && !this.isMiniboss && !this.isBossStair && !this.isHacker && !this.isPartyHorde && !this.isSetch && this.items.length < 4){
+     if(rng() < chicoteChance && !this.isRare && !this.isMiniboss && !this.isBossStair && !this.isHacker && !this.isPartyHorde && !this.isSetec && this.items.length < 4){
        if(!this.items.some(it=> it.isChicote)){
          const it=new WeaponItem(randRange(140, CANVAS_W-140), randRange(100, CANVAS_H-100), 'chicote');
          it.spawnDelay=200;
          tryPlace(it);
        }
      }
+    // ===== LANÇA-CHAMAS FIREWALL - comum, com identidade nas fases 3 e 6 =====
+    const firewallChance = this.type==='treasure' ? FIREWALL_SPAWN_TREASURE
+      : (FIREWALL_SPAWN_FLOORS.includes(this.floor) ? FIREWALL_SPAWN_NORMAL*1.8 : FIREWALL_SPAWN_NORMAL*0.45);
+    if(rng() < firewallChance && !this.isRare && !this.isMiniboss && !this.isBossStair && !this.isHacker && !this.isPartyHorde && this.items.length < 4){
+      if(!this.items.some(it=> it.weaponType && it.weaponType.toLowerCase()==='firewall')){
+        const it=new WeaponItem(randRange(140, CANVAS_W-140), randRange(100, CANVAS_H-100), 'firewall');
+        it.spawnDelay=240;
+        tryPlace(it);
+      }
+    }
     // ===== ITENS ESPECIAIS (E) - Sistema modular =====
     // Salas de item agora usam o catálogo genérico completo: todos os especiais
     // MENOS os exclusivos de personagem (Farmar Aura, Xadrez, Giro Áureo,
@@ -22014,11 +22666,11 @@ class Room {
     this.spawnPartyWave(rng);
     return true;
   }
-  // Placar de presentes da Sala Setch (canto superior direito).
+  // Placar de presentes da Sala Setec (canto superior direito).
   // 3 estados por linha: pendente (pulsa) = NPC ainda não entregou • "NO CHÃO" =
   // o presente foi largado no chão e ainda não pego • ✓ = o jogador pegou.
   drawGiftChecklist(ctx, player){
-    if(!this.isSetch) return;
+    if(!this.isSetec) return;
     const cg = this.cupGame;
     const hasIoi = !!(player && player.hasIoiPassive);
     const ownWeapons = player
@@ -22030,7 +22682,7 @@ class Room {
     const hasBarbosa = !!(player && player.equippedSpecial && player.equippedSpecial.id==='barbosa_ferraz');
     const items = [
       { label:'COPINHOS', icon:'🎩', color:'#ffd700',
-        done:!!this.setchCleared, dropped:false },
+        done:!!this.setecCleared, dropped:false },
       { label:'CHICOTE',  icon:'🧢', color:'#d2a679',
         done:hasChicote, dropped:!!this.indianaGiftGiven },
       { label:'IO-IO',    icon:'🪀', color:'#ff8a80',
@@ -22079,13 +22731,13 @@ const it = items[i];
       ctx.font='5px "Press Start 2P"';
     }
     // rodapé: status da partida do Copinho
-    if(cg && !this.setchCleared){
+    if(cg && !this.setecCleared){
       ctx.font='5px monospace';
       const st = cg.state==='waiting' && cg.state
-        ? `RODADA ${cg.round}/${SETCH_ROUNDS} • ${Math.max(0,Math.ceil(cg.chooseTimer/1000))}s`
-        : (cg.state==='shuffling' ? `RODADA ${cg.round}/${SETCH_ROUNDS} • EMBARALHANDO`
-        : (cg.state==='showing'   ? `RODADA ${cg.round}/${SETCH_ROUNDS} • MEMORIZE`
-        : `RODADA ${cg.round}/${SETCH_ROUNDS} • PRONTO ${keyTag('e')}`));
+        ? `RODADA ${cg.round}/${SETEC_ROUNDS} • ${Math.max(0,Math.ceil(cg.chooseTimer/1000))}s`
+        : (cg.state==='shuffling' ? `RODADA ${cg.round}/${SETEC_ROUNDS} • EMBARALHANDO`
+        : (cg.state==='showing'   ? `RODADA ${cg.round}/${SETEC_ROUNDS} • MEMORIZE`
+        : `RODADA ${cg.round}/${SETEC_ROUNDS} • PRONTO ${keyTag('e')}`));
       ctx.fillStyle= (cg.state==='waiting') ? '#4ade80' : 'rgba(255,215,0,0.9)';
       ctx.fillText(st, bx+5, by + h + 8);
     }
@@ -22097,7 +22749,7 @@ const it = items[i];
   // pilares. O painel fica no centro e abre o terminal de códigos com [E].
   makePainelCentralRoom(rng){
     if(this.isStart || this.isExit || this.isRare || this.isMiniboss || this.isBossStair ||
-       this.isHacker || this.isPartyHorde || this.isSetch || this.isPainelCentral) return false;
+       this.isHacker || this.isPartyHorde || this.isSetec || this.isPainelCentral) return false;
     this.isPainelCentral = true;
     this.type = 'painel';
     // Sala de serviço: sem inimigos, sem espinhos e sem itens largados
@@ -22106,6 +22758,7 @@ const it = items[i];
     this.enemies = [];
     this.items = [];
     this.fires = [];
+    this.corruptionTrails = [];
     // Limpa pilares do centro para o console não ficar preso dentro da parede
     this.walls = this.walls.filter(w=>{
       const wx=w.x+w.w/2, wy=w.y+w.h/2;
@@ -22246,16 +22899,16 @@ const it = items[i];
     }
   }
 
-  // ===================== SALA SETCH (2x TAMANHO) =====================
-  makeSetchRoom(rng){
-    if(this.isStart || this.isExit || this.isRare || this.isMiniboss || this.isBossStair || this.isHacker || this.isPartyHorde || this.isSetch) return false;
-    this.isSetch = true;
-    this.isSetchRoom = true; // alias
-    this.type = 'setch';
-    this.setchDefeated = false;
-    this.setchStarted = false;
-    this.setchRewardGiven = false;
-    this.setchCleared = false;
+  // ===================== SALA SETEC (2x TAMANHO) =====================
+  makeSetecRoom(rng){
+    if(this.isStart || this.isExit || this.isRare || this.isMiniboss || this.isBossStair || this.isHacker || this.isPartyHorde || this.isSetec) return false;
+    this.isSetec = true;
+    this.isSetecRoom = true; // alias
+    this.type = 'setec';
+    this.setecDefeated = false;
+    this.setecStarted = false;
+    this.setecRewardGiven = false;
+    this.setecCleared = false;
     // Limpa inimigos e spikes para arena NPC (2x tamanho limpo)
     this.spikes = [];
     this.gravityTraps = [];
@@ -22271,11 +22924,11 @@ const it = items[i];
     const add=(x,y,w,h)=> this.walls.push({x,y,w,h});
     add(90, CANVAS_H/2 - 50, 22, 90);
     add(CANVAS_W-112, CANVAS_H/2 - 50, 22, 90);
-    // Cria NPC Setch no topo da sala (centro-topo)
-    this.npc = new SetchNPC(CANVAS_W/2, CANVAS_H/2 - 62);
+    // Cria NPC Setec no topo da sala (centro-topo)
+    this.npc = new SetecNPC(CANVAS_W/2, CANVAS_H/2 - 62);
     // Cria minigame de copos
-    this.cupGame = new SetchCupGame(this);
-    // NPC Indiana Jones - garante Chicote 100% (requisito) na Sala Setch - visual Indiana Jones
+    this.cupGame = new SetecCupGame(this);
+    // NPC Indiana Jones - garante Chicote 100% (requisito) na Sala Setec - visual Indiana Jones
     this.indianaNPC = new IndianaJonesNPC(CANVAS_W/2 + 168, CANVAS_H/2 - 28);
     this.indianaGiftGiven = false;
     // NPC JL - dá o passivo IO-IO (ao levar dano, invoca io-io orbital)
@@ -22289,7 +22942,7 @@ const it = items[i];
     this.borzukGiftGiven = false;
     // referência da sala nos NPCs (falas, gestos e desenho do prompt do copinho)
     for(const n of [this.npc, this.indianaNPC, this.jlNPC, this.oliNPC, this.borzukNPC]) if(n) n.room = this;
-    // Sala do Setch: isCleared() retorna sempre true, então as portas já nascem
+    // Sala do Setec: isCleared() retorna sempre true, então as portas já nascem
     // abertas (nada a marcar aqui).
     return true;
   }
@@ -22460,8 +23113,8 @@ const it = items[i];
       // Festa horda: só limpa após todas as ondas + sem inimigos
       return this.partyHordeDefeated && this.enemies.length === 0;
     }
-    if(this.isSetch){
-      // Sala Setch: portas SEMPRE abertas. A sala é uma parada opcional (copos +
+    if(this.isSetec){
+      // Sala Setec: portas SEMPRE abertas. A sala é uma parada opcional (copos +
       // presentes no chão) e nunca pode trancar o jogador nem travar o portal de
       // saída da fase (isFloorCleared depende de todas as salas isCleared()).
       return true;
@@ -22482,7 +23135,6 @@ const it = items[i];
 
   update(dt, player, bullets, globalParticles, enemyBulletsOut, timeScale = 1) {
     try{
-    const enemyDt = dt * (timeScale || 1);
     this.anim += dt; // relógio da sala (usado nos pulsos de decoração/placar)
     // Festa horda: anima confetti e controla ondas (pode aparecer em qualquer fase)
     if(this.isPartyHorde && !this.partyHordeDefeated){
@@ -22512,8 +23164,8 @@ const it = items[i];
     }
     // ===================== PAINEL CENTRAL - console de códigos =====================
     if(this.isPainelCentral) this.updatePainel(dt, player);
-    // ===================== SETCH - NPC e copos + INDIANA =====================
-    if(this.isSetch){
+    // ===================== SETEC - NPC e copos + INDIANA =====================
+    if(this.isSetec){
       this._playerRef = player || this._playerRef || null;
       if(this.npc) this.npc.update(dt, player);
       if(this.cupGame) this.cupGame.update(dt, player);
@@ -22563,7 +23215,17 @@ const it = items[i];
       // habilidade desliga, o campo continua por alguns segundos (cyberSlowLinger).
       const inCyberAura = !!(player && (player.cyberSlowActive || (player.cyberSlowLinger||0) > 0)
         && dist(e.x, e.y, player.x, player.y) <= CYBER_SLOW_AURA_RADIUS);
-      const eDt = inCyberAura ? enemyDt * CYBER_SLOW_AURA_FACTOR : enemyDt;
+      let eScale = (timeScale || 1) * (inCyberAura ? CYBER_SLOW_AURA_FACTOR : 1);
+      // Chefes resistem parte da lentidão para a habilidade não anular as lutas.
+      if(e.type==='stair_boss' || e.type==='hacker' || e.type==='miniboss'){
+        eScale = 1 - (1 - eScale) * CYBER_SLOW_BOSS_RESISTANCE;
+      }
+      const eDt = dt * eScale;
+      // Inimigos comuns usam movimento por frame (px/update), não px/dt. Reduzir
+      // apenas o dt deixava a caminhada em velocidade normal — o "slow" só
+      // desacelerava animações e cooldowns. Guardamos a posição e reescalamos o
+      // deslocamento ao final do update para valer também no movimento.
+      const prevX = e.x, prevY = e.y;
       if(e.type==='stair_boss'){
         if(bossWaitingDialog) {
           // Só animação leve, não ataca
@@ -22591,8 +23253,18 @@ const it = items[i];
       else if (e.type==='summoner') e.update(eDt, player, this.walls, pendingSummons, this.enemies);
       else if (e.type==='miniboss') e.update(eDt, player, this.walls, enemyBulletsOut, pendingSummons, this.enemies, globalParticles);
       else if (e.type==='dash') e.update(eDt, player, this.walls);
+      else if (e.type==='corrupted') e.update(eDt, player, this.walls, this);
       else if (e.type==='macaco' || e.type==='bored_ape' || e.type==='ape_nft') e.update(eDt, player, this.walls);
       else e.update(eDt, player, this.walls);
+      if(eScale < 1 && !e.dead && e.x!==undefined && e.y!==undefined){
+        // Teleportes/respawns (deslocamento grande em um frame) não devem ser
+        // "puxados de volta" para a posição anterior — só a caminhada normal.
+        const movedX = e.x - prevX, movedY = e.y - prevY;
+        if(Math.hypot(movedX, movedY) <= 64){
+          e.x = prevX + movedX * eScale;
+          e.y = prevY + movedY * eScale;
+        }
+      }
     }
     // Motosserra sangramento: aplica DoT serragem
     for(const e of this.enemies){
@@ -23163,6 +23835,19 @@ if(e.canDamageHead()){
       }
     }
 
+    // rastros de corrupção (inimigo Corrompido) - meio coração ao pisar
+    for(let i=this.corruptionTrails.length-1;i>=0;i--){
+      const tr=this.corruptionTrails[i];
+      if(!tr.update(dt)){ this.corruptionTrails.splice(i,1); continue; }
+      if(player && !player.hasNoclip && !player.isInvulnerable() && tr.collides(player)){
+        const g = (typeof window!=='undefined') ? window.game : null;
+        if(player.takeDamage(CORRUPTED_TRAIL_DAMAGE, { game:g, source:'corrupted_trail' })){
+          for(let k=0;k<9;k++) globalParticles.push(new Particle(player.x, player.y, randRange(-2.2,2.2), randRange(-2.5,0), 300, k%2?'#ff2f6d':'#7a00a8', 2));
+          for(let k=0;k<4;k++) globalParticles.push(new Particle(tr.x+randRange(-5,5), tr.y+randRange(-4,4), randRange(-1,1), randRange(-1.4,-0.2), 220, 'rgba(255,47,109,0.8)', 1.4));
+        }
+      }
+    }
+
     // rastros de fogo - atualiza e causa dano periódico (não afeta jogador)
     for(let i=this.fires.length-1;i>=0;i--){
       const f=this.fires[i];
@@ -23365,7 +24050,7 @@ if(e.canDamageHead()){
     }
 
     // NPC Borzuk é sólido: jogador e inimigos não atravessam o corpo dele.
-    if(this.isSetch && this.borzukNPC && player){
+    if(this.isSetec && this.borzukNPC && player){
       this.pushOutOfNpc(player, this.borzukNPC);
       for(const e of this.enemies){
         if(!e.dead) this.pushOutOfNpc(e, this.borzukNPC);
@@ -23784,64 +24469,182 @@ if(e.canDamageHead()){
     ctx.textAlign = 'left';
   }
 
-  drawSetchPosters(ctx, opts = {}){
-    const img = getSpecialIconImage(SETCH_POSTER_IMAGE);
+  drawSetecPosters(ctx, opts = {}){
+    const img = getSpecialIconImage(SETEC_POSTER_IMAGE);
     const ready = !!(img && img.complete && img.naturalWidth > 0);
+    const clear = !!(opts && opts.codeFix);
+    const t = Date.now()*0.001;
     const posters = [
-      { x: CANVAS_W/2 - 280, y: 92, s: 92, rot: -0.035 },
-      { x: CANVAS_W/2,       y: 112, s: 74, rot: 0.015 },
-      { x: CANVAS_W/2 + 280, y: 92, s: 92, rot: 0.035 }
+      { x: CANVAS_W/2 - 282, y: 94, s: 92, rot: -0.035, accent: '#ffd700' },
+      { x: CANVAS_W/2,       y: 112, s: 76, rot: 0.012, accent: '#d8b4fe' },
+      { x: CANVAS_W/2 + 282, y: 94, s: 92, rot: 0.035, accent: '#ffd700' }
     ];
-    for(const p of posters){
-      const outer = p.s + 10;
+    for(let i=0;i<posters.length;i++){
+      const p = posters[i];
+      const outer = p.s + 14;
+      const half = outer/2;
+      const floatY = clear ? Math.sin(t*1.4 + i*1.7)*0.8 : 0;
+      const sway = clear ? Math.sin(t*1.1 + i*2.1)*0.007 : 0;
       ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate(p.rot);
-      ctx.fillStyle = 'rgba(0,0,0,0.30)';
-      ctx.fillRect(-outer/2 + 3, -outer/2 + 3, outer, outer);
-      ctx.fillStyle = '#0c0914';
-      ctx.fillRect(-outer/2, -outer/2, outer, outer);
-      ctx.strokeStyle = 'rgba(255,215,0,0.78)';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(-outer/2 + 1, -outer/2 + 1, outer - 2, outer - 2);
-      ctx.strokeStyle = 'rgba(168,85,247,0.45)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(-outer/2 + 4, -outer/2 + 4, outer - 8, outer - 8);
-      ctx.fillStyle = 'rgba(168,85,247,0.14)';
-      ctx.fillRect(-p.s/2, -p.s/2, p.s, p.s);
-      if(ready){
-        const scale = Math.min(p.s / img.naturalWidth, p.s / img.naturalHeight);
-        const dw = img.naturalWidth * scale;
-        const dh = img.naturalHeight * scale;
-        ctx.drawImage(img, -dw/2, -dh/2, dw, dh);
+      ctx.translate(p.x, p.y + floatY);
+      ctx.rotate(p.rot + sway);
+
+      // Halo atrás do cartaz (verde quando a fase está limpa, dourado/roxo no resto)
+      const halo = ctx.createRadialGradient(0,0,outer*0.22, 0,0,outer*0.95);
+      if(clear){
+        halo.addColorStop(0, `rgba(74,222,128,${(0.20+0.06*Math.sin(t*2+i)).toFixed(3)})`);
+        halo.addColorStop(0.65, 'rgba(34,197,94,0.08)');
+        halo.addColorStop(1, 'rgba(34,197,94,0)');
+      } else {
+        halo.addColorStop(0, `rgba(255,215,0,${(0.15+0.05*Math.sin(t*1.8+i)).toFixed(3)})`);
+        halo.addColorStop(0.65, 'rgba(168,85,247,0.08)');
+        halo.addColorStop(1, 'rgba(168,85,247,0)');
       }
-      ctx.fillStyle = 'rgba(255,215,0,0.55)';
-      ctx.fillRect(-outer/2, -outer/2, outer, 1.5);
-      ctx.fillStyle = 'rgba(255,255,255,0.22)';
-      ctx.fillRect(-outer/2 + 2, -outer/2 - 2, 16, 5);
-      ctx.fillRect(outer/2 - 18, outer/2 - 3, 16, 5);
+      ctx.fillStyle = halo;
+      ctx.fillRect(-outer*0.9, -outer*0.9, outer*1.8, outer*1.8);
+
+      // Sombra projetada + moldura metálica com gradiente
+      ctx.fillStyle = 'rgba(0,0,0,0.34)';
+      roundRectPath(ctx, -half+4, -half+5, outer, outer, 5); ctx.fill();
+      const frameGrad = ctx.createLinearGradient(-half, -half, half, half);
+      frameGrad.addColorStop(0, '#fff3b0');
+      frameGrad.addColorStop(0.30, p.accent);
+      frameGrad.addColorStop(0.55, '#6b4a12');
+      frameGrad.addColorStop(0.78, p.accent);
+      frameGrad.addColorStop(1, '#fff3b0');
+      roundRectPath(ctx, -half, -half, outer, outer, 5);
+      ctx.fillStyle = frameGrad; ctx.fill();
+      // Bisel interno escuro
+      ctx.fillStyle = '#0c0914';
+      roundRectPath(ctx, -half+3, -half+3, outer-6, outer-6, 3); ctx.fill();
+
+      // Rebites dos cantos
+      const pinOff = half - 5;
+      for(const [px,py] of [[-pinOff,-pinOff],[pinOff,-pinOff],[-pinOff,pinOff],[pinOff,pinOff]]){
+        ctx.fillStyle = '#ffec8a';
+        ctx.beginPath(); ctx.arc(px,py,1.5,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.beginPath(); ctx.arc(px+0.4,py+0.4,0.6,0,Math.PI*2); ctx.fill();
+      }
+
+      // Passe-partout roxo
+      ctx.fillStyle = '#150f24';
+      ctx.fillRect(-p.s/2-3, -p.s/2-3, p.s+6, p.s+6);
+      ctx.strokeStyle = 'rgba(168,85,247,0.55)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(-p.s/2-2.5, -p.s/2-2.5, p.s+5, p.s+5);
+
+      // Imagem do cartaz (mantendo a proporção original)
+      const inset = 4, box = p.s - inset*2;
+      const bx = -box/2, by = -box/2;
+      if(ready){
+        const iw = img.naturalWidth || 1, ih = img.naturalHeight || 1;
+        const sc = Math.min(box/iw, box/ih);
+        const dw = iw*sc, dh = ih*sc;
+        ctx.save();
+        ctx.beginPath(); ctx.rect(bx,by,box,box); ctx.clip();
+        ctx.fillStyle = '#05030a'; ctx.fillRect(bx,by,box,box);
+        ctx.drawImage(img, -dw/2, -dh/2, dw, dh);
+        // Vinheta suave
+        const vg = ctx.createRadialGradient(0,0,box*0.2, 0,0,box*0.72);
+        vg.addColorStop(0, 'rgba(0,0,0,0)');
+        vg.addColorStop(1, 'rgba(0,0,0,0.30)');
+        ctx.fillStyle = vg; ctx.fillRect(bx,by,box,box);
+        // Reflexo de vidro em varredura
+        const shX = bx - box + ((t*50 + i*80) % (box*3));
+        const sheen = ctx.createLinearGradient(shX, by, shX + box*0.55, by+box);
+        sheen.addColorStop(0, 'rgba(255,255,255,0)');
+        sheen.addColorStop(0.5, 'rgba(255,255,255,0.14)');
+        sheen.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = sheen; ctx.fillRect(bx,by,box,box);
+        ctx.restore();
+      } else {
+        // Fallback desenhado enquanto a imagem carrega: copo + bolinha + "?"
+        ctx.fillStyle = '#0b0714'; ctx.fillRect(bx,by,box,box);
+        ctx.fillStyle = '#ffd700';
+        ctx.beginPath();
+        ctx.moveTo(-12, by+box*0.42);
+        ctx.lineTo(12, by+box*0.42);
+        ctx.lineTo(8, by+box*0.72);
+        ctx.lineTo(-8, by+box*0.72);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(13, by+box*0.52, 5, -Math.PI/2, Math.PI/2); ctx.stroke();
+        ctx.fillStyle = '#fff3b0';
+        ctx.beginPath(); ctx.arc(-3, by+box*0.34, 2.4, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,215,0,0.85)';
+        ctx.font = '11px "Press Start 2P"'; ctx.textAlign = 'center';
+        ctx.fillText('?', 0, by+box*0.24); ctx.textAlign = 'left';
+      }
+
+      // Cantos de "moldura de museu" (verdes e animados quando limpo)
+      const cc = clear ? `rgba(74,222,128,${(0.62+0.30*Math.sin(t*4+i)).toFixed(3)})` : 'rgba(255,215,0,0.55)';
+      const cin = 9;
+      const mx0 = -p.s/2-3, my0 = -p.s/2-3, mx1 = p.s/2+3, my1 = p.s/2+3;
+      ctx.strokeStyle = cc; ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(mx0, my0+cin); ctx.lineTo(mx0, my0); ctx.lineTo(mx0+cin, my0);
+      ctx.moveTo(mx1-cin, my0); ctx.lineTo(mx1, my0); ctx.lineTo(mx1, my0+cin);
+      ctx.moveTo(mx0, my1-cin); ctx.lineTo(mx0, my1); ctx.lineTo(mx0+cin, my1);
+      ctx.moveTo(mx1-cin, my1); ctx.lineTo(mx1, my1); ctx.lineTo(mx1, my1-cin);
+      ctx.stroke();
+
+      // Selo de "código corrigido" no canto superior direito
+      if(clear){
+        const badgeX = p.s/2+3, badgeY = -p.s/2-3;
+        ctx.fillStyle = 'rgba(6,24,12,0.92)';
+        ctx.beginPath(); ctx.arc(badgeX, badgeY, 7, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = 'rgba(74,222,128,0.95)'; ctx.lineWidth = 1.2; ctx.stroke();
+        ctx.fillStyle = '#86efac'; ctx.font = '7px "Press Start 2P"'; ctx.textAlign = 'center';
+        ctx.fillText('✓', badgeX, badgeY+2.6); ctx.textAlign = 'left';
+      }
+
+      // Plaquinha "SETEC" pendurada na moldura
+      const plaqueW = 52, plaqueH = 10, plY0 = half - 1;
+      roundRectPath(ctx, -plaqueW/2, plY0, plaqueW, plaqueH, 3);
+      ctx.fillStyle = 'rgba(8,5,16,0.92)'; ctx.fill();
+      ctx.strokeStyle = clear ? 'rgba(74,222,128,0.8)' : 'rgba(255,215,0,0.7)';
+      ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = clear ? '#86efac' : '#ffd700';
+      ctx.font = '5px "Press Start 2P"'; ctx.textAlign = 'center';
+      ctx.fillText('SETEC', 0, plY0+7.2); ctx.textAlign = 'left';
+      ctx.fillStyle = clear ? '#4ade80' : '#ffd700';
+      ctx.fillRect(-plaqueW/2+3, plY0+4.5, 2, 1);
+      ctx.fillRect(plaqueW/2-5, plY0+4.5, 2, 1);
+
       ctx.restore();
     }
+
     // ===== EFEITO VERDE DE "CÓDIGO CORRIGIDO" =====
-    // Usado na sala da porta quando todas as salas foram limpas: scanlines,
-    // glifos de código sendo corrigidos, varredura e um selo verde.
-    if(opts && opts.codeFix){
-      const t = Date.now()*0.001;
-      const left = CANVAS_W/2 - 300, areaTop = 38, areaW = 600, areaH = 122;
+    // Usado na sala da porta quando todas as salas foram limpas: grade holográfica,
+    // scanlines, varreduras, glifos, faíscas e um selo de fase limpa.
+    if(clear){
+      const left = CANVAS_W/2 - 300, areaTop = 34, areaW = 600, areaH = 128;
       ctx.save();
       // brilho verde atrás dos cartazes
-      const glow = ctx.createRadialGradient(CANVAS_W/2, 104, 26, CANVAS_W/2, 104, 330);
-      glow.addColorStop(0, `rgba(74,222,128,${(0.12 + Math.sin(t*3)*0.03).toFixed(3)})`);
-      glow.addColorStop(0.6, 'rgba(34,197,94,0.05)');
+      const glow = ctx.createRadialGradient(CANVAS_W/2, 104, 26, CANVAS_W/2, 104, 340);
+      glow.addColorStop(0, `rgba(74,222,128,${(0.14 + Math.sin(t*3)*0.03).toFixed(3)})`);
+      glow.addColorStop(0.55, 'rgba(34,197,94,0.06)');
       glow.addColorStop(1, 'rgba(34,197,94,0)');
       ctx.fillStyle = glow;
-      ctx.fillRect(CANVAS_W/2-340, areaTop-16, 680, 200);
+      ctx.fillRect(CANVAS_W/2-360, areaTop-20, 720, 215);
+
+      // grade holográfica
+      ctx.globalAlpha = 0.10;
+      ctx.strokeStyle = '#4ade80'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      for(let gx = left; gx <= left+areaW; gx += 40){ ctx.moveTo(gx, areaTop); ctx.lineTo(gx, areaTop+areaH); }
+      for(let gy = areaTop; gy <= areaTop+areaH; gy += 24){ ctx.moveTo(left, gy); ctx.lineTo(left+areaW, gy); }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
       // scanlines de terminal
-      ctx.globalAlpha = 0.20;
+      ctx.globalAlpha = 0.16;
       ctx.fillStyle = '#4ade80';
       const off = (t*24) % 7;
       for(let y = areaTop + off; y < areaTop + areaH; y += 7) ctx.fillRect(left, y, areaW, 1);
       ctx.globalAlpha = 1;
+
       // varredura vertical
       const sweep = areaTop + ((t*46) % areaH);
       const sg = ctx.createLinearGradient(0, sweep-12, 0, sweep+12);
@@ -23850,6 +24653,24 @@ if(e.canDamageHead()){
       sg.addColorStop(1,'rgba(74,222,128,0)');
       ctx.fillStyle = sg;
       ctx.fillRect(left, sweep-12, areaW, 24);
+
+      // varredura horizontal
+      const hSweep = left + ((t*70) % areaW);
+      const hg = ctx.createLinearGradient(hSweep-18, 0, hSweep+18, 0);
+      hg.addColorStop(0,'rgba(74,222,128,0)');
+      hg.addColorStop(0.5,'rgba(134,239,172,0.16)');
+      hg.addColorStop(1,'rgba(74,222,128,0)');
+      ctx.fillStyle = hg;
+      ctx.fillRect(hSweep-18, areaTop, 36, areaH);
+
+      // pulso de "fase limpa" (onda que expande a cada 2.4s)
+      const pulseT = (t % 2.4)/2.4;
+      ctx.globalAlpha = (1-pulseT)*0.35;
+      ctx.strokeStyle = '#86efac'; ctx.lineWidth = 1.6;
+      const pr = 60 + pulseT*250;
+      ctx.beginPath(); ctx.ellipse(CANVAS_W/2, 110, pr, pr*0.30, 0, 0, Math.PI*2); ctx.stroke();
+      ctx.globalAlpha = 1;
+
       // glifos de código sendo corrigidos
       const glyphs = ['{','}','</>','01','✓','++','&&',';','()','if','=>','✓'];
       ctx.font = '7px monospace';
@@ -23861,35 +24682,382 @@ if(e.canDamageHead()){
         ctx.fillStyle = `rgba(134,239,172,${Math.max(0.07,ga).toFixed(3)})`;
         ctx.fillText(glyphs[i], gx, gy);
       }
-      // cantos verdes "corrigidos" em cada cartaz
-      for(const p of posters){
-        const outer = p.s + 10;
-        const c = 10, x0 = p.x - outer/2, y0 = p.y - outer/2, x1 = p.x + outer/2, y1 = p.y + outer/2;
-        ctx.strokeStyle = `rgba(74,222,128,${(0.55+0.25*Math.sin(t*4)).toFixed(3)})`;
-        ctx.lineWidth = 1.6;
-        ctx.beginPath();
-        ctx.moveTo(x0, y0+c); ctx.lineTo(x0, y0); ctx.lineTo(x0+c, y0);
-        ctx.moveTo(x1-c, y0); ctx.lineTo(x1, y0); ctx.lineTo(x1, y0+c);
-        ctx.moveTo(x0, y1-c); ctx.lineTo(x0, y1); ctx.lineTo(x0+c, y1);
-        ctx.moveTo(x1-c, y1); ctx.lineTo(x1, y1); ctx.lineTo(x1, y1-c);
-        ctx.stroke();
+
+      // faíscas verdes subindo
+      for(let i=0;i<16;i++){
+        const sx = CANVAS_W/2 + Math.sin(i*2.7 + t*0.8) * (60 + (i%6)*38);
+        const sy = areaTop + areaH - ((t*(14+(i%5)*9) + i*23) % (areaH+24));
+        const a = 0.20 + 0.55*Math.abs(Math.sin(t*2.6 + i*1.3));
+        ctx.fillStyle = `rgba(134,239,172,${a.toFixed(3)})`;
+        if(i%3===0){
+          ctx.fillRect(sx-1.5, sy-0.4, 3, 0.8);
+          ctx.fillRect(sx-0.4, sy-1.5, 0.8, 3);
+        } else if(i%3===1){
+          ctx.beginPath();
+          ctx.moveTo(sx,sy-1.5); ctx.lineTo(sx+1.5,sy); ctx.lineTo(sx,sy+1.5); ctx.lineTo(sx-1.5,sy);
+          ctx.closePath(); ctx.fill();
+        } else {
+          ctx.beginPath(); ctx.arc(sx, sy, 1.1, 0, Math.PI*2); ctx.fill();
+        }
       }
-      // selo de código corrigido
-      const bw2 = 268, bx2 = CANVAS_W/2 - bw2/2, by2 = 174;
-      ctx.fillStyle = 'rgba(4,20,10,0.72)';
-      ctx.fillRect(bx2, by2, bw2, 22);
-      ctx.strokeStyle = 'rgba(74,222,128,0.72)';
-      ctx.lineWidth = 1.2;
-      ctx.strokeRect(bx2+0.5, by2+0.5, bw2-1, 21);
+
+      // linhas de dados ligando cada cartaz ao selo
+      const bw2 = 300, bx2 = CANVAS_W/2 - bw2/2, by2 = 182;
+      ctx.strokeStyle = 'rgba(74,222,128,0.28)'; ctx.lineWidth = 1;
+      ctx.setLineDash([3,5]); ctx.lineDashOffset = -(t*26)%8;
+      for(let i=0;i<posters.length;i++){
+        const p = posters[i];
+        const sx = p.x, sy = p.y + p.s/2 + 20;
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(bx2 + bw2*(0.22+0.28*i), by2); ctx.stroke();
+      }
+      ctx.setLineDash([]); ctx.lineDashOffset = 0;
+
+      // selo / faixa de fase limpa
+      ctx.save();
+      ctx.shadowColor = 'rgba(74,222,128,0.65)';
+      ctx.shadowBlur = 12 + Math.sin(t*4)*4;
+      roundRectPath(ctx, bx2, by2, bw2, 30, 6);
+      ctx.fillStyle = 'rgba(4,20,10,0.86)'; ctx.fill();
+      ctx.strokeStyle = 'rgba(74,222,128,0.85)'; ctx.lineWidth = 1.4; ctx.stroke();
+      ctx.restore();
+      roundRectPath(ctx, bx2+3, by2+3, bw2-6, 24, 4);
+      ctx.strokeStyle = 'rgba(134,239,172,0.28)'; ctx.lineWidth = 1; ctx.stroke();
+      // ícone de check
+      ctx.fillStyle = 'rgba(74,222,128,0.18)';
+      ctx.beginPath(); ctx.arc(bx2+20, by2+15, 8, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = 'rgba(134,239,172,0.8)'; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.fillStyle = '#86efac'; ctx.font = '8px "Press Start 2P"'; ctx.textAlign = 'center';
+      ctx.fillText('✓', bx2+20, by2+18);
+      // título + subtítulo
       ctx.font = '8px "Press Start 2P"';
-      ctx.fillStyle = `rgba(134,239,172,${(0.86+0.14*Math.sin(t*4)).toFixed(3)})`;
-      ctx.fillText('✓ CÓDIGO CORRIGIDO', CANVAS_W/2, by2+14);
+      ctx.fillStyle = `rgba(134,239,172,${(0.88+0.12*Math.sin(t*4)).toFixed(3)})`;
+      ctx.fillText('FASE LIMPA', CANVAS_W/2+6, by2+13);
       ctx.font = '5px monospace';
-      ctx.fillStyle = 'rgba(190,255,214,0.78)';
-      ctx.fillText('TODAS AS SALAS LIMPAS • SETCH', CANVAS_W/2, by2+30);
+      ctx.fillStyle = 'rgba(190,255,214,0.8)';
+      ctx.fillText('TODAS AS SALAS LIMPAS • SAÍDA LIBERADA', CANVAS_W/2+6, by2+24);
+      // equalizador verde
+      for(let i=0;i<8;i++){
+        const ea = 0.35 + 0.5*Math.abs(Math.sin(t*4+i*0.9));
+        ctx.fillStyle = `rgba(74,222,128,${ea.toFixed(3)})`;
+        const barH = 3 + (i%3)*2 + Math.abs(Math.sin(t*5+i))*2;
+        ctx.fillRect(bx2+bw2-58+i*6, by2+21-barH, 4, barH);
+      }
       ctx.textAlign = 'left';
       ctx.restore();
     }
+  }
+
+  // ==========================================================================
+  //  DECORAÇÃO AMBIENTAL POR FASE (identidade visual de cada nome)
+  //  1 INTERFACE CORROMPIDA - circuitos, scanlines, glitch RGB e endereços
+  //  2 VARIÁVEL BUGADA     - caverna rachada, fragmentos NaN/null e insetos
+  //  3 ALGORITMO TÓXICO    - poças tóxicas borbulhando, faixas e gotejamento
+  //  4 CÓDIGOS CORROMPIDOS - colunas de código, rachaduras e sinete arcano
+  //  5 VÍRUS SOMBRIO       - tentáculos, esporos e símbolo viral pulsante
+  //  6 MINERADORA DE COINS - trilhos, veios de ouro, pilhas e vigas
+  //  Piso determinístico (themeHash) + poucos elementos animados = barato.
+  // ==========================================================================
+  drawThemeDecor(ctx, theme){
+    const id = theme.id || this.floor || 1;
+    const anim = (typeof performance!=='undefined' && performance.now) ? performance.now() : Date.now();
+    const left = WALL_THICK, top = WALL_THICK;
+    const right = CANVAS_W - WALL_THICK, bottom = CANVAS_H - WALL_THICK;
+    const H = themeHash;
+    ctx.save();
+    ctx.textBaseline = 'alphabetic';
+
+    // ---------- 1 · INTERFACE CORROMPIDA ----------
+    if(id===1){
+      // scanlines de monitor velho
+      ctx.fillStyle='rgba(138,108,255,0.045)';
+      for(let y=top+3; y<bottom; y+=6) ctx.fillRect(left, y, right-left, 1);
+      // trilhas de circuito
+      for(let gy=top+16; gy<bottom-24; gy+=72){
+        for(let gx=left+24; gx<right-40; gx+=88){
+          const h=H(gx,gy,3);
+          if(h>0.42) continue;
+          const len=18+Math.floor(h*30);
+          const horiz = h<0.21;
+          ctx.strokeStyle='rgba(138,108,255,0.20)'; ctx.lineWidth=1;
+          ctx.beginPath();
+          if(horiz){ ctx.moveTo(gx,gy); ctx.lineTo(gx+len,gy); ctx.lineTo(gx+len,gy+10); }
+          else { ctx.moveTo(gx,gy); ctx.lineTo(gx,gy+len); ctx.lineTo(gx+10,gy+len); }
+          ctx.stroke();
+          ctx.fillStyle='rgba(170,140,255,0.28)';
+          const nx=horiz?gx+len:gx+10, ny=horiz?gy+10:gy+len;
+          ctx.fillRect(nx-1.5,ny-1.5,3,3);
+        }
+      }
+      // blocos de glitch com separação RGB
+      for(let gy=top+40; gy<bottom-30; gy+=110){
+        for(let gx=left+50; gx<right-70; gx+=124){
+          const h=H(gx,gy,9);
+          if(h>0.30) continue;
+          const w=16+Math.floor(h*44), hh=4+Math.floor(h*4);
+          const flick = (Math.floor(anim/420 + h*10)%7===0) ? 1.5 : 1;
+          ctx.globalAlpha=0.55*flick;
+          ctx.fillStyle='rgba(255,0,90,0.35)';  ctx.fillRect(gx-1, gy, w, hh);
+          ctx.fillStyle='rgba(0,229,255,0.35)'; ctx.fillRect(gx+1, gy+1, w, hh);
+          ctx.fillStyle='rgba(138,108,255,0.55)'; ctx.fillRect(gx, gy, w, hh);
+          ctx.globalAlpha=1;
+        }
+      }
+      // endereços de memória vazando
+      ctx.font='5px monospace'; ctx.textAlign='left';
+      for(let gy=top+30; gy<bottom-20; gy+=96){
+        for(let gx=left+30; gx<right-70; gx+=150){
+          const h=H(gx,gy,21);
+          if(h>0.24) continue;
+          ctx.fillStyle='rgba(190,170,255,0.20)';
+          ctx.fillText('0x'+Math.floor(h*0xffff).toString(16).toUpperCase().padStart(4,'0'), gx, gy);
+        }
+      }
+      ctx.textAlign='left';
+    }
+
+    // ---------- 2 · VARIÁVEL BUGADA ----------
+    if(id===2){
+      // fissuras de caverna com brilho de magma
+      for(let gy=top+26; gy<bottom-30; gy+=64){
+        for(let gx=left+26; gx<right-60; gx+=92){
+          const h=H(gx,gy,4);
+          if(h>0.50) continue;
+          ctx.strokeStyle='rgba(0,0,0,0.30)'; ctx.lineWidth=1.4;
+          ctx.beginPath(); ctx.moveTo(gx,gy);
+          ctx.lineTo(gx+8+h*10, gy+6); ctx.lineTo(gx+4+h*14, gy+14); ctx.lineTo(gx+12+h*8, gy+22);
+          ctx.stroke();
+          ctx.strokeStyle='rgba(255,140,66,0.16)'; ctx.lineWidth=0.8;
+          ctx.beginPath(); ctx.moveTo(gx+1,gy+1);
+          ctx.lineTo(gx+9+h*10, gy+7); ctx.lineTo(gx+5+h*14, gy+15);
+          ctx.stroke();
+        }
+      }
+      // variáveis quebradas escritas no chão
+      const frags=['NaN','null','undefined','x++','BUG','??'];
+      ctx.font='5px monospace';
+      for(let gy=top+18; gy<bottom-14; gy+=56){
+        for(let gx=left+18; gx<right-44; gx+=84){
+          const h=H(gx,gy,31);
+          if(h>0.34) continue;
+          ctx.fillStyle='rgba(255,150,80,0.22)';
+          ctx.fillText(frags[Math.floor(h*10)%frags.length], gx, gy);
+          ctx.fillStyle='rgba(255,90,30,0.10)';
+          ctx.fillRect(gx, gy+2, 10+h*18, 1);
+        }
+      }
+      // pedras e insetos
+      for(let gy=top+34; gy<bottom-24; gy+=78){
+        for(let gx=left+40; gx<right-30; gx+=104){
+          const h=H(gx,gy,55);
+          if(h<0.55) continue;
+          if(h<0.78){
+            ctx.fillStyle='rgba(0,0,0,0.20)';
+            ctx.beginPath(); ctx.ellipse(gx,gy,6+h*5,4+h*3,0,0,Math.PI*2); ctx.fill();
+            ctx.fillStyle='rgba(255,160,90,0.10)';
+            ctx.beginPath(); ctx.ellipse(gx-1,gy-1,3+h*3,2,0,0,Math.PI*2); ctx.fill();
+          } else {
+            ctx.fillStyle='rgba(40,20,10,0.45)';
+            ctx.beginPath(); ctx.ellipse(gx,gy,3,2,0,0,Math.PI*2); ctx.fill();
+            ctx.strokeStyle='rgba(40,20,10,0.40)'; ctx.lineWidth=0.8;
+            for(let k=-1;k<=1;k++){
+              ctx.beginPath(); ctx.moveTo(gx,gy); ctx.lineTo(gx+k*4, gy-4); ctx.stroke();
+              ctx.beginPath(); ctx.moveTo(gx,gy); ctx.lineTo(gx+k*4, gy+4); ctx.stroke();
+            }
+          }
+        }
+      }
+    }
+
+    // ---------- 3 · ALGORITMO TÓXICO ----------
+    if(id===3){
+      const pulse = 0.5+Math.sin(anim*0.002)*0.5;
+      // poças tóxicas borbulhando
+      for(let gy=top+30; gy<bottom-26; gy+=70){
+        for(let gx=left+30; gx<right-40; gx+=96){
+          const h=H(gx,gy,7);
+          if(h>0.42) continue;
+          const r=10+h*16;
+          ctx.fillStyle='rgba(0,255,136,0.05)';
+          ctx.beginPath(); ctx.ellipse(gx,gy,r*1.3,r*0.85,0,0,Math.PI*2); ctx.fill();
+          ctx.fillStyle='rgba(0,255,136,0.09)';
+          ctx.beginPath(); ctx.ellipse(gx,gy,r*0.95,r*0.62,0,0,Math.PI*2); ctx.fill();
+          ctx.strokeStyle=`rgba(120,255,190,${(0.10+pulse*0.06).toFixed(3)})`; ctx.lineWidth=1;
+          ctx.beginPath(); ctx.ellipse(gx,gy,r*1.3,r*0.85,0,0,Math.PI*2); ctx.stroke();
+          for(let b=0;b<3;b++){
+            const bh=H(gx+b*7,gy+b*3,71);
+            if(bh>0.55) continue;
+            const by = gy - ((anim*0.02 + bh*20)%14);
+            ctx.fillStyle=`rgba(160,255,210,${(0.10+bh*0.12).toFixed(3)})`;
+            ctx.beginPath(); ctx.arc(gx + (bh-0.5)*r, by, 1+bh*2,0,Math.PI*2); ctx.fill();
+          }
+        }
+      }
+      // faixa de perigo junto à parede do topo
+      ctx.save();
+      ctx.beginPath(); ctx.rect(left, top, right-left, 12); ctx.clip();
+      ctx.fillStyle='rgba(255,215,0,0.05)'; ctx.fillRect(left, top, right-left, 12);
+      ctx.strokeStyle='rgba(255,215,0,0.10)'; ctx.lineWidth=3;
+      for(let x=left-12; x<right+12; x+=12){ ctx.beginPath(); ctx.moveTo(x, top+12); ctx.lineTo(x+12, top); ctx.stroke(); }
+      ctx.restore();
+      // gotejamento tóxico descendo das paredes
+      for(let gx=left+40; gx<right-20; gx+=86){
+        const h=H(gx, top, 99);
+        if(h>0.45) continue;
+        const drip = 6 + (anim*0.01 + h*30)%18;
+        ctx.strokeStyle='rgba(0,255,136,0.14)'; ctx.lineWidth=1.2;
+        ctx.beginPath(); ctx.moveTo(gx, top); ctx.lineTo(gx, top+drip); ctx.stroke();
+        ctx.fillStyle='rgba(0,255,136,0.22)';
+        ctx.beginPath(); ctx.arc(gx, top+drip, 1.6,0,Math.PI*2); ctx.fill();
+      }
+    }
+
+    // ---------- 4 · CÓDIGOS CORROMPIDOS ----------
+    if(id===4){
+      // colunas de glifos/código corrompido
+      const glyphs=['{','}','<','>','/','#','01','&&',';','[]'];
+      ctx.font='5px monospace'; ctx.textAlign='center';
+      const flicker = 0.7+Math.sin(anim*0.003)*0.3;
+      for(let gx=left+26; gx<right-16; gx+=58){
+        const h=H(gx,0,13);
+        if(h>0.55) continue;
+        const colH = 40+H(gx,7,13)*90;
+        for(let gy=top+20; gy<top+20+colH; gy+=11){
+          const gh=H(gx,gy,17);
+          ctx.globalAlpha = (0.10+gh*0.16)*flicker;
+          ctx.fillStyle = gh>0.7 ? '#f0abfc' : '#d946ef';
+          ctx.fillText(glyphs[Math.floor(gh*10)%glyphs.length], gx, gy);
+        }
+      }
+      ctx.globalAlpha=1; ctx.textAlign='left';
+      // sinete arcano no centro da sala
+      const cx=CANVAS_W/2, cy=CANVAS_H/2, R=54;
+      ctx.strokeStyle='rgba(217,70,239,0.16)'; ctx.lineWidth=1.4;
+      ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx,cy,R-12,0,Math.PI*2); ctx.stroke();
+      for(let i=0;i<8;i++){
+        const a = i/8*Math.PI*2 + anim*0.0002;
+        ctx.beginPath();
+        ctx.moveTo(cx+Math.cos(a)*(R-12), cy+Math.sin(a)*(R-12));
+        ctx.lineTo(cx+Math.cos(a)*R, cy+Math.sin(a)*R);
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      for(let i=0;i<3;i++){ const a=i/3*Math.PI*2 - Math.PI/2; const px=cx+Math.cos(a)*(R-18), py=cy+Math.sin(a)*(R-18); i?ctx.lineTo(px,py):ctx.moveTo(px,py); }
+      ctx.closePath(); ctx.stroke();
+      // rachaduras luminosas
+      for(let gy=top+34; gy<bottom-30; gy+=90){
+        for(let gx=left+34; gx<right-40; gx+=118){
+          const h=H(gx,gy,23);
+          if(h>0.36) continue;
+          ctx.strokeStyle='rgba(217,70,239,0.13)'; ctx.lineWidth=1.2;
+          ctx.beginPath(); ctx.moveTo(gx,gy);
+          ctx.lineTo(gx+10, gy+8); ctx.lineTo(gx+7, gy+18); ctx.lineTo(gx+16, gy+24);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // ---------- 5 · VÍRUS SOMBRIO ----------
+    if(id===5){
+      const pulse=0.5+Math.sin(anim*0.0018)*0.5;
+      // tentáculos saindo do topo e da base
+      for(let i=0;i<7;i++){
+        const gx = left + 40 + i*(right-left-80)/6;
+        const sway = Math.sin(anim*0.0007 + i)*10;
+        const fromTop = i%2===0;
+        const y0 = fromTop ? top : bottom;
+        const dir = fromTop ? 1 : -1;
+        ctx.strokeStyle=`rgba(120,30,20,${(0.28+pulse*0.12).toFixed(3)})`; ctx.lineWidth=3;
+        ctx.beginPath(); ctx.moveTo(gx, y0);
+        ctx.bezierCurveTo(gx+sway, y0+dir*26, gx-sway, y0+dir*50, gx+sway*0.6, y0+dir*72);
+        ctx.stroke();
+        ctx.strokeStyle='rgba(255,80,40,0.22)'; ctx.lineWidth=1;
+        for(let k=1;k<=3;k++){
+          const ty=y0+dir*k*18, tx=gx+Math.sin(anim*0.0007+i+k)*4;
+          ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx+5, ty+dir*4); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx-5, ty+dir*4); ctx.stroke();
+        }
+      }
+      // esporos flutuando
+      for(let i=0;i<16;i++){
+        const h=H(i,7,41);
+        const px = left+20 + h*(right-left-40) + Math.sin(anim*0.0009 + i)*8;
+        const py = top+20 + ((h*997 + anim*0.012*(0.4+h))%(bottom-top-40));
+        ctx.fillStyle = i%3===0 ? `rgba(255,215,0,${(0.16+pulse*0.10).toFixed(3)})` : `rgba(255,70,40,${(0.14+pulse*0.08).toFixed(3)})`;
+        ctx.beginPath(); ctx.arc(px,py,1+h*1.6,0,Math.PI*2); ctx.fill();
+      }
+      // símbolo viral pulsante
+      const cx=CANVAS_W/2, cy=CANVAS_H/2;
+      ctx.strokeStyle=`rgba(255,80,40,${(0.10+pulse*0.05).toFixed(3)})`; ctx.lineWidth=1.4;
+      for(let r=0;r<3;r++){
+        const R=26+r*10;
+        ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.stroke();
+        for(let i=0;i<6;i++){
+          const a=i/6*Math.PI*2 + r*0.4;
+          ctx.beginPath(); ctx.moveTo(cx+Math.cos(a)*R, cy+Math.sin(a)*R); ctx.lineTo(cx+Math.cos(a)*(R+7), cy+Math.sin(a)*(R+7)); ctx.stroke();
+        }
+      }
+    }
+
+    // ---------- 6 · MINERADORA DE COINS ----------
+    if(id===6){
+      // trilhos horizontais com dormentes
+      for(const frac of [0.32, 0.68]){
+        const ry = top + (bottom-top)*frac;
+        ctx.strokeStyle='rgba(150,120,60,0.20)'; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.moveTo(left, ry); ctx.lineTo(right, ry); ctx.stroke();
+        ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.moveTo(left, ry+6); ctx.lineTo(right, ry+6); ctx.stroke();
+        ctx.fillStyle='rgba(120,90,40,0.18)';
+        for(let x=left+8; x<right-8; x+=16) ctx.fillRect(x, ry-2, 5, 12);
+        ctx.fillStyle='rgba(255,215,0,0.10)';
+        for(let x=left+8; x<right-8; x+=64) ctx.fillRect(x+1, ry-2, 2, 12);
+      }
+      // veios de ouro cravados no piso
+      for(let gy=top+24; gy<bottom-24; gy+=68){
+        for(let gx=left+22; gx<right-26; gx+=88){
+          const h=H(gx,gy,29);
+          if(h>0.34) continue;
+          ctx.fillStyle='rgba(255,183,0,0.16)';
+          ctx.beginPath();
+          ctx.moveTo(gx, gy-6); ctx.lineTo(gx+6, gy); ctx.lineTo(gx, gy+6); ctx.lineTo(gx-6, gy);
+          ctx.closePath(); ctx.fill();
+          ctx.fillStyle='rgba(255,255,255,0.10)'; ctx.fillRect(gx-2, gy-2, 2,2);
+        }
+      }
+      // pilhas de moedas
+      for(let gy=top+40; gy<bottom-30; gy+=92){
+        for(let gx=left+44; gx<right-30; gx+=110){
+          const h=H(gx,gy,37);
+          if(h>0.28) continue;
+          for(let s=0;s<3;s++){
+            const yy=gy+s*3;
+            ctx.fillStyle = s===2 ? 'rgba(255,215,0,0.34)' : 'rgba(255,183,0,0.24)';
+            ctx.beginPath(); ctx.ellipse(gx, yy, 6-s*0.6, 2.6, 0,0,Math.PI*2); ctx.fill();
+            ctx.strokeStyle='rgba(120,80,0,0.28)'; ctx.lineWidth=0.8; ctx.stroke();
+          }
+          ctx.fillStyle='rgba(255,255,255,0.18)'; ctx.fillRect(gx-1, gy+1, 1,1);
+        }
+      }
+      // vigas de sustentação da mina
+      ctx.fillStyle='rgba(80,55,20,0.12)';
+      for(let gx=left+60; gx<right-20; gx+=140) ctx.fillRect(gx, top, 8, bottom-top);
+    }
+
+    // ---------- moldura de identidade (cor de destaque da fase) ----------
+    const accent = theme.accent || '#8a6cff';
+    ctx.strokeStyle='rgba(255,255,255,0.06)'; ctx.lineWidth=1;
+    ctx.strokeRect(left+2.5, top+2.5, right-left-5, bottom-top-5);
+    const cl = 18;
+    ctx.strokeStyle=accent; ctx.globalAlpha=0.22; ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(left+4, top+4+cl); ctx.lineTo(left+4, top+4); ctx.lineTo(left+4+cl, top+4);
+    ctx.moveTo(right-4-cl, top+4); ctx.lineTo(right-4, top+4); ctx.lineTo(right-4, top+4+cl);
+    ctx.moveTo(left+4, bottom-4-cl); ctx.lineTo(left+4, bottom-4); ctx.lineTo(left+4+cl, bottom-4);
+    ctx.moveTo(right-4-cl, bottom-4); ctx.lineTo(right-4, bottom-4); ctx.lineTo(right-4, bottom-4-cl);
+    ctx.stroke();
+    ctx.globalAlpha=1;
+    ctx.restore();
   }
 
   draw(ctx, isCurrent, game) {
@@ -23933,6 +25101,8 @@ if(e.canDamageHead()){
         }
       }
     }
+    // decoração própria da fase (piso temático, sob paredes e itens)
+    try { this.drawThemeDecor(ctx, theme); } catch(e){ console.error('Theme decor error', e); }
     // centro start
     if (this.isStart) {
       ctx.fillStyle = theme.id===2 ? 'rgba(255,140,66,0.08)' : 'rgba(255,204,0,0.07)';
@@ -23950,11 +25120,11 @@ if(e.canDamageHead()){
     const locked = !this.isCleared();
     for (const d of doorRects) this.drawDoor(ctx, d, locked, theme);
 
-    // ===================== CARTAZES DA SETCH NA SALA DA PORTA =====================
-    // A sala do portal (a "sala da porta") ganha os cartazes da Setch em TODAS as
+    // ===================== CARTAZES DA SETEC NA SALA DA PORTA =====================
+    // A sala do portal (a "sala da porta") ganha os cartazes da Setec em TODAS as
     // fases, mas só depois que a fase inteira estiver limpa de inimigos.
     if(this.isExit && game && typeof game.isFloorCleared === 'function' && game.isFloorCleared()){
-      this.drawSetchPosters(ctx, { codeFix: true });
+      this.drawSetecPosters(ctx, { codeFix: true });
     }
 
     // decoração sala rara (fundo distinto dourado/roxo)
@@ -24284,11 +25454,11 @@ if(e.canDamageHead()){
       this.drawPainelRoomBg(ctx);
       this.drawPainel(ctx, _painelPlayer);
     }
-    // ===================== SALA SETCH (2x TAMANHO) - decoração dupla + NPC + COPOS =====================
-    if(this.isSetch){
+    // ===================== SALA SETEC (2x TAMANHO) - decoração dupla + NPC + COPOS =====================
+    if(this.isSetec){
       const isCleared = this.isCleared();
       const t=Date.now()*0.004;
-      // Fundo sala Setch: tom roxo-escuro / madeira misteriosa 2x
+      // Fundo sala Setec: tom roxo-escuro / madeira misteriosa 2x
       ctx.fillStyle = isCleared ? 'rgba(40,25,60,0.08)' : 'rgba(60,30,90,0.16)';
       ctx.fillRect(WALL_THICK, WALL_THICK, CANVAS_W-WALL_THICK*2, CANVAS_H-WALL_THICK*2);
       // Borda dupla indicando 2x tamanho
@@ -24308,50 +25478,53 @@ if(e.canDamageHead()){
         ctx.fillStyle=`rgba(168,85,247,${0.28 + Math.sin(t*2+i)*0.18})`;
         ctx.fillRect(px, py, 2,2);
       }
-      // Faixa superior "SALA SETCH • 2X"
+      // Faixa superior "SALA SETEC • 2X"
       ctx.fillStyle='rgba(0,0,0,0.28)'; ctx.fillRect(CANVAS_W/2 - 90, WALL_THICK+6, 180, 18);
       ctx.fillStyle = isCleared ? 'rgba(74,222,128,0.95)' : 'rgba(255,215,0,0.95)';
       ctx.font='8px "Press Start 2P"'; ctx.textAlign='center';
-      ctx.fillText(isCleared?'✓ SETCH ✓':'◉ SALA SETCH ◉', CANVAS_W/2, WALL_THICK+18); ctx.textAlign='left';
+      ctx.fillText(isCleared?'✓ SETEC ✓':'◉ SALA SETEC ◉', CANVAS_W/2, WALL_THICK+18); ctx.textAlign='left';
       ctx.fillStyle='rgba(255,255,255,0.72)'; ctx.font='5px monospace'; ctx.textAlign='center';
-      ctx.fillText(`2× TAMANHO • ${SETCH_ROUNDS} RODADAS DE COPINHOS`, CANVAS_W/2, WALL_THICK+26); ctx.textAlign='left';
-      this.drawSetchPosters(ctx);
+      ctx.fillText(`2× TAMANHO • ${SETEC_ROUNDS} RODADAS DE COPINHOS`, CANVAS_W/2, WALL_THICK+26); ctx.textAlign='left';
+      this.drawSetecPosters(ctx);
       // Área 2x indicação no chão: ladrilhos maiores
       ctx.fillStyle='rgba(168,85,247,0.06)';
       ctx.fillRect(CANVAS_W/2 - 150, CANVAS_H/2 - 30, 300, 80);
       ctx.strokeStyle='rgba(168,85,247,0.12)'; ctx.lineWidth=1; ctx.setLineDash([6,4]);
       ctx.strokeRect(CANVAS_W/2 - 150, CANVAS_H/2 - 30, 300, 80); ctx.setLineDash([]);
       // Desenha NPC e copos + Indiana (se existem)
-      const _setchPlayer = this._playerRef || (typeof window!=='undefined' && window.game ? window.game.player : null);
-      if(this.npc) this.npc.draw(ctx, _setchPlayer);
+      const _setecPlayer = this._playerRef || (typeof window!=='undefined' && window.game ? window.game.player : null);
+      if(this.npc) this.npc.draw(ctx, _setecPlayer);
       if(this.cupGame) this.cupGame.draw(ctx);
-      if(this.indianaNPC) this.indianaNPC.draw(ctx, _setchPlayer);
-      if(this.jlNPC) this.jlNPC.draw(ctx, _setchPlayer);
-      if(this.oliNPC) this.oliNPC.draw(ctx, _setchPlayer);
-      if(this.borzukNPC) this.borzukNPC.draw(ctx, _setchPlayer);
+      if(this.indianaNPC) this.indianaNPC.draw(ctx, _setecPlayer);
+      if(this.jlNPC) this.jlNPC.draw(ctx, _setecPlayer);
+      if(this.oliNPC) this.oliNPC.draw(ctx, _setecPlayer);
+      if(this.borzukNPC) this.borzukNPC.draw(ctx, _setecPlayer);
       // Placar de presentes da sala: mostra o que já foi levado e o que falta.
       // Substitui a antiga faixa de texto que duplicava a dica do Jogo do Copinho
       // (o cupGame já desenha a instrução do [E] embaixo da mesa) e, de quebra,
       // some com o excesso de texto na tela quando a sala está calma.
-      this.drawGiftChecklist(ctx, _setchPlayer);
+      this.drawGiftChecklist(ctx, _setecPlayer);
       // Os NPCs desenham o proprio prompt [E] quando o jogador chega perto
-      // (SetchVendor.drawPrompt), entao aqui nao repete as setas antigas.
+      // (SetecVendor.drawPrompt), entao aqui nao repete as setas antigas.
       // Room NAO tem this.player (o player chega por update(dt, player)).
       // Ler this.player.hasIoiPassive lançava TypeError, caia no catch do Game.draw
       // e a sala inteira ficava preta (so o fundo da fase era desenhado).
       // Agora usamos a referencia salva em update (mesma fonte do desenho dos NPCs).
-      const _jlPlayer = _setchPlayer;
-      // Portas da Sala Setch estão sempre abertas: a linha só informa o quanto
+      const _jlPlayer = _setecPlayer;
+      // Portas da Sala Setec estão sempre abertas: a linha só informa o quanto
       // dos presentes opcionais já saiu (o ✓ do placar continua sendo o placar).
       ctx.fillStyle='rgba(74,222,128,0.88)'; ctx.font='6px monospace'; ctx.textAlign='center';
       const anyGift = this.indianaGiftGiven || this.jlGiftGiven || this.oliGiftGiven || this.borzukGiftGiven;
-      const allGifts = this.setchCleared && this.indianaGiftGiven && this.jlGiftGiven && this.oliGiftGiven && this.borzukGiftGiven;
-      const txt = allGifts ? '✓ SETCH, JL, OLI, INDIANA & BORZUK COMPLETOS • PORTAS ABERTAS'
-        : this.setchCleared ? `✓ COPINHOS VENCIDO (${SETCH_ROUNDS} RODADAS) • PORTAS ABERTAS`
+      const allGifts = this.setecCleared && this.indianaGiftGiven && this.jlGiftGiven && this.oliGiftGiven && this.borzukGiftGiven;
+      const txt = allGifts ? '✓ SETEC, JL, OLI, INDIANA & BORZUK COMPLETOS • PORTAS ABERTAS'
+        : this.setecCleared ? `✓ COPINHOS VENCIDO (${SETEC_ROUNDS} RODADAS) • PORTAS ABERTAS`
         : anyGift ? '✓ PRESENTE ENTREGUE NO CHÃO • PORTAS ABERTAS'
         : '↔ PORTAS ABERTAS • PRESENTES NO CHÃO SÃO OPCIONAIS';
       ctx.fillText(txt, CANVAS_W/2, CANVAS_H-12); ctx.textAlign='left';
     }
+
+    // rastros de corrupção (desenha no chão, sob itens e inimigos)
+    for(const tr of this.corruptionTrails) tr.draw(ctx);
 
     // rastros de fogo (desenha no chão, sob itens)
     for(const f of this.fires) f.draw(ctx);
@@ -25143,10 +26316,10 @@ class MapGenerator {
 
     // PAINEL CENTRAL: sala do console de códigos (só na Fase 1 E só para o
     // jogador cujo nome é PAINEL_ALLOWED_NAME - SCHMOELLER).
-    // Entra antes das salas opcionais (rara/miniboss/festa/setch) para que
+    // Entra antes das salas opcionais (rara/miniboss/festa/setec) para que
     // nenhuma outra sala especial ocupe o mesmo lugar.
     if(this.painelAllowed && PAINEL_ROOM_FLOORS.includes(this.floor)){
-      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch && !r.isPainelCentral);
+      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetec && !r.isPainelCentral);
       if(candidates.length){
         // prefere uma sala de beco (1 porta) para o console ficar isolado
         let pool=candidates;
@@ -25177,7 +26350,7 @@ class MapGenerator {
     }
     // Sala rara especial: chance configurável rareRoomChance por andar (não start/exit)
     if(rng() < rareRoomChance){
-      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch && !r.isPainelCentral);
+      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetec && !r.isPainelCentral);
       if(candidates.length){
         // escolhe uma sala aleatória não-start/exit, prefere que não seja já sobrecarregada
         const rc = candidates[Math.floor(rng()*candidates.length)];
@@ -25187,7 +26360,7 @@ class MapGenerator {
     // Sala Miniboss: pode aparecer em QUALQUER fase exceto 5 e 6 (35% chance, configurável MINIBOSS_ROOM_CHANCE)
     // Fase 5 e 6 têm boss próprio (Stair / Hacker), não gera miniboss
     if(this.floor!==5 && this.floor!==HACKER_FLOOR && rng() < MINIBOSS_ROOM_CHANCE){
-      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch && !r.isPainelCentral);
+      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetec && !r.isPainelCentral);
       if(candidates.length){
         // prefere sala com 1 porta (dead end) para arena mais isolada
         let pool=candidates;
@@ -25199,7 +26372,7 @@ class MapGenerator {
     }
     // Sala de Festa (Horda) — pode aparecer em qualquer fase 1-6 (20%)
     if(rng() < PARTY_HORDE_CHANCE){
-      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch && !r.isPainelCentral);
+      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetec && !r.isPainelCentral);
       if(candidates.length){
         let pool=candidates;
         const twoDoors=candidates.filter(r=> Object.values(r.doors).filter(Boolean).length===2);
@@ -25208,12 +26381,12 @@ class MapGenerator {
         rc.makePartyHordeRoom(rng);
       }
     }
-    // Sala Setch (2x tamanho) - GARANTIDA 100% ou na Fase 5 ou na Fase 6 (requisito)
-    if(SETCH_ROOM_FLOORS.includes(this.floor) && rng() < SETCH_ROOM_CHANCE){
-      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch && !r.isPainelCentral);
+    // Sala Setec (2x tamanho) - GARANTIDA 100% ou na Fase 5 ou na Fase 6 (requisito)
+    if(SETEC_ROOM_FLOORS.includes(this.floor) && rng() < SETEC_ROOM_CHANCE){
+      const candidates = rooms.filter(r=> !r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetec && !r.isPainelCentral);
       // prefere sala mais distante do start com pelo menos 2 portas para espaço
       if(candidates.length){
-        const distant = candidates.filter(r=> Math.abs(r.gx-2)+Math.abs(r.gy-2) >= SETCH_ROOM_MIN_DISTANCE);
+        const distant = candidates.filter(r=> Math.abs(r.gx-2)+Math.abs(r.gy-2) >= SETEC_ROOM_MIN_DISTANCE);
         let pool = distant.length ? distant : candidates;
         // Se Mineradora (fase 6) quer temática: prioriza dead end para arena grande
         if(this.floor===6){
@@ -25221,15 +26394,15 @@ class MapGenerator {
           if(deadEnds.length && rng()<0.6) pool=deadEnds;
         }
         const rc = pool[Math.floor(rng()*pool.length)];
-        rc.makeSetchRoom(rng);
+        rc.makeSetecRoom(rng);
       }
     }
 
     // Garante um Shotgun por fase em sala aleatória não-start não-exit (se ainda não spawnou natural)
     // Fase 3 pode ter shotgun também, mas garante apenas se não houver shotgun nem rare/miniboss (já tem item)
     const hasShotgun = rooms.some(r=>r.items.some(it=>it.type==='shotgun'));
-    if(!hasShotgun && !rooms.some(r=>r.isRare || r.isMiniboss || r.isBossStair || r.isHacker || r.isPartyHorde || r.isSetch)){
-      const candidates = rooms.filter(r=>!r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch && !r.isPainelCentral);
+    if(!hasShotgun && !rooms.some(r=>r.isRare || r.isMiniboss || r.isBossStair || r.isHacker || r.isPartyHorde || r.isSetec)){
+      const candidates = rooms.filter(r=>!r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetec && !r.isPainelCentral);
       if(candidates.length){
         const rc = candidates[Math.floor(rng()*candidates.length)];
         if(rc.items.length<2){
@@ -25251,7 +26424,7 @@ class MapGenerator {
     // Garante uma arma CARREGADA por andar (arma comum) se ainda não houver, reforçando característica comum
     const hasCarregada = rooms.some(r=>r.items.some(it=> it.type==='carregada' || it.weaponType==='carregada'));
     if(!hasCarregada){
-      const candidates = rooms.filter(r=>!r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch && !r.isPainelCentral);
+      const candidates = rooms.filter(r=>!r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetec && !r.isPainelCentral);
       if(candidates.length){
         // tenta colocar em sala que ainda tem espaço, evita lotar
         const filtered = candidates.filter(r=> r.items.length < 2);
@@ -25274,7 +26447,7 @@ class MapGenerator {
     // Garante pelo menos um Item Especial (E) por andar para testar mecânica (inclui Power Star raro na Fase 5)
     const hasSpecial = rooms.some(r=> r.items.some(it=> it.isSpecialPickup));
     if(!hasSpecial){
-      const candidates = rooms.filter(r=>!r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetch && !r.isPainelCentral);
+      const candidates = rooms.filter(r=>!r.isStart && !r.isExit && !r.isRare && !r.isMiniboss && !r.isBossStair && !r.isHacker && !r.isPartyHorde && !r.isSetec && !r.isPainelCentral);
       if(candidates.length){
         const filtered = candidates.filter(r=> r.items.length < 3);
         const pool = filtered.length ? filtered : candidates;
@@ -25623,7 +26796,7 @@ class Game {
       if(isPauseKey && this.state==='PLAYING'){ e.preventDefault(); this.pause(); }
       else if(isPauseKey && this.state==='PAUSED'){ e.preventDefault(); this.resume(); }
     });
-// Setch: clique nos copos para escolher (mouse) + botão de pausa do HUD
+// Setec: clique nos copos para escolher (mouse) + botão de pausa do HUD
     if(this.canvas){
       this.canvas.addEventListener('click', (e)=>{
         const { x, y } = this.clientToCanvas(e.clientX, e.clientY);
@@ -25631,13 +26804,13 @@ class Game {
           this.togglePause();
           return;
         }
-        if(!this.isInSetchRoom()) return;
+        if(!this.isInSetecRoom()) return;
         const room=this.currentRoom;
         if(!room || !room.cupGame) return;
         if(room.cupGame.state!=='waiting' || !room.cupGame.interactive) return;
         const idx=room.cupGame.hitTest(x,y);
         if(idx!==-1){
-          this.trySetchChoice(idx);
+          this.trySetecChoice(idx);
         }
       });
     this.canvas.addEventListener('mousemove', (e)=>{
@@ -25647,10 +26820,10 @@ class Game {
           // translúcida mesmo com o jogador parado, escondendo vida/arma)
           this._hudIdleTimer=0; this._hudIdle=false;
           const overPause = this.isHudPauseHover();
-          const overSetch = !overPause && this.isInSetchRoom() && this.currentRoom && this.currentRoom.cupGame && this.currentRoom.cupGame.state==='waiting' && this.currentRoom.cupGame.interactive;
-          this.canvas.style.cursor = (overPause || overSetch) ? 'pointer' : 'crosshair';
+          const overSetec = !overPause && this.isInSetecRoom() && this.currentRoom && this.currentRoom.cupGame && this.currentRoom.cupGame.state==='waiting' && this.currentRoom.cupGame.interactive;
+          this.canvas.style.cursor = (overPause || overSetec) ? 'pointer' : 'crosshair';
           // destaque do copo sob o mouse (copinho fica mais claro)
-          if(overSetch){
+          if(overSetec){
             const cg=this.currentRoom.cupGame;
             cg.hoverIndex = cg.hitTest(this._hudMouse.x, this._hudMouse.y);
           } else if(this.currentRoom && this.currentRoom.cupGame){
@@ -27335,15 +28508,15 @@ class Game {
   // Requisitos: só considera arma dentro de WEAPON_SWAP_RANGE, que não esteja equipada,
   // e que não cause duplicação no inventário (primária/secundária)
   // Modular por personagem: JG/Kinight bloqueiam troca na hora do swap (mantém hint para feedback)
-  // ===================== SETCH - INTERAÇÃO NPC =====================
-  isInSetchRoom(){ return !!(this.currentRoom && this.currentRoom.isSetch); }
+  // ===================== SETEC - INTERAÇÃO NPC =====================
+  isInSetecRoom(){ return !!(this.currentRoom && this.currentRoom.isSetec); }
   // Sala do Painel Central (terminal de códigos da Fase 1)
   isInPainelRoom(){ return !!(this.currentRoom && this.currentRoom.isPainelCentral); }
-  trySetchInteraction(){
-    if(!this.isInSetchRoom()) return false;
+  trySetecInteraction(){
+    if(!this.isInSetecRoom()) return false;
     const room=this.currentRoom;
     // Presentes deixados no chão pelos NPCs têm PRIORIDADE: sem isso o [E]
-    // cairia nos hints/diálogos do Setch e o item nunca seria alcançável.
+    // cairia nos hints/diálogos do Setec e o item nunca seria alcançável.
     // (Chicote usa [Q] e IO-IO é automático; aqui ficam os especiais de Oli e Borzuk.)
     if(this.trySpecialSwapOrPickup()) return true;
     // Prioridade Indiana Jones - Chicote 100% garantido (requisito)
@@ -27369,7 +28542,7 @@ class Game {
     }
     if(!room.npc || !room.cupGame) {
       // Se só tem Indiana e ainda não deu gift, dá hint
-      // JL e Oli continuam acessíveis mesmo sem o minigame do Setch
+      // JL e Oli continuam acessíveis mesmo sem o minigame do Setec
       if(room.jlNPC && !room.jlGiftGiven && !this.player.hasIoiPassive){
         const nearJL2 = dist(this.player.x, this.player.y, room.jlNPC.x, room.jlNPC.y) < JL_INTERACT_RANGE + 18;
         if(nearJL2){ this.showToast(`JL: Aproxime-se e ${TOUCH_MODE?'toque em ESPECIAL':'pressione [E]'} - ele deixa o IO-IO no chão!`, 1400); return true; }
@@ -27385,13 +28558,13 @@ class Game {
       if(room.indianaNPC && !room.indianaGiftGiven){
         const nearInd2 = dist(this.player.x, this.player.y, room.indianaNPC.x, room.indianaNPC.y) < CHICOTE_INTERACT_RANGE + 18;
         if(nearInd2) this.showToast(`Indiana: Aproxime-se e ${TOUCH_MODE?'toque em ESPECIAL':'pressione [E]'} - o CHICOTE fica no chão (${keyTag('q')} para pegar)! 100%`, 1400);
-        else this.showToast(`Aproxime-se de Indiana ${keyTag('e')} CHICOTE 100% ou Setch ${keyTag('e')} COPINHOS`, 1400);
+        else this.showToast(`Aproxime-se de Indiana ${keyTag('e')} CHICOTE 100% ou Setec ${keyTag('e')} COPINHOS`, 1400);
         return true;
       }
       return false;
     }
-    if(room.setchCleared) {
-      // Mesmo com Setch vencido, ainda permite pegar Chicote do Indiana se não pegou
+    if(room.setecCleared) {
+      // Mesmo com Setec vencido, ainda permite pegar Chicote do Indiana se não pegou
       if(room.indianaNPC && !room.indianaGiftGiven && !room.indianaNPC.giftGiven){
         const nearIndiana3 = dist(this.player.x, this.player.y, room.indianaNPC.x, room.indianaNPC.y) < CHICOTE_INTERACT_RANGE;
         if(nearIndiana3){
@@ -27416,18 +28589,18 @@ class Game {
     }
     const cg=room.cupGame;
     const npc=room.npc;
-    const nearNPC = dist(this.player.x, this.player.y, npc.x, npc.y) < SETCH_INTERACT_RANGE + 18;
+    const nearNPC = dist(this.player.x, this.player.y, npc.x, npc.y) < SETEC_INTERACT_RANGE + 18;
     // Estado idle: E perto do NPC inicia o jogo
     if(cg.state==='idle'){
       if(!nearNPC) {
-        if(room.indianaNPC && !room.indianaGiftGiven) this.showToast('Aproxime-se: Setch [E] COPINHOS | JL [E] IO-IO | Oli [E] XADREZ | Indiana [E] CHICOTE | Borzuk [E] BARBOSA', 1300);
-        else this.showToast(`Chegue mais perto de Setch para jogar ${keyTag('e')}`, 1100);
+        if(room.indianaNPC && !room.indianaGiftGiven) this.showToast('Aproxime-se: Setec [E] COPINHOS | JL [E] IO-IO | Oli [E] XADREZ | Indiana [E] CHICOTE | Borzuk [E] BARBOSA', 1300);
+        else this.showToast(`Chegue mais perto de Setec para jogar ${keyTag('e')}`, 1100);
         return true; // consome E para não ativar especial por engano
       }
       cg.resetToIdle();         // garante mesa limpa antes de começar
       cg.round = 1; cg.streak = 0; // sempre começa do zero
       cg.start();
-      this.showToast(`Setch: Rodada 1/${SETCH_ROUNDS} - memorize a bolinha!`, 1600);
+      this.showToast(`Setec: Rodada 1/${SETEC_ROUNDS} - memorize a bolinha!`, 1600);
       // partículas início
       for(let k=0;k<10;k++) this.particles.push(new Particle(npc.x, npc.y-8, randRange(-1.2,1.2), randRange(-1.2,0.6), 280, '#a78bfa', 1.8));
       return true;
@@ -27437,15 +28610,15 @@ class Game {
       // Se o jogador fugiu da mesa, o [E] serve para chamar ele de volta
       if(!cg.nearTable){
         cg.farCd = 0;
-        this.showToast(`Setch: Aqui, na mesa! ${TOUCH_MODE?'Toca em':'Aperta'} ${keyTag('e')} aqui ó.`, 1400);
+        this.showToast(`Setec: Aqui, na mesa! ${TOUCH_MODE?'Toca em':'Aperta'} ${keyTag('e')} aqui ó.`, 1400);
       } else {
-        this.showToast('Setch: Aguarde o embaralhamento...', 900);
+        this.showToast('Setec: Aguarde o embaralhamento...', 900);
       }
       return true;
     }
     // Entre rodadas: E não reinicia nada, só avisa
     if(cg.state==='nextRound'){
-      this.showToast(`Setch: preparando a rodada ${cg.round+1}/${SETCH_ROUNDS}...`, 900);
+      this.showToast(`Setec: preparando a rodada ${cg.round+1}/${SETEC_ROUNDS}...`, 900);
       return true;
     }
     // Se está esperando escolha, E perto de um copo escolhe o mais próximo
@@ -27457,7 +28630,7 @@ class Game {
         const d=dist(this.player.x, this.player.y, c.displayX, c.displayY);
         if(d < bestDist){ bestDist=d; bestIdx=i; }
       }
-      if(bestDist < SETCH_CUP_PICK_RANGE){
+      if(bestDist < SETEC_CUP_PICK_RANGE){
         cg.choose(bestIdx, this.player, this, room);
         return true;
       } else {
@@ -27468,11 +28641,11 @@ class Game {
     // Se perdeu e está em finishedLose, E rejoga (volta sempre para a rodada 1)
     if(cg.state==='finishedLose'){
       cg.resetToIdle();
-      this.showToast('Setch: De novo! Memorize...', 1400);
+      this.showToast('Setec: De novo! Memorize...', 1400);
       return true;
     }
     if(cg.state==='finishedWin'){
-      this.showToast('Setch: Você já venceu! Portas liberadas ✓', 1300);
+      this.showToast('Setec: Você já venceu! Portas liberadas ✓', 1300);
       return true;
     }
     if(cg.state==='revealing'){
@@ -27535,8 +28708,8 @@ class Game {
   }
 
 
-  trySetchChoice(index){
-    if(!this.isInSetchRoom()) return false;
+  trySetecChoice(index){
+    if(!this.isInSetecRoom()) return false;
     const room=this.currentRoom;
     if(!room.cupGame) return false;
     const cg=room.cupGame;
@@ -27669,6 +28842,7 @@ class Game {
     else if(nl==='bastao') wKey='BASTAO';
     else if(nl==='motosserra') wKey='MOTOSSERRA';
     else if(nl==='chicote' || nl==='chicote_do_indiana') wKey='CHICOTE';
+    else if(nl==='firewall' || nl==='lanca_chamas' || nl==='lança-chamas') wKey='FIREWALL';
     else if(nl==='raio_matematico') wKey='RAIO_MATEMATICO';
     else wKey='NORMAL';
     // Bloqueio modular por personagem já filtrado em findNearbyWeapon, mas reforça aqui
@@ -27724,6 +28898,7 @@ class Game {
         nearby.isBastao = oldSecName==='BASTAO';
         nearby.isMotosserra = oldSecName==='MOTOSSERRA';
         nearby.isChicote = oldSecName==='CHICOTE';
+        nearby.isFirewall = oldSecName==='FIREWALL';
         if(nearby.isRaio) nearby.w = nearby.h = ITEM_SIZE_RAIO;
         else if(nearby.isRayMatematico) nearby.w = nearby.h = 22;
             else if(nearby.isMini) nearby.w = nearby.h = 22;
@@ -27735,6 +28910,7 @@ class Game {
         else if(nearby.isBastao) nearby.w = nearby.h = ITEM_SIZE_BASTAO;
         else if(nearby.isMotosserra) nearby.w = nearby.h = ITEM_SIZE_MOTOSSERRA;
         else if(nearby.isChicote) nearby.w = nearby.h = ITEM_SIZE_CHICOTE;
+        else if(nearby.isFirewall) nearby.w = nearby.h = 22;
         else nearby.w = nearby.h = ITEM_SIZE_SHOTGUN;
         nearby.spawnDelay = 320;
         // preserva heat reset
@@ -27758,6 +28934,7 @@ class Game {
     else if(oldName==='BASTAO') oldWeaponConfig={...WEAPON_BASTAO};
     else if(oldName==='MOTOSSERRA') oldWeaponConfig={...WEAPON_MOTOSSERRA};
     else if(oldName==='CHICOTE') oldWeaponConfig={...WEAPON_CHICOTE};
+    else if(oldName==='FIREWALL') oldWeaponConfig={...WEAPON_FIREWALL};
     else oldWeaponConfig={...WEAPON_NORMAL};
 
     // se a nova arma era ligada a doubleShot, preserva flag? DoubleShot é da primária, não da arma secundária
@@ -27791,6 +28968,7 @@ class Game {
     nearby.isRaio = oldName==='RAIO';
     nearby.isRayMatematico = oldName==='RAIO_MATEMATICO';
     nearby.isChicote = oldName==='CHICOTE';
+    nearby.isFirewall = oldName==='FIREWALL';
     nearby.isMini = oldName==='METRALHADORA';
     nearby.isNormal = oldName==='NORMAL';
     nearby.isCarregada = oldName==='CARREGADA';
@@ -27804,6 +28982,7 @@ class Game {
     if(nearby.isRaio) nearby.w = nearby.h = ITEM_SIZE_RAIO;
     else if(nearby.isRayMatematico) nearby.w = nearby.h = 22;
     else if(nearby.isChicote) nearby.w = nearby.h = ITEM_SIZE_CHICOTE;
+    else if(nearby.isFirewall) nearby.w = nearby.h = 22;
     else if(nearby.isMini) nearby.w = nearby.h = 22;
     else if(nearby.isNormal) nearby.w = nearby.h = 20;
     else if(nearby.isCarregada) nearby.w = nearby.h = 20;
@@ -27870,19 +29049,19 @@ class Game {
       // Prioridade 1: Painel Central (terminal de códigos) - só abre perto do console
       if(this.isInPainelRoom() && this.tryPainelInteraction()){
         // E consumido pelo painel
-      } else if(this.isInSetchRoom() && this.trySetchInteraction()){
-        // Prioridade 2: Sala Setch - NPC / copos
+      } else if(this.isInSetecRoom() && this.trySetecInteraction()){
+        // Prioridade 2: Sala Setec - NPC / copos
       } else {
         // Prioridade 3: fluxo normal (troca/pega de especial ou ativação)
         this.handleSpecialKeyE();
       }
     }
 
-    // Sala Setch: teclas 1/2/3 escolhem copo quando em espera
-    if(this.isInSetchRoom()){
-      if(this.input.consumeJustPressed('1')) this.trySetchChoice(0);
-      if(this.input.consumeJustPressed('2')) this.trySetchChoice(1);
-      if(this.input.consumeJustPressed('3')) this.trySetchChoice(2);
+    // Sala Setec: teclas 1/2/3 escolhem copo quando em espera
+    if(this.isInSetecRoom()){
+      if(this.input.consumeJustPressed('1')) this.trySetecChoice(0);
+      if(this.input.consumeJustPressed('2')) this.trySetecChoice(1);
+      if(this.input.consumeJustPressed('3')) this.trySetecChoice(2);
     }
     // troca de armas Q: só permite troca quando há arma próxima válida (requisito)
     // - Se não houver arma próxima, não faz nada (evita troca indevida)
@@ -30445,7 +31624,7 @@ class Game {
     const totalEnemies = this.rooms.reduce((a,r)=>a+r.enemies.length,0);
     const locked = room && !room.isCleared();
     let tag='FASE '+this.floor, tagColor='#ffcc00';
-    const specialRoom = room && (room.isHacker || room.isPartyHorde || room.isBossStair || room.isSetch || room.isMiniboss || room.isRare);
+    const specialRoom = room && (room.isHacker || room.isPartyHorde || room.isBossStair || room.isSetec || room.isMiniboss || room.isRare);
     if(!specialRoom){
       const th = FLOOR_THEMES[this.floor];
       if(th && th.name) tag += ` • ${th.name}`;
@@ -30462,13 +31641,13 @@ class Game {
         const b=room.enemies.find(e=>e.type==='stair_boss');
         if(room.bossStairDefeated){ tag='✓ BOSS ESCADA VENCIDO'; tagColor='#ffd700'; }
         else { tag=`◉ BOSS ESCADA${b?` ${Math.ceil(b.hp)}/${b.maxHp}`:''}`; tagColor='#ffb700'; }
-      } else if(room.isSetch){
+      } else if(room.isSetec){
         const cg=room.cupGame;
         let st='';
         if(cg){
-          const rd = ` R${cg.round}/${SETCH_ROUNDS}`;
+          const rd = ` R${cg.round}/${SETEC_ROUNDS}`;
           const away = !cg.nearTable;
-          if(room.setchCleared) st=' ✓ VENCIDO';
+          if(room.setecCleared) st=' ✓ VENCIDO';
           else if(cg.state==='idle') st=rd+' '+keyTag('e')+' JOGAR';
           else if(cg.state==='showing') st=rd+' MEMORIZE!';
           else if(cg.state==='shuffling') st=rd+(cg.swapQueue.length?' ★EM PAR!':' EMBARALHANDO...');
@@ -30477,7 +31656,7 @@ class Game {
           else if(cg.state==='revealing') st = rd+(cg.result==='win' ? ' ✓ ACERTOU!' : ' ✗ ERROU!');
           else if(cg.state==='finishedLose') st=rd+' '+keyTag('e')+' REJOGAR';
         }
-        tag=`◉ SALA SETCH${st}`; tagColor='#ff6b9d';
+        tag=`◉ SALA SETEC${st}`; tagColor='#ff6b9d';
       } else if(room.isMiniboss){
         tag = locked ? '◉ MINIBOSS' : '✓ MINIBOSS VENCIDO';
         tagColor = locked ? '#d946ef' : '#ffd700';
