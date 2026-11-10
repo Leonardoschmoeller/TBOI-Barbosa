@@ -2484,9 +2484,22 @@ const UPGRADE_VALUES = {
   BOLAS_INCOMUM_SIZE: 0.10,         // +10% tamanho da bola
   BOLAS_RARA_RICOCHET: 1,           // +1 quique em parede
   BOLAS_RARA_SPEED: 0.20,           // +20% velocidade do arremesso
-  BOLAS_MUITO_RARA_DANO: 0.40,      // +40% dano total
-  BOLAS_MUITO_RARA_PIERCE: 1,       // perfura +1 inimigo
-  BOLAS_MUITO_RARA_RICOCHET: 2,     // +2 quiques em parede
+   BOLAS_MUITO_RARA_DANO: 0.40,      // +40% dano total
+   BOLAS_MUITO_RARA_PIERCE: 1,       // perfura +1 inimigo
+   BOLAS_MUITO_RARA_RICOCHET: 2,     // +2 quiques em parede
+   // LANÇA-CHAMAS FIREWALL - jato em cone + poças de fogo
+   FIREWALL_COMUM_KNOCK: [0.50,0.75,1.00],     // empurrão do jato por nível
+   FIREWALL_INCOMUM_COOLDOWN: [0.10,0.18,0.26], // cadência do jato por nível
+   FIREWALL_RARA_DANO_JATO: 0.20,    // +20% dano do jato
+   FIREWALL_RARA_DANO_POCAS: 0.15,   // +15% dano das poças
+   FIREWALL_RARA_POCAS_EXTRA: 1,     // +1 poça por jato
+   FIREWALL_RARA_BURN_TIME: 1500,    // Pós-Combustão: ms de queimadura após o jato
+   FIREWALL_RARA_BURN_TICK: 280,     // Pós-Combustão: ms entre ticks de queimadura
+   FIREWALL_RARA_BURN_DMG: 0.35,     // Pós-Combustão: dano por tick da queimadura
+   FIREWALL_MUITO_RARA_CONE: 0.25,   // Inferno: +25% abertura do cone
+   FIREWALL_MUITO_RARA_DANO_POCAS: 0.40, // Inferno: +40% dano das poças
+   FIREWALL_MUITO_RARA_POCAS_EXTRA: 2,   // Inferno: +2 poças por jato
+   FIREWALL_MUITO_RARA_DURACAO: 0.50,    // Inferno: poças duram +50%
   // ASPECTOS DE ARMAS (traits copiadas de outra arma)
   ASPECT_RICOCHETE_WALLS: 1,        // Aspecto Bolas de Aço: +1 quique na parede
   ASPECT_DOUBLE_SHOT_SPREAD: 9,    // Aspecto Pistola: separação lateral do tiro duplo
@@ -2759,15 +2772,36 @@ const UPGRADE_DEFS = [
       const v=[0.15,0.30,0.50][level-1]||0;
       w.range = Math.round(WEAPON_FIREWALL.range * (1+v));
   }},
+  { id:'firewall_pressao_comum', weapon:'FIREWALL', compatible:['FIREWALL'], rarity:'COMUM', name:'Pressão de Vapor', desc:'Empurrão do jato +50% / +75% / +100%', maxLevel:3, apply:(w, level)=>{
+      const v=UPGRADE_VALUES.FIREWALL_COMUM_KNOCK[level-1]||0;
+      w.knockback = (WEAPON_FIREWALL.knockback||2.2) * (1+v);
+  }},
+  { id:'firewall_valvula_incomum', weapon:'FIREWALL', compatible:['FIREWALL'], rarity:'INCOMUM', name:'Válvula Ágil', desc:'Cadência do jato -10% / -18% / -26%', maxLevel:3, apply:(w, level)=>{
+      const v=UPGRADE_VALUES.FIREWALL_INCOMUM_COOLDOWN[level-1]||0;
+      w.cooldown = Math.max(Math.round(WEAPON_FIREWALL.cooldown * (1 - v)), 85);
+  }},
   { id:'firewall_duracao_incomum', weapon:'FIREWALL', compatible:['FIREWALL'], rarity:'INCOMUM', name:'Combustível Pesado', desc:'Fogo no chão dura +30% / +60% / +90% e fica maior', maxLevel:3, apply:(w, level)=>{
       const v=[0.30,0.60,0.90][level-1]||0;
       w.patchDuration = Math.round(WEAPON_FIREWALL.patchDuration * (1+v));
       w.patchRadius = WEAPON_FIREWALL.patchRadius * (1+v*0.25);
   }},
-  { id:'firewall_dano_rara', weapon:'FIREWALL', compatible:['FIREWALL'], rarity:'RARA', name:'Núcleo Incandescente', desc:'+25% dano no jato e nas poças • +2 poças por jato', apply:(w)=>{
-      w.damage = (w.damage||WEAPON_FIREWALL.damage) * 1.25;
-      w.patchDamage = (w.patchDamage||WEAPON_FIREWALL.patchDamage) * 1.25;
-      w.patches = (w.patches||WEAPON_FIREWALL.patches) + 2;
+  { id:'firewall_dano_rara', weapon:'FIREWALL', compatible:['FIREWALL'], rarity:'RARA', name:'Núcleo Incandescente', desc:'+20% dano no jato • +15% nas poças • +1 poça por jato', apply:(w)=>{
+      w.damage = (w.damage||WEAPON_FIREWALL.damage) * (1+UPGRADE_VALUES.FIREWALL_RARA_DANO_JATO);
+      w.patchDamage = (w.patchDamage||WEAPON_FIREWALL.patchDamage) * (1+UPGRADE_VALUES.FIREWALL_RARA_DANO_POCAS);
+      w.patches = (w.patches||WEAPON_FIREWALL.patches) + UPGRADE_VALUES.FIREWALL_RARA_POCAS_EXTRA;
+      w.maxPatches = (w.maxPatches||WEAPON_FIREWALL.maxPatches) + 3;
+  }},
+  { id:'firewall_pos_combustao_rara', weapon:'FIREWALL', compatible:['FIREWALL'], rarity:'RARA', name:'Pós-Combustão', desc:'Quem o jato atinge continua queimando por 1.5s (dano periódico)', apply:(w)=>{
+      w._fwBurnTime = UPGRADE_VALUES.FIREWALL_RARA_BURN_TIME;
+      w._fwBurnTick = UPGRADE_VALUES.FIREWALL_RARA_BURN_TICK;
+      w._fwBurnDmg = UPGRADE_VALUES.FIREWALL_RARA_BURN_DMG;
+  }},
+  { id:'firewall_inferno_muito_rara', weapon:'FIREWALL', compatible:['FIREWALL'], rarity:'MUITO_RARA', name:'Inferno Firewall', desc:'Cone +25% • poças +40% dano, +50% duração e +2 por jato', apply:(w)=>{
+      w.coneAngle = (w.coneAngle||WEAPON_FIREWALL.coneAngle) * (1+UPGRADE_VALUES.FIREWALL_MUITO_RARA_CONE);
+      w.spread = w.coneAngle;
+      w.patchDamage = (w.patchDamage||WEAPON_FIREWALL.patchDamage) * (1+UPGRADE_VALUES.FIREWALL_MUITO_RARA_DANO_POCAS);
+      w.patchDuration = Math.round((w.patchDuration||WEAPON_FIREWALL.patchDuration) * (1+UPGRADE_VALUES.FIREWALL_MUITO_RARA_DURACAO));
+      w.patches = (w.patches||WEAPON_FIREWALL.patches) + UPGRADE_VALUES.FIREWALL_MUITO_RARA_POCAS_EXTRA;
       w.maxPatches = (w.maxPatches||WEAPON_FIREWALL.maxPatches) + 4;
   }},
   // ===== NOVO SISTEMA COMUM/INCOMUM COM NÍVEIS (até 3) - modular =====
@@ -4660,37 +4694,41 @@ const GIRO_AUREO = {
 // - Tremor refinado (menos caótico) e recuo sutil para feedback sem perder controle
 // - Centro do retângulo causa +25% dano crítico (precisão recompensada)
 // - Barra: 6 hits = cura, preenche só com acertos precisos
-// ===================== LANÇA-CHAMAS FIREWALL (COMUM - FASES 3 E 6) =====================
+// ===================== LANÇA-CHAMAS FIREWALL (INCOMUM - FASES 3 E 6) =====================
 // Curto alcance, sem projétil: jato em cone que queima na hora e deixa poças de
 // fogo no chão (reutiliza FirePatch / room.fires, o mesmo sistema do Rastro de Fogo).
-// DPS alvo ~4.0: jato rápido + dano contínuo das poças. Não machuca o jogador.
+// DPS alvo ~4.0 (jato 0.55/130ms + poças): forte em área, fraco em alvo único.
+// Não machuca o jogador. Raridade INCOMUM: spawna menos que armas comuns.
 const WEAPON_FIREWALL = {
   name: 'FIREWALL',
   displayName: 'LANÇA-CHAMAS FIREWALL',
-  cooldown: 120,          // cadência do jato
-  range: 132,             // alcance curto do cone
-  damage: 0.6,            // dano imediato por jato em quem estiver no cone
+  cooldown: 130,          // cadência do jato
+  range: 140,             // alcance do cone
+  damage: 0.55,           // dano imediato por jato em quem estiver no cone
   count: 1,
-  spread: 0.46,           // abertura total do cone (radianos)
-  coneAngle: 0.46,        // metade do ângulo usado na checagem
+  spread: 0.48,           // abertura total do cone
+  coneAngle: 0.48,        // metade do ângulo usado na checagem
   bulletSpeed: 0,
   bulletSize: 0,
   color: '#ff6a00',
   glow: 'rgba(255,106,0,0.35)',
   pierce: false,
   isFirewall: true,
+  knockback: 2.2,         // empurrão do jato (chefes não recuam)
   patches: 3,             // poças criadas por jato
-  patchStart: 26,         // distância da primeira poça
-  patchStep: 34,          // espaçamento entre poças
+  patchStart: 28,         // distância da primeira poça
+  patchStep: 36,          // espaçamento entre poças
   patchRadius: 20,
-  patchDamage: 0.75,      // dano por tick de cada poça
-  patchDuration: 1900,    // ms que a poça fica no chão
-  patchTick: 320,         // ms entre ticks
-  maxPatches: 14          // limite por sala (performance)
+  patchDamage: 0.6,      // dano por tick de cada poça
+  patchDuration: 2000,    // ms que a poça fica no chão
+  patchTick: 340,         // ms entre ticks
+  maxPatches: 16         // limite por sala (performance)
 };
-const FIREWALL_SPAWN_NORMAL = 0.055;   // 5.5% por sala normal
-const FIREWALL_SPAWN_TREASURE = 0.11;  // 11% em sala de tesouro
-const FIREWALL_SPAWN_FLOORS = [3,6];   // identidade das fases 3 e 6 (chance dobrada lá)
+const FIREWALL_JET_MS = 170;   // duração do visual do jato de fogo por disparo
+const FIREWALL_BURN_TICK_MS = 280; // Pós-Combustão: intervalo entre ticks da queimadura
+const FIREWALL_SPAWN_NORMAL = 0.035;   // 3.5% por sala normal (raridade incomum)
+const FIREWALL_SPAWN_TREASURE = 0.07;  // 7% em sala de tesouro
+const FIREWALL_SPAWN_FLOORS = [3,6];   // identidade das fases 3 e 6 (chance maior lá)
 
 const WEAPON_MOTOSSERRA = {
   name: 'MOTOSSERRA',
@@ -5286,7 +5324,7 @@ function applyCharacterToPlayer(player, characterId){
     // Usa createWeaponWithUpgrades se existir, senão copia base
     if(typeof player.buildUpgradedWeapon === 'function'){
       // Garante que weaponUpgrades está inicializado
-      if(!player.weaponUpgrades) player.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], RAIO_MATEMATICO:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], BOLAS:[], ALL:[], SPECIAL:[] };
+      if(!player.weaponUpgrades) player.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], RAIO_MATEMATICO:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], BOLAS:[], FIREWALL:[], ALL:[], SPECIAL:[] };
       // Para JG, adiciona suporte BASTAO e MOTOSSERRA
       if(!player.weaponUpgrades['BASTAO']) player.weaponUpgrades['BASTAO'] = [];
       if(!player.weaponUpgrades['MOTOSSERRA']) player.weaponUpgrades['MOTOSSERRA'] = [];
@@ -12626,18 +12664,31 @@ class WeaponItem extends Item {
       // tanque de combustível
       ctx.fillStyle='#2a0f00'; ctx.fillRect(x - s/2 +2, y -6, s-4, 14);
       ctx.fillStyle='#c2410c'; ctx.fillRect(x - s/2 +3, y -5, s-6, 4);
+      ctx.fillStyle='rgba(255,255,255,0.16)'; ctx.fillRect(x - s/2 +3, y -4, 2, 5);
+      ctx.fillStyle='#ffcc00'; ctx.fillRect(x - s/2 +3, y +6, s-6, 1);
       // corpo e bico
       ctx.fillStyle='#1a1a1a'; ctx.fillRect(x - 6, y + 1, 12, 3);
+      ctx.fillStyle='#7a4a1a'; ctx.fillRect(x - 4, y + 4, 1.4, 1.4); ctx.fillRect(x - 1, y + 4, 1.4, 1.4); ctx.fillRect(x + 2, y + 4, 1.4, 1.4);
       ctx.fillStyle='#ffcc00'; ctx.fillRect(x + 5, y + 1, 4, 2);
-      // chama saindo do bico
+      // chama piloto azul na base do bico
+      ctx.fillStyle=`rgba(80,180,255,${0.5+pulse*0.3})`;
+      ctx.beginPath(); ctx.moveTo(x + 9, y + 2); ctx.lineTo(x + 11 + pulse, y + 1); ctx.lineTo(x + 10, y + 2); ctx.lineTo(x + 11 + pulse, y + 3); ctx.closePath(); ctx.fill();
+      // chama saindo do bico (2 camadas animadas)
       ctx.fillStyle='#ff6a00';
       ctx.beginPath();
       ctx.moveTo(x + 9, y + 2);
-      ctx.lineTo(x + 14 + pulse*2, y - 1);
+      ctx.lineTo(x + 15 + pulse*3, y - 2);
       ctx.lineTo(x + 12, y + 2);
-      ctx.lineTo(x + 14 + pulse*2, y + 5);
+      ctx.lineTo(x + 15 + pulse*3, y + 6);
       ctx.closePath(); ctx.fill();
-      ctx.fillStyle='#ffe066'; ctx.fillRect(x + 9, y + 1, 3, 1);
+      ctx.fillStyle='#ffd020';
+      ctx.beginPath();
+      ctx.moveTo(x + 9, y + 2);
+      ctx.lineTo(x + 12 + pulse*2, y + 0.5);
+      ctx.lineTo(x + 10.5, y + 2);
+      ctx.lineTo(x + 12 + pulse*2, y + 3.5);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle='#ffe066'; ctx.fillRect(x + 9, y + 1.5, 3, 1);
       ctx.fillStyle='#ffcc00';
       ctx.font='4px "Press Start 2P"'; ctx.textAlign='center';
       ctx.fillText('FIRE', x, y+ s/2 +10); ctx.textAlign='left';
@@ -13701,6 +13752,10 @@ class Player {
     // Melee - animação de swing
     this.meleeAnim = 0; // ms de animação de ataque corpo a corpo
     this.meleeDir = null;
+    // Lança-chamas - jato de fogo (visual do ataque)
+    this.firewallJetTime = 0;   // ms restantes do jato
+    this.firewallJetMax = FIREWALL_JET_MS;
+    this.firewallJetDir = null; // direção normalizada do último jato
     // Motosserra - barra de cura por agressividade (ataque curto reto)
     this.motosserraCharge = 0; // 0..100
     this.motosserraChargeMax = MOTOSSERRA_CHARGE_MAX;
@@ -13732,7 +13787,7 @@ class Player {
     this.hasIoiPassive = false;
     this.ioiCooldown = 0;
     // sistema de melhorias por arma (4 raridades, valores em UPGRADE_VALUES) + níveis
-    this.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], RAIO_MATEMATICO:[], CHICOTE:[], BOLAS:[], ALL:[], SPECIAL:[] };
+    this.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], RAIO_MATEMATICO:[], CHICOTE:[], BOLAS:[], FIREWALL:[], ALL:[], SPECIAL:[] };
     this.obtainedUpgrades = new Set(); // ids únicos para evitar duplicação (compatibilidade)
     this.upgradeLevels = new Map(); // id -> nível atual (1..maxLevel) para melhorias com níveis
     // ================= SISTEMA ITENS ESPECIAIS (E) =================
@@ -16005,6 +16060,8 @@ class Player {
     }
     // Animação melee decai
     if(this.meleeAnim>0) this.meleeAnim = Math.max(0, this.meleeAnim - dt);
+    // Lança-chamas - jato de fogo decai
+    if(this.firewallJetTime>0) this.firewallJetTime = Math.max(0, this.firewallJetTime - dt);
     // Luva dual - limpa punhos retornados/mortos
     if(this.activeFists && this.activeFists.length){
       this.activeFists = this.activeFists.filter(f=> !f.dead);
@@ -16484,14 +16541,18 @@ class Player {
       this.shootCooldown = this.weapon.cooldown;
       this.lastDir.x = n.x; this.lastDir.y = n.y;
       if(n.x!==0) this.facing = n.x>0?1:-1;
-      this.meleeAnim = 90;
+      this.meleeAnim = 120;
       this.meleeDir = {x:n.x, y:n.y};
+      // estado do jato visual (cone animado no draw)
+      this.firewallJetTime = this.firewallJetMax || FIREWALL_JET_MS;
+      this.firewallJetDir = {x:n.x, y:n.y};
       const g = (typeof window!=='undefined') ? window.game : null;
       const room = g && g.currentRoom;
       const baseAng = Math.atan2(n.y, n.x);
-      const halfAngle = this.weapon.coneAngle || 0.46;
-      const reach = this.weapon.range || 132;
-      const dmg = this.weapon.damage || 0.6;
+      const halfAngle = this.weapon.coneAngle || 0.48;
+      const reach = this.weapon.range || 140;
+      const dmg = this.weapon.damage || 0.55;
+      const knock = this.weapon.knockback || 0;
       if(room && room.enemies){
         for(const e of room.enemies){
           if(e.dead) continue;
@@ -16503,7 +16564,20 @@ class Player {
           if(diff > halfAngle) continue;
           const died = e.takeDamage(dmg);
           e.hitFlash = Math.max(e.hitFlash||0, 90);
-          if(g && g.particles) for(let k=0;k<4;k++) g.particles.push(new Particle(e.x, e.y, randRange(-1.4,1.4), randRange(-1.6,-0.2), 260, k%2?'#ff8c00':'#ffcc00', 2));
+          // empurrão da pressão do jato (chefes não recuam)
+          if(!died && knock>0 && e.type!=='miniboss' && e.type!=='stair_boss' && e.type!=='hacker'){
+            const ka = Math.atan2(dy,dx);
+            e.x += Math.cos(ka)*knock; e.y += Math.sin(ka)*knock;
+            if(e.stunTimer!==undefined) e.stunTimer = Math.max(e.stunTimer||0, 60);
+          }
+          if(g && g.particles) for(let k=0;k<6;k++) g.particles.push(new Particle(e.x, e.y, randRange(-1.6,1.6), randRange(-1.8,-0.2), 280, k%2?'#ff8c00':'#ffcc00', 2));
+          // Pós-Combustão (RARA): re-acende a queimadura em quem o jato atingiu
+          if(!died && this.weapon._fwBurnTime){
+            e._fwBurnTime = this.weapon._fwBurnTime;
+            e._fwBurnTick = 0;
+            e._fwBurnDmg = this.weapon._fwBurnDmg;
+            if(g && g.particles) g.particles.push(new Particle(e.x, e.y-4, randRange(-0.5,0.5), -1.1, 300, '#ff5500', 1.6));
+          }
           if(died && g && g.particles){
             for(let k=0;k<10;k++){ const a2=Math.random()*Math.PI*2; g.particles.push(new Particle(e.x, e.y, Math.cos(a2)*randRange(1,2.6), Math.sin(a2)*randRange(1,2.6), 320, '#ff6a00', 3)); }
           }
@@ -16511,14 +16585,14 @@ class Player {
       }
       // poças de fogo à frente do jato (limitadas por sala)
       if(room && room.fires){
-        const maxP = this.weapon.maxPatches || 14;
+        const maxP = this.weapon.maxPatches || 16;
         const count = this.weapon.patches || 3;
         const perpX=-n.y, perpY=n.x;
         for(let i=0;i<count;i++){
           if(room.fires.length >= maxP) break;
-          const ahead = (this.weapon.patchStart||26) + i*(this.weapon.patchStep||34);
-          const px = this.x + n.x*ahead + perpX*randRange(-7,7);
-          const py = this.y + n.y*ahead + perpY*randRange(-7,7);
+          const ahead = (this.weapon.patchStart||28) + i*(this.weapon.patchStep||36);
+          const px = this.x + n.x*ahead + perpX*randRange(-10,10);
+          const py = this.y + n.y*ahead + perpY*randRange(-10,10);
           const r = this.weapon.patchRadius || 20;
           let onWall=false;
           for(const w of (room.walls||[])){
@@ -16527,18 +16601,24 @@ class Player {
           if(onWall) continue;
           room.fires.push(new FirePatch(px, py, {
             radius: r,
-            damage: this.weapon.patchDamage || 0.75,
-            duration: this.weapon.patchDuration || 1900,
-            tickRate: this.weapon.patchTick || 320,
+            damage: this.weapon.patchDamage || 0.6,
+            duration: this.weapon.patchDuration || 2000,
+            tickRate: this.weapon.patchTick || 340,
             isFirewall: true
           }));
         }
       }
+      // brasas voando pelo jato + fumaça no fim do cone
       if(g && g.particles){
-        for(let k=0;k<5;k++){
-          g.particles.push(new Particle(this.x + n.x*14 + randRange(-5,5), this.y + n.y*14 + randRange(-4,4), n.x*randRange(0.6,1.7)+randRange(-0.5,0.5), n.y*randRange(0.6,1.7)-0.2, 200, k%2?'#ff8c00':'#ffcc00', 2));
+        for(let k=0;k<10;k++){
+          const dist = randRange(18, reach*0.9);
+          const a2 = baseAng + randRange(-halfAngle, halfAngle)*0.8;
+          g.particles.push(new Particle(this.x + Math.cos(a2)*dist*0.5, this.y + Math.sin(a2)*dist*0.5, Math.cos(a2)*randRange(1.5,3.4), Math.sin(a2)*randRange(1.5,3.4)-0.3, 280, k%3===0?'#ffcc00':(k%3===1?'#ff8c00':'#ff5500'), 2.4));
         }
+        if(Math.random()<0.5) g.particles.push(new Particle(this.x + n.x*reach*0.6, this.y + n.y*reach*0.6, randRange(-0.4,0.4), randRange(-0.8,-0.2), 560, 'rgba(90,60,50,0.45)', 3));
       }
+      // leve tremor contínuo enquanto queima
+      if(g && g.shake!==undefined) g.shake = Math.max(g.shake, 70);
       try{ playWeaponSound('FIREWALL', false); }catch(e){}
       return [];
     }
@@ -16685,6 +16765,81 @@ class Player {
       ctx.globalAlpha = p * 0.26 * idx;
       ctx.fillStyle = '#f0abfc';
       ctx.fillRect(gx+3, gy+7, this.w-6, 0.7);
+    }
+    ctx.restore();
+  }
+
+  // LANÇA-CHAMAS - jato de fogo animado em cone (camadas + lambidas + bolhas + brasas)
+  drawFirewallJet(ctx, bob){
+    const w = this.weapon;
+    const max = this.firewallJetMax || FIREWALL_JET_MS;
+    const t = clamp(this.firewallJetTime / max, 0, 1); // 1 = acabou de disparar, 0 = fim
+    const fade = Math.min(1, t * 2.2);                  // some suave no fim
+    const grow = Math.min(1, (1 - t) * 5 + 0.4);       // estica quase instantâneo
+    const ang = Math.atan2(this.firewallJetDir.y, this.firewallJetDir.x);
+    const ox = this.x + Math.cos(ang) * 11;             // origem no bico da arma
+    const oy = this.y + Math.sin(ang) * 11 + bob * 0.4;
+    const half = Math.tan((w.coneAngle || 0.52) * (0.9 + Math.sin(this.animTime*0.03)*0.1));
+    const len = (w.range || 158) * grow * (0.88 + Math.sin(this.animTime*0.045)*0.12) * fade;
+    const time = this.animTime;
+    if(len < 4) return;
+    ctx.save();
+    ctx.translate(ox, oy);
+    ctx.rotate(ang);
+    // brilho radial quente no bico
+    const glowR = 16 + len*0.18;
+    const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, glowR);
+    glow.addColorStop(0, `rgba(255,240,180,${0.5*fade})`);
+    glow.addColorStop(0.45, `rgba(255,140,0,${0.3*fade})`);
+    glow.addColorStop(1, 'rgba(255,80,0,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(0, 0, glowR, 0, Math.PI*2); ctx.fill();
+    // camadas do cone (externa translúcida -> núcleo branco-quente)
+    const layers = [
+      { wMul: 1.00, lenMul: 1.00, col: `rgba(190,40,10,${0.30*fade})`,  jag: 4.2 },
+      { wMul: 0.80, lenMul: 0.95, col: `rgba(255,90,10,${0.48*fade})`,  jag: 3.6 },
+      { wMul: 0.58, lenMul: 0.87, col: `rgba(255,150,20,${0.62*fade})`, jag: 2.8 },
+      { wMul: 0.36, lenMul: 0.76, col: `rgba(255,210,80,${0.80*fade})`, jag: 2.0 },
+      { wMul: 0.16, lenMul: 0.58, col: `rgba(255,255,230,${0.85*fade})`, jag: 1.2 }
+    ];
+    for(let li=0; li<layers.length; li++){
+      const L = layers[li];
+      const hw = half * len * L.wMul;
+      const jl = len * L.lenMul;
+      const jag = L.jag;
+      const ph = li * 1.7;
+      ctx.fillStyle = L.col;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      // lado superior com curvatura
+      ctx.quadraticCurveTo(jl*0.45, -hw*0.7, jl*0.86, -hw + Math.sin(time*0.04+ph)*jag);
+      // ponta irregular (lambidas de fogo)
+      ctx.lineTo(jl + Math.sin(time*0.06+ph*2)*jag*1.3, -hw*0.35 + Math.sin(time*0.05+ph*1.3)*jag*0.6);
+      ctx.lineTo(jl*0.98 + Math.sin(time*0.05+ph)*jag*0.8, 0);
+      ctx.lineTo(jl + Math.sin(time*0.07+ph*1.7)*jag*1.2, hw*0.35 - Math.sin(time*0.04+ph*0.7)*jag*0.6);
+      // lado inferior com curvatura
+      ctx.quadraticCurveTo(jl*0.45, hw*0.7, jl*0.86, hw - Math.sin(time*0.045+ph+1)*jag);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // bolhas de fogo viajando pelo jato (sensação de fluxo)
+    const tt = (time % 240) / 240;
+    for(let i=0;i<5;i++){
+      const ph = (tt + i/5) % 1;
+      const bx = ph * len * 0.85;
+      const maxW = half * bx * 0.5;
+      const br = Math.min(2 + ph*4.5, Math.max(1.5, maxW));
+      const by = Math.sin(time*0.02 + i*2.1) * half * bx * 0.22;
+      const c = ph<0.3 ? `rgba(255,255,225,${0.75*fade})` : ph<0.65 ? `rgba(255,210,90,${0.6*fade})` : `rgba(255,130,30,${0.42*fade})`;
+      ctx.fillStyle = c;
+      ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI*2); ctx.fill();
+    }
+    // brasas cintilando na borda do cone
+    ctx.fillStyle = `rgba(255,240,150,${0.8*fade})`;
+    for(let i=0;i<4;i++){
+      const ex = len*randRange(0.7, 1.0);
+      const ey = (i%2===0?-1:1) * half * ex * randRange(0.4, 0.85);
+      if(Math.sin(time*0.09 + i*2.6) > 0) ctx.fillRect(ex, ey, 1.6, 1.6);
     }
     ctx.restore();
   }
@@ -17427,16 +17582,37 @@ class Player {
       ctx.fillStyle='#555';
       ctx.fillRect(x+7, y+13 + bob, 10, 1);
     } else if (isFirewall) {
-      // LANÇA-CHAMAS FIREWALL - tanque, bico e chama curta
-      ctx.fillStyle='#2a0f00'; ctx.fillRect(x+4, y+8+bob, 6, 10);
-      ctx.fillStyle='#c2410c'; ctx.fillRect(x+5, y+9+bob, 4, 3);
-      ctx.fillStyle='#1a1a1a'; ctx.fillRect(x+9, y+11+bob, 11, 3);
-      ctx.fillStyle='#ffcc00'; ctx.fillRect(x+19, y+11+bob, 3, 2);
+      // LANÇA-CHAMAS FIREWALL - tanque nas costas, corpo com aletas e chama piloto azul
+      const jetOn = this.firewallJetTime>0;
       const fp = 0.6+Math.sin(this.animTime*0.05)*0.4;
+      // tanque de combustível (nas costas)
+      ctx.fillStyle='#2a0f00'; ctx.fillRect(x+2, y+5+bob, 7, 12);
+      ctx.fillStyle='#c2410c'; ctx.fillRect(x+3, y+6+bob, 5, 4);
+      ctx.fillStyle='rgba(255,255,255,0.16)'; ctx.fillRect(x+3, y+7+bob, 2, 4);
+      ctx.fillStyle='#ffcc00'; ctx.fillRect(x+3, y+15+bob, 5, 1);
+      // tubo do tanque até o corpo
+      ctx.strokeStyle='#4a2a10'; ctx.lineWidth=1.2;
+      ctx.beginPath(); ctx.moveTo(x+9, y+7+bob); ctx.quadraticCurveTo(x+11, y+8+bob, x+12, y+10+bob); ctx.stroke();
+      // corpo metálico
+      ctx.fillStyle='#1a1a1a'; ctx.fillRect(x+8, y+10+bob, 12, 3.6);
+      // aletas de dissipação de calor
+      ctx.fillStyle='#7a4a1a';
+      ctx.fillRect(x+11, y+13.6+bob, 1.6, 1.5); ctx.fillRect(x+14, y+13.6+bob, 1.6, 1.5); ctx.fillRect(x+17, y+13.6+bob, 1.6, 1.5);
+      // bico escuro + anel amarelo de aviso
+      ctx.fillStyle='#0d0d0d'; ctx.fillRect(x+19, y+10.4+bob, 4, 2.4);
+      ctx.fillStyle='#ffcc00'; ctx.fillRect(x+20, y+9.4+bob, 2, 4);
+      // chama piloto (azul na base + laranja nas pontas)
+      ctx.fillStyle=`rgba(80,180,255,${0.55+fp*0.3})`;
+      ctx.beginPath(); ctx.moveTo(x+23, y+11.6+bob); ctx.lineTo(x+25.5, y+10.8+bob); ctx.lineTo(x+24.5, y+11.6+bob); ctx.lineTo(x+25.5, y+12.4+bob); ctx.closePath(); ctx.fill();
       ctx.fillStyle=`rgba(255,106,0,${0.55+fp*0.35})`;
-      ctx.beginPath(); ctx.moveTo(x+22, y+11.5+bob); ctx.lineTo(x+27+fp*3, y+9+bob); ctx.lineTo(x+26, y+11.5+bob); ctx.lineTo(x+27+fp*3, y+14+bob); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(x+23, y+11.6+bob); ctx.lineTo(x+28+fp*3, y+8.6+bob); ctx.lineTo(x+26, y+11.6+bob); ctx.lineTo(x+28+fp*3, y+14.6+bob); ctx.closePath(); ctx.fill();
       ctx.fillStyle='#ffe066';
-      ctx.fillRect(x+22, y+11+bob, 2, 1.5);
+      ctx.beginPath(); ctx.moveTo(x+23, y+11.2+bob); ctx.lineTo(x+26+fp*2, y+10+bob); ctx.lineTo(x+25, y+11.6+bob); ctx.lineTo(x+26+fp*2, y+13.2+bob); ctx.closePath(); ctx.fill();
+      // bico aquecido enquanto o jato sai
+      if(jetOn){
+        ctx.fillStyle='rgba(255,180,60,0.4)';
+        ctx.fillRect(x+18, y+9+bob, 6, 5);
+      }
     } else if (isEspada) {
       // espada: lâmina + guarda + brilho de carga pesada
       const prog=this.isSwordCharging? this.getSwordChargeProgress():0;
@@ -18276,7 +18452,7 @@ class Player {
       ctx.fillRect(x+8, y-6 + bob, 8, 3);
     }
     // overlay melee swing (braço esticado durante corte)
-    if(this.meleeAnim>0 && this.meleeDir && !(this.weapon && this.weapon.isSword)){
+    if(this.meleeAnim>0 && this.meleeDir && !(this.weapon && this.weapon.isSword) && !(this.weapon && this.weapon.isFirewall)){
       const p=this.meleeAnim/160;
       const ang=Math.atan2(this.meleeDir.y, this.meleeDir.x);
       ctx.strokeStyle='rgba(255,255,255,0.92)';
@@ -18286,6 +18462,10 @@ class Player {
       const tx=x+12+Math.cos(ang)*(14+p*6), ty=y+12+bob+Math.sin(ang)*(14+p*6);
       ctx.fillStyle='rgba(255,255,255,0.88)'; ctx.beginPath(); ctx.arc(tx,ty,1.9,0,Math.PI*2); ctx.fill();
       ctx.lineCap='butt';
+    }
+    // LANÇA-CHAMAS - jato de fogo animado em cone (visual do ataque)
+    if(this.weapon && this.weapon.isFirewall && this.firewallJetTime>0 && this.firewallJetDir){
+      this.drawFirewallJet(ctx, bob);
     }
     // barra de carregamento visual sobre o jogador - DEV Raio Matemático (gate 100% + Sobremesa marcas)
     if(this.isRayMatematicoCharging){
@@ -22183,7 +22363,7 @@ class Room {
     }
     // ===== NOVAS ARMAS COMUNS - distribuição equilibrada (cada fase variedade) =====
     // Cada arma tem estilo único mas DPS similar para não haver superior clara (requisito balanceamento)
-    const commonPool = ['espada','luva','firewall'];
+    const commonPool = ['espada','luva']; // firewall agora é INCOMUM (spawna só no roll dedicado)
     const commonChance = this.type==='treasure' ? 0.22 : 0.14; // 14% normal, 22% tesouro (comum mas não flood)
     if(rng() < commonChance && !this.isRare && !this.isMiniboss && !this.isBossStair && !this.isHacker && !this.isPartyHorde && this.items.length < 4){
       // evita duplicar mesmo tipo já no chão
@@ -22237,9 +22417,9 @@ class Room {
          tryPlace(it);
        }
      }
-    // ===== LANÇA-CHAMAS FIREWALL - comum, com identidade nas fases 3 e 6 =====
-    const firewallChance = this.type==='treasure' ? FIREWALL_SPAWN_TREASURE
-      : (FIREWALL_SPAWN_FLOORS.includes(this.floor) ? FIREWALL_SPAWN_NORMAL*1.8 : FIREWALL_SPAWN_NORMAL*0.45);
+     // ===== LANÇA-CHAMAS FIREWALL - INCOMUM, com identidade nas fases 3 e 6 =====
+     const firewallChance = this.type==='treasure' ? FIREWALL_SPAWN_TREASURE
+       : (FIREWALL_SPAWN_FLOORS.includes(this.floor) ? FIREWALL_SPAWN_NORMAL*1.6 : FIREWALL_SPAWN_NORMAL*0.4);
     if(rng() < firewallChance && !this.isRare && !this.isMiniboss && !this.isBossStair && !this.isHacker && !this.isPartyHorde && this.items.length < 4){
       if(!this.items.some(it=> it.weaponType && it.weaponType.toLowerCase()==='firewall')){
         const it=new WeaponItem(randRange(140, CANVAS_W-140), randRange(100, CANVAS_H-100), 'firewall');
@@ -23848,7 +24028,24 @@ if(e.canDamageHead()){
       }
     }
 
-    // rastros de fogo - atualiza e causa dano periódico (não afeta jogador)
+     // Pós-Combustão (upgrade RARA do Lança-chamas): queimadura periódica nos inimigos atingidos pelo jato
+     for(const e of this.enemies){
+       if(e.dead || !e._fwBurnTime || !(e._fwBurnTime>0)) continue;
+       e._fwBurnTime -= dt;
+       e._fwBurnTick = (e._fwBurnTick||0) - dt;
+       if(e._fwBurnTick <= 0){
+         e._fwBurnTick = FIREWALL_BURN_TICK_MS;
+         const died = e.takeDamage(e._fwBurnDmg != null ? e._fwBurnDmg : 0.35);
+         e.hitFlash = Math.max(e.hitFlash||0, 70);
+         globalParticles.push(new Particle(e.x+randRange(-4,4), e.y+randRange(-4,2), randRange(-0.4,0.4), randRange(-1.4,-0.5), 220, Math.random()<0.5?'#ff8c00':'#ff5500', 1.8));
+         if(died){
+           for(let k=0;k<8;k++){ const ang=Math.random()*Math.PI*2; globalParticles.push(new Particle(e.x, e.y, Math.cos(ang)*randRange(1,2.4), Math.sin(ang)*randRange(1,2.4), 300, '#ff6a00', 3)); }
+         }
+       }
+       if(e._fwBurnTime <= 0) e._fwBurnTime = 0;
+     }
+
+     // rastros de fogo - atualiza e causa dano periódico (não afeta jogador)
     for(let i=this.fires.length-1;i>=0;i--){
       const f=this.fires[i];
       if(!f.update(dt)){ this.fires.splice(i,1); continue; }
@@ -27502,7 +27699,7 @@ class Game {
     this.totalEnemiesDefeated = 0;
     // reset completo do jogador (armas, passivos, melhorias) - Bone Heart: reseta recipientes cinza
     // Inclui suporte a BASTAO no weaponUpgrades modular
-    this.player.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], RAIO_MATEMATICO:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], CHICOTE:[], BOLAS:[], ALL:[], SPECIAL:[] };
+    this.player.weaponUpgrades = { NORMAL:[], SHOTGUN:[], RAIO:[], RAIO_MATEMATICO:[], METRALHADORA:[], CARREGADA:[], BAZUCA:[], ESPADA:[], LUVA:[], MOTOSSERRA:[], BASTAO:[], CHICOTE:[], BOLAS:[], FIREWALL:[], ALL:[], SPECIAL:[] };
     this.player.obtainedUpgrades = new Set();
     this.player.upgradeLevels = new Map();
     // Aplica personagem de forma modular (não duplica lógica, prepara para novos)
