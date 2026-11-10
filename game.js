@@ -263,22 +263,22 @@ const BARBOSA_FERRAZ_HADOUKEN_SPEED = 6.8;        // velocidade do projétil had
 // Sem cooldown tradicional: o custo é a barra de SOBRECARGA. Enquanto ativo,
 // inimigos e projéteis inimigos rodam em câmera lenta; o jogador (e os tiros dele)
 // continua em velocidade real.
-// Velocidade base dos inimigos durante o efeito. Antes o valor era 2% (praticamente
-// congelado), mas a lentidão só afetava timers/animações e o movimento continuava
-// em velocidade real. Agora o deslocamento também é escalado (ver Room.update).
-const CYBER_SLOW_ENEMY_TIME_SCALE = 0.30;       // inimigos a 30% da velocidade (70% mais lentos)
-const CYBER_SLOW_PROJECTILE_TIME_SCALE = 0.30;  // projéteis inimigos a 30% da velocidade
+// Estilo Sandevistan do David (Edgerunners): o mundo QUASE para (12%), mas o
+// usuário se move quase normal — a vantagem temporal é o coração do efeito.
+// Contrapeso: a sobrecarga sobe mais rápido (efeito mais forte = menos tempo).
+const CYBER_SLOW_ENEMY_TIME_SCALE = 0.12;       // inimigos a 12% da velocidade (88% mais lentos - quase congelados)
+const CYBER_SLOW_PROJECTILE_TIME_SCALE = 0.14;  // projéteis inimigos a 14% da velocidade
 // Campo de tempo ao redor do Cyber Bug: todo inimigo dentro do raio fica ainda mais
 // lento (funciona para qualquer tipo) e a lentidão continua por alguns segundos
 // depois de desligar a habilidade.
 const CYBER_SLOW_AURA_RADIUS = 320;             // raio do campo (px)
-const CYBER_SLOW_AURA_FACTOR = 0.60;            // multiplicador extra dentro do campo (30% * 60% = 18%)
-const CYBER_SLOW_AURA_LINGER_MS = 3000;         // 3s de lentidão residual após o uso
-const CYBER_SLOW_PLAYER_SPEED_BONUS = 1.15;     // +15% de velocidade para o Cyber Bug durante o efeito
+const CYBER_SLOW_AURA_FACTOR = 0.50;            // multiplicador extra dentro do campo (12% * 50% = 6% - quase parado)
+const CYBER_SLOW_AURA_LINGER_MS = 0;            // sem lentidão residual: desligou, os inimigos voltam ao normal na hora
+const CYBER_SLOW_PLAYER_SPEED_BONUS = 1.28;     // +28% de velocidade para o Cyber Bug durante o efeito (como o David no Sandevistan)
 const CYBER_SLOW_BOSS_RESISTANCE = 0.45;        // bosses sofrem só 45% da lentidão (não trivializa lutas)
 const CYBER_SLOW_TIME_SCALE = CYBER_SLOW_ENEMY_TIME_SCALE;
 const CYBER_OVERLOAD_MAX = 100;              // barra cheia
-const CYBER_OVERLOAD_RISE_PER_SEC = 14;      // +14% por segundo ativo (~7,1s até sobrecarregar)
+const CYBER_OVERLOAD_RISE_PER_SEC = 20;      // +20% por segundo ativo (~5s até sobrecarregar - contrapeso do slow mais forte)
 const CYBER_OVERLOAD_DECAY_PER_SEC = 20;     // -20% por segundo depois do descanso
 const CYBER_OVERLOAD_KILL_DECAY = 10;        // -10% por inimigo derrotado
 const CYBER_OVERLOAD_IDLE_GATE = 20000;      // 20s sem reativar antes da barra começar a baixar
@@ -2068,19 +2068,25 @@ class CyberSlow extends SpecialItem {
   }
   activate(player, game){
     player.cyberSlowActive = true;
-    player.cyberSlowLinger = CYBER_SLOW_AURA_LINGER_MS;
+    player.cyberSlowLinger = 0;
+    // marcas de tempo para o flash/banner de entrada e o glitch de saída
+    player.cyberSlowFlashAt = performance.now();
+    player.cyberSlowBannerAt = performance.now();
     if(!player.cyberSlowTrail) player.cyberSlowTrail = [];
-    if(game && game.showToast) game.showToast('⏣ CYBER SLOW ATIVO — pulso de tempo! inimigos a 30% • no campo a 18% [E desliga]', 1900);
+    if(game && game.showToast) game.showToast('⏣ SANDEVISTAN! mundo quase parado • inimigos a 12% • no campo a 6% [E desliga]', 1900);
   }
   onActivated(player, game){
     if(!game) return;
-    for(let k=0;k<18;k++){
+    // ===== ATIVAÇÃO SANDEVISTAN =====
+    // Explosão de ativação dramática: flash branco, ondas de tempo em anel e
+    // abalos — o momento em que o mundo "desacelera de uma vez".
+    for(let k=0;k<26;k++){
       const ang = Math.random()*Math.PI*2;
       game.particles.push(new Particle(
-        player.x + Math.cos(ang)*randRange(4,16),
-        player.y + Math.sin(ang)*randRange(4,16),
-        Math.cos(ang)*randRange(0.8,2.4), Math.sin(ang)*randRange(0.8,2.4),
-        320, k%3===0 ? '#f0abfc' : k%2 ? '#22d3ee' : '#a5f3fc', 2
+        player.x + Math.cos(ang)*randRange(4,20),
+        player.y + Math.sin(ang)*randRange(4,20),
+        Math.cos(ang)*randRange(1.2,3.4), Math.sin(ang)*randRange(1.2,3.4),
+        randRange(340,480), k%3===0 ? '#ffffff' : k%2 ? '#22d3ee' : '#f0abfc', randRange(1.6,2.8)
       ));
     }
     // ===== PULSO DE TEMPO =====
@@ -2097,7 +2103,9 @@ class CyberSlow extends SpecialItem {
       }
     }
     if(game.currentRoom){
-      game.currentRoom.explosions.push({x:player.x, y:player.y, radius:18, life:520, max:520, isCyberSlowPulse:true});
+      // onda de choque dupla (flash interno + anel externo)
+      game.currentRoom.explosions.push({x:player.x, y:player.y, radius:22, life:620, max:620, isCyberSlowPulse:true});
+      game.currentRoom.explosions.push({x:player.x, y:player.y, radius:12, life:380, max:380, isCyberSlowFlash:true});
       // Sem paralisia: o pulso só limpa projéteis e marca visualmente quem está
       // perto. Quem controla o ritmo é o campo de tempo.
       for(const e of game.currentRoom.enemies){
@@ -2106,7 +2114,7 @@ class CyberSlow extends SpecialItem {
         for(let k=0;k<4;k++) game.particles.push(new Particle(e.x,e.y, randRange(-1.2,1.2), randRange(-1.2,0.5), 220, k%2?'#a5f3fc':'#22d3ee', 1.8));
       }
     }
-    game.shake = Math.max(game.shake||0, 45);
+    game.shake = Math.max(game.shake||0, 65);
   }
   shutDown(player, game, reason){
     if(!this.isActive) return;
@@ -2114,8 +2122,11 @@ class CyberSlow extends SpecialItem {
     this.durationRemaining = 0;
     this.idleGate = CYBER_OVERLOAD_IDLE_GATE;
     player.cyberSlowActive = false;
-    player.cyberSlowTrail = [];
+    player.cyberSlowLinger = 0;
+    player.cyberSlowEndAt = performance.now();
     if(!game) return;
+    // SANDEVISTAN desligando: o mundo "volta de uma vez" — glitch vermelho
+    // rápido + implodes (partículas sugadas de volta para o usuário).
     for(let k=0;k<14;k++){
       const ang = Math.random()*Math.PI*2;
       game.particles.push(new Particle(
@@ -2123,6 +2134,9 @@ class CyberSlow extends SpecialItem {
         Math.cos(ang)*randRange(0.6,2.2), Math.sin(ang)*randRange(0.6,2.2),
         260, k%2 ? '#22d3ee' : '#f0abfc', 1.8
       ));
+    }
+    if(game.currentRoom){
+      game.currentRoom.explosions.push({x:player.x, y:player.y, radius:14, life:340, max:340, isCyberSlowEnd:true});
     }
     game.shake = Math.max(game.shake||0, 35);
     if(game.showToast){
@@ -2533,9 +2547,6 @@ const UPGRADE_VALUES = {
   ASPECT_RETURN_WAVE_DAMAGE: 1.7,    // Aspecto Bastão: dano da onda de retorno
   ASPECT_RETURN_WAVE_STUN: 700,      // Aspecto Bastão: atordoamento da onda de retorno
   ASPECT_RETURN_WAVE_PUSH: 22,       // Aspecto Bastão: empurrão da onda de retorno
-  ASPECT_GARRA_RADIUS: 86,           // Aspecto Chicote: raio da explosão da âncora
-  ASPECT_GARRA_DAMAGE: 2.6,          // Aspecto Chicote: dano da explosão da âncora
-  ASPECT_GARRA_STUN: 900,            // Aspecto Chicote: atordoamento da explosão da âncora
   ASPECT_IOI_DAMAGE: 1.2,            // Aspecto JL: dano do io-io orbital
   ASPECT_IOI_RADIUS: 42,             // Aspecto JL: raio da órbita do io-io
   ASPECT_GATO_DAMAGE_FACTOR: 0.75,   // Aspecto Gato: dano do gato companheiro
@@ -3220,12 +3231,6 @@ const UPGRADE_DEFS = [
       if(!ASPECT_BULLET_WEAPONS.includes(w.name)) return;
       w._aspectBeam = true;
       w.ghostWalls = true;
-  }},
-  { id:'aspect_muito_rara_garra', weapon:'ALL', compatible:ASPECT_BULLET_WEAPONS, rarity:'MUITO_RARA', category:ASPECT_CATEGORY,
-    name:'Garra do Indiana', desc:'Aspecto Chicote: o projétil crava na parede, te puxa e explode no ponto da âncora', apply:(w)=>{
-      if(!ASPECT_BULLET_WEAPONS.includes(w.name)) return;
-      w._aspectGarra = true;
-      w.wallAnchor = true;
   }},
 ];
 // Mapa rápido id -> def e weapon -> lista
@@ -5309,10 +5314,12 @@ function applyCharacterToPlayer(player, characterId){
   player.gyroGoldenAnchor = null;
   player.goldenSpin = false;
   player.gyroExtraBall = null;
-  // Cyber Bug - estado visual do Cyber Slow (sempre limpo ao aplicar personagem)
-  player.cyberSlowActive = false;
-  player.cyberSlowTrail = [];
-  player.cyberSlowLinger = 0;
+  // Cyber Bug - estado visual do Cyber Slow (sempre limpo ao aplicar personagem)    player.cyberSlowActive = false;
+    player.cyberSlowTrail = [];
+    player.cyberSlowLinger = 0;
+    player.cyberSlowFlashAt = 0;
+    player.cyberSlowBannerAt = 0;
+    player.cyberSlowEndAt = 0;
   // Reseta contaminação de outros personagens
   player.cyberHp = 0;
   player.maxCyberHp = CYBER_HEART_MAX_CYBER;
@@ -9826,6 +9833,25 @@ class Bullet {
     if (this.x < -20 || this.x > CANVAS_W + 20 || this.y < -20 || this.y > CANVAS_H + 20) this.dead = true;
   }
   draw(ctx) {
+    // SANDEVISTAN (Cyber Slow): tiros inimigos quase parados ganham ecos
+    // ciano/magenta atrás — vende o bullet-time sem custo de partículas.
+    if(this.owner==='enemy'){
+      try{
+        const g = (typeof window!=='undefined') ? window.game : null;
+        const cs = g && g.player && (g.player.cyberSlowActive || (g.player.cyberSlowLinger||0)>0);
+        if(cs){
+          const tt = Date.now()*0.003;
+          const wob = 1 + Math.sin(tt)*0.5;
+          ctx.globalAlpha = 0.38;
+          ctx.fillStyle = '#22d3ee';
+          ctx.beginPath(); ctx.arc(this.x - this.dirX*4*wob, this.y - this.dirY*4*wob, this.size*0.85, 0, Math.PI*2); ctx.fill();
+          ctx.globalAlpha = 0.22;
+          ctx.fillStyle = '#f0abfc';
+          ctx.beginPath(); ctx.arc(this.x - this.dirX*8*wob, this.y - this.dirY*8*wob, this.size*0.65, 0, Math.PI*2); ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+      }catch(e){}
+    }
     // Hadouken do guardião do Barbosa: esfera de energia azul com rastro
     if(this.isHadouken){
       const ang=Math.atan2(this.dirY,this.dirX);
@@ -16708,7 +16734,7 @@ class Player {
 
   drawCyberSlowTrail(ctx, bob){
     const trail = this.cyberSlowTrail;
-    if(!this.cyberSlowActive || !trail || !trail.length) return;
+    if(!trail || !trail.length) return;
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
     ctx.lineCap = 'round';
@@ -16720,12 +16746,13 @@ class Player {
       const idx = (i+1)/trail.length;
       const ay = a.y + bob*0.28;
       const by = b.y + bob*0.28;
+      // rastro colorido: ciano -> violeta -> magenta ao longo do caminho
       ctx.globalAlpha = 0.08 + p*0.30*idx;
-      ctx.strokeStyle = '#f0abfc';
+      ctx.strokeStyle = `hsla(${Math.round(188 + idx*118)}, 100%, 62%, 0.85)`;
       ctx.lineWidth = 2 + idx*10;
       ctx.beginPath(); ctx.moveTo(a.x, ay); ctx.lineTo(b.x, by); ctx.stroke();
       ctx.globalAlpha = 0.10 + p*0.48*idx;
-      ctx.strokeStyle = '#22d3ee';
+      ctx.strokeStyle = `hsla(${Math.round(206 + idx*118)}, 100%, 72%, 0.95)`;
       ctx.lineWidth = 1.2 + idx*5.5;
       ctx.beginPath(); ctx.moveTo(a.x, ay); ctx.lineTo(b.x, by); ctx.stroke();
       ctx.globalAlpha = 0.18 + p*0.72*idx;
@@ -25736,6 +25763,9 @@ if(e.canDamageHead()){
       else if(ex.isGiroAureo) targetR=ex.radiusTarget || GIRO_AUREO.explosionRadius;
       else if(ex.isChicoteGift) targetR=36;
       else if(ex.isChicoteHat) targetR=30;
+      else if(ex.isCyberSlowPulse) targetR=180;
+      else if(ex.isCyberSlowFlash) targetR=42;
+      else if(ex.isCyberSlowEnd) targetR=90;
       const r = 14 + (1-alpha)* (targetR - 14);
       if(ex.isFlameSword){
         ctx.strokeStyle=`rgba(255,90,0,${alpha*0.60})`;
@@ -26233,6 +26263,38 @@ if(e.canDamageHead()){
         ctx.fillStyle=`rgba(139,69,19,${alpha*0.92})`;
         ctx.font='8px monospace'; ctx.textAlign='center';
         ctx.fillText('🎩', ex.x, ex.y+3); ctx.textAlign='left';
+      } else if(ex.isCyberSlowPulse){
+        // SANDEVISTAN: onda de tempo da ativação — anéis ciano/magenta expandindo
+        ctx.strokeStyle=`rgba(34,211,238,${alpha*0.68})`;
+        ctx.lineWidth=3.6;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.stroke();
+        ctx.strokeStyle=`rgba(240,171,252,${alpha*0.48})`;
+        ctx.lineWidth=1.8;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.82, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle=`rgba(34,211,238,${alpha*0.10})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle=`rgba(255,255,255,${alpha*0.55})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.16, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle=`rgba(165,243,252,${alpha*0.4})`;
+        ctx.lineWidth=1.2; ctx.setLineDash([6,5]); ctx.lineDashOffset=-alpha*40;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.62, 0, Math.PI*2); ctx.stroke();
+        ctx.setLineDash([]); ctx.lineDashOffset=0;
+      } else if(ex.isCyberSlowFlash){
+        // SANDEVISTAN: flash branco central da ativação (o "frame parado")
+        ctx.fillStyle=`rgba(180,250,255,${alpha*0.5})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle=`rgba(255,255,255,${alpha*0.9})`;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.5, 0, Math.PI*2); ctx.fill();
+      } else if(ex.isCyberSlowEnd){
+        // SANDEVISTAN desligando: snap vermelho — o tempo volta de uma vez
+        ctx.strokeStyle=`rgba(255,60,90,${alpha*0.60})`;
+        ctx.lineWidth=3;
+        ctx.setLineDash([3,7]); ctx.lineDashOffset=alpha*30;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI*2); ctx.stroke();
+        ctx.setLineDash([]); ctx.lineDashOffset=0;
+        ctx.strokeStyle=`rgba(255,255,255,${alpha*0.35})`;
+        ctx.lineWidth=1.4;
+        ctx.beginPath(); ctx.arc(ex.x, ex.y, r*0.66, 0, Math.PI*2); ctx.stroke();
       } else {
         // kamikaze padrão (variação brutal/elite = mais vermelho/intenso)
         const isBruteKamikaze = ex.isKamikazeVariation==='brute' || ex.isKamikazeVariation==='elite';
@@ -28578,47 +28640,6 @@ class Game {
     }
     this._aspectIoiOrbit = null;
   }
-  // ===== ASPECTO "GARRA DO INDIANA" (aspecto do Chicote) =====
-  // O projétil que crava na parede explode no ponto da âncora: dano em área + atordoamento.
-  spawnAspectAnchorBlast(x, y){
-    const room = this.currentRoom;
-    if(!room) return;
-    const R = UPGRADE_VALUES.ASPECT_GARRA_RADIUS;
-    const D = UPGRADE_VALUES.ASPECT_GARRA_DAMAGE;
-    const S = UPGRADE_VALUES.ASPECT_GARRA_STUN;
-    if(room.explosions) room.explosions.push({x, y, radius: 14, life: 380, max: 380, isBazuca:true, radiusTarget: R});
-    for(let k=0;k<22;k++){
-      const ang = Math.random()*Math.PI*2, sp = randRange(2.2,6);
-      this.particles.push(new Particle(x, y, Math.cos(ang)*sp, Math.sin(ang)*sp, randRange(260,460), ['#ff8c42','#ffcc00','#ff3b30'][randInt(0,2)], randInt(2,4)));
-    }
-    for(let k=0;k<8;k++) this.particles.push(new Particle(x, y, randRange(-1.4,1.4), randRange(-1.4,0.5), 320, 'rgba(255,255,255,0.85)', 2));
-    for(const e of room.enemies){
-      if(e.dead) continue;
-      if(e.type==='stair_boss'){
-        for(const hand of e.getHands()){
-          if(hand.dead || hand.invulnerable) continue;
-          if(dist(x, y, hand.x, hand.y) < R){
-            hand.takeDamage(D);
-            hand.hitFlash = 110;
-            if(hand.stunTimer!==undefined) hand.stunTimer = Math.max(hand.stunTimer||0, S);
-          }
-        }
-        continue;
-      }
-      const d = dist(x, y, e.x, e.y);
-      if(d < R){
-        const falloff = 1 - (d/R)*0.5;
-        e.takeDamage(D*falloff);
-        e.hitFlash = 110;
-        const ang = Math.atan2(e.y-y, e.x-x) || Math.random()*Math.PI*2;
-        e.x += Math.cos(ang)*(6 + falloff*10);
-        e.y += Math.sin(ang)*(6 + falloff*10);
-        if(e.stunTimer!==undefined && e.type!=='miniboss') e.stunTimer = Math.max(e.stunTimer||0, S);
-        this.keepEnemyInsideRoom(e, room);
-      }
-    }
-    this.shake = Math.max(this.shake, 58);
-  }
   // ===== ASPECTO "ONDA DE RETORNO" (aspecto do Bastão) =====
   // Quando o projétil volta para a mão, solta uma onda radial: dano + empurrão + atordoamento.
   spawnAspectReturnWave(x, y){
@@ -29339,8 +29360,8 @@ class Game {
     this.player.cyberSlowActive = cyberActive;
     // Campo de tempo: renova enquanto ativo e mantém os inimigos ao redor lentos
     // por alguns segundos depois de desligar.
-    if(cyberActive) this.player.cyberSlowLinger = CYBER_SLOW_AURA_LINGER_MS;
-    else this.player.cyberSlowLinger = Math.max(0, (this.player.cyberSlowLinger||0) - dt);
+    // sem lentidão residual: ao desligar, TODOS os inimigos voltam ao normal na hora
+    this.player.cyberSlowLinger = 0;
     const enemyTimeScale = cyberActive ? (this.player.equippedSpecial.timeScale || CYBER_SLOW_ENEMY_TIME_SCALE) : 1;
     const projectileTimeScale = cyberActive ? (this.player.equippedSpecial.projectileTimeScale || CYBER_SLOW_PROJECTILE_TIME_SCALE) : 1;
     // Atualiza aliados (Flecha Stand, Drone Sentinela e guardião do Barbosa) - duração e IA própria
@@ -30099,10 +30120,6 @@ class Game {
       // ASPECTO "PRESA NA PAREDE": o projétil cravou -> puxa o jogador até ele
       if(b.anchored){
         b.anchored = false;
-        // ASPECTO "GARRA DO INDIANA" (aspecto do Chicote): a âncora explode ao cravar
-        if(this.player && this.player.weapon && this.player.weapon._aspectGarra){
-          this.spawnAspectAnchorBlast(b.anchorX, b.anchorY);
-        }
         if(this.player && !this.player.aspectPull && this.player.startAspectPull(b.anchorX, b.anchorY)){
           this.shake = Math.max(this.shake, 22);
           for(let k=0;k<10;k++) globalParticles.push(new Particle(b.anchorX, b.anchorY, randRange(-1.6,1.6), randRange(-1.4,0.6), 260, 'rgba(255,205,140,0.9)', 1.8));
@@ -31072,62 +31089,278 @@ class Game {
     if(!sp || sp.id!=='cyber_slow' || !sp.isActive) return;
     const t = performance.now();
     const pulse = 0.5 + Math.sin(t*0.006)*0.5;
+    // ===== SANDEVISTAN (estilo Edgerunners) =====
+    // O mundo desacelerado: vinheta escura nas bordas + aberração cromática
+    // (RGB split) + scanlines cianas + anéis de tempo expandindo do usuário.
     ctx.save();
+    // Vinheta: escurece as bordas para o mundo "lavar" durante o slow
+    const vig = ctx.createRadialGradient(
+      p.x, p.y, Math.min(CANVAS_W,CANVAS_H)*0.22,
+      p.x, p.y, Math.max(CANVAS_W,CANVAS_H)*0.72
+    );
+    vig.addColorStop(0, 'rgba(2,6,23,0)');
+    vig.addColorStop(0.68, `rgba(2,6,23,${0.13+pulse*0.04})`);
+    vig.addColorStop(1, `rgba(2,6,23,${0.31+pulse*0.07})`);
+    ctx.fillStyle = vig;
+    ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+    // Aberração cromática: bordas vermelho/ciano deslocadas e pulsando (RGB split)
     ctx.globalCompositeOperation = 'screen';
+    const ca = 1.5 + pulse*2.5;
+    ctx.fillStyle = `rgba(255,0,80,${0.07+pulse*0.04})`;
+    ctx.fillRect(0, 0, ca, CANVAS_H);
+    ctx.fillRect(CANVAS_W-ca-3, 0, ca, CANVAS_H);
+    ctx.fillRect(0, 0, CANVAS_W, ca);
+    ctx.fillRect(0, CANVAS_H-ca-3, CANVAS_W, ca);
+    ctx.fillStyle = `rgba(0,229,255,${0.07+pulse*0.04})`;
+    ctx.fillRect(ca+1, 0, 2, CANVAS_H);
+    ctx.fillRect(CANVAS_W-ca-6, 0, 2, CANVAS_H);
+    ctx.fillRect(0, ca+1, CANVAS_W, 2);
+    ctx.fillRect(0, CANVAS_H-ca-6, CANVAS_W, 2);
+    // brilho central ciano no usuário
     const glow = ctx.createRadialGradient(p.x, p.y, 10, p.x, p.y, Math.max(CANVAS_W,CANVAS_H)*0.72);
-    glow.addColorStop(0, `rgba(34,211,238,${0.10+pulse*0.04})`);
-    glow.addColorStop(0.45, 'rgba(34,211,238,0.035)');
+    glow.addColorStop(0, `rgba(34,211,238,${0.065+pulse*0.03})`);
+    glow.addColorStop(0.45, 'rgba(34,211,238,0.02)');
     glow.addColorStop(0.72, `rgba(240,171,252,${0.03+pulse*0.025})`);
     glow.addColorStop(1, 'rgba(2,6,23,0)');
     ctx.fillStyle = glow;
     ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
-    ctx.globalAlpha = 0.10 + pulse*0.05;
+    ctx.globalAlpha = 0.055 + pulse*0.035;
     ctx.fillStyle = '#22d3ee';
     const off = (t*0.035)%9;
     for(let y=off;y<CANVAS_H;y+=9) ctx.fillRect(0,y,CANVAS_W,1);
-    ctx.globalAlpha = 0.06;
+    ctx.globalAlpha = 0.045;
     ctx.fillStyle = '#f0abfc';
     for(let y=(t*0.021+4)%17;y<CANVAS_H;y+=17) ctx.fillRect(0,y,CANVAS_W,2);
     ctx.globalAlpha = 1;
-    for(let i=0;i<4;i++){
-      const phase = ((t*0.00035 + i/4)%1);
+    // Anéis de tempo: ondas concêntricas saindo do usuário (o "campo" do slow)
+    for(let i=0;i<3;i++){
+      const phase = ((t*0.00035 + i/3)%1);
       const r = 18 + phase*Math.max(CANVAS_W,CANVAS_H)*0.62;
-      ctx.strokeStyle = `rgba(34,211,238,${(1-phase)*0.16})`;
-      ctx.lineWidth = 1.2 + phase*1.4;
+      ctx.strokeStyle = i%2 ? `rgba(240,171,252,${(1-phase)*0.11})` : `rgba(34,211,238,${(1-phase)*0.15})`;
+      ctx.lineWidth = 1.2 + phase*1.6;
       ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2); ctx.stroke();
     }
+    // faixa de varredura descendo
     const bandY = (t*0.08)%CANVAS_H;
-    ctx.fillStyle = `rgba(240,171,252,${0.035+pulse*0.03})`;
+    ctx.fillStyle = `rgba(240,171,252,${0.025+pulse*0.02})`;
     ctx.fillRect(0,bandY,CANVAS_W,3);
-    ctx.fillStyle = 'rgba(34,211,238,0.12)';
-    ctx.fillRect(0,0,3,CANVAS_H);
-    ctx.fillRect(CANVAS_W-3,0,3,CANVAS_H);
-    ctx.fillStyle = 'rgba(240,171,252,0.08)';
-    ctx.fillRect(3,0,2,CANVAS_H);
-    ctx.fillRect(CANVAS_W-5,0,2,CANVAS_H);
+    // fragmentos de glitch flutuando (dados desacelerados no ar)
+    for(let i=0;i<3;i++){
+      const gh = 0.5 + Math.sin(t*0.004 + i*2.4)*0.5;
+      if(gh > 0.7){
+        const gx = (Math.sin(t*0.0009+i*1.7)*0.5+0.5)*CANVAS_W;
+        const gy = (Math.cos(t*0.0011+i*2.3)*0.5+0.5)*CANVAS_H;
+        ctx.fillStyle = 'rgba(34,211,238,0.16)';
+        ctx.fillRect(gx, gy, 8+gh*6, 1.4);
+        ctx.fillStyle = 'rgba(240,171,252,0.10)';
+        ctx.fillRect(gx+2, gy+2, 5+gh*4, 1);
+      }
+    }
+
+    // ===== ECOS DO MUNDO CONGELADO =====
+    // Cada inimigo deixa silhuetas atrás do próprio movimento: o mundo está
+    // tão lento que o rastro fica "impresso" no ar, como no desenho.
+    try{
+      const room = this.currentRoom;
+      if(room && room.enemies){
+        for(const e of room.enemies){
+          if(!e || e.dead) continue;
+          const vx = e.vx || 0, vy = e.vy || 0;
+          const ew = e.w || 18, eh = e.h || 18;
+          for(let k=2;k>=1;k--){
+            ctx.globalAlpha = 0.03 + 0.022*(3-k);
+            ctx.fillStyle = 'rgba(175,240,255,0.9)';
+            ctx.fillRect(e.x - ew/2 - vx*k*9, e.y - eh/2 - vy*k*9, ew, eh);
+          }
+        }
+        ctx.globalAlpha = 1;
+      }
+    }catch(e){}
+
+    // ===== O MUNDO LAVA: DESSATURAÇÃO FRIA (estilo Edgerunners) =====
+    // 'saturation' zera a cor de tudo que já foi desenhado (chão, inimigos,
+    // projéteis inimigos, partículas); depois entra uma lavagem azul-gelo.
+    // O Cyber Bug é redesenhado por cima, então ele segue saturado em ciano
+    // enquanto o resto do mundo vira quase preto-e-branco — o efeito do David.
+    ctx.save();
+    try{
+      ctx.globalCompositeOperation = 'saturation';
+      ctx.fillStyle = '#8a8a8a';
+      ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+    }catch(e){}
+    ctx.globalCompositeOperation = 'source-over';
+    // tinção fria: escurece de leve em vez de estourar o branco
+    ctx.fillStyle = `rgba(72,104,148,${(0.055+pulse*0.02).toFixed(3)})`;
+    ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+    const bleach = ctx.createRadialGradient(p.x, p.y, 24, p.x, p.y, Math.max(CANVAS_W,CANVAS_H)*0.78);
+    bleach.addColorStop(0, 'rgba(205,240,255,0.055)');
+    bleach.addColorStop(0.55, 'rgba(120,170,220,0.015)');
+    bleach.addColorStop(1, 'rgba(4,10,22,0.26)');
+    ctx.fillStyle = bleach;
+    ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+    ctx.restore();
+
+    // O Cyber Bug continua colorido por cima do véu (e seus tiros também).
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    try{ if(this.player && typeof this.player.draw === 'function') this.player.draw(ctx); }catch(e){}
+    try{ for(const b of this.bullets){ if(b && b.owner==='player' && !b.dead) b.draw(ctx); } }catch(e){}
+    ctx.restore();
+
+    // ===== LINHAS DE VELOCIDADE =====
+    // O ar sendo rasgado em direção ao David: riscos radiais que aceleram
+    // para fora do corpo e brilham em branco/ciano.
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const cx = p.x, cy = p.y;
+    for(let i=0;i<40;i++){
+      const a = (i/40)*Math.PI*2 + Math.sin(i*12.9898)*0.05;
+      const seed = themeHash(i*17, 3, 123);
+      const ph = ((t*0.0009*(0.6+seed*1.4) + seed) % 1);
+      const r0 = 84 + ph*ph*540;
+      const len = 16 + (1-ph)*58 + seed*24;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      ctx.globalAlpha = (0.035 + ph*0.16) * (0.5 + 0.5*Math.sin(t*0.004 + i));
+      ctx.strokeStyle = i%4===0 ? 'rgba(255,255,255,0.95)' : 'rgba(140,235,255,0.85)';
+      ctx.lineWidth = 0.5 + (1-ph)*1.7;
+      ctx.beginPath();
+      ctx.moveTo(cx + ca*r0, cy + sa*r0);
+      ctx.lineTo(cx + ca*(r0+len), cy + sa*(r0+len));
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // ===== GRÃO DE FILME =====
+    ctx.save();
+    for(let i=0;i<42;i++){
+      ctx.fillStyle = Math.random()<0.5 ? 'rgba(255,255,255,0.10)' : 'rgba(180,230,255,0.08)';
+      ctx.fillRect(Math.random()*CANVAS_W, Math.random()*CANVAS_H, 1.2, 1.2);
+    }
+    ctx.restore();
+
+    // ===== FLASH DE ATIVAÇÃO =====
+    const flashAge = p.cyberSlowFlashAt ? (t - p.cyberSlowFlashAt) : Infinity;
+    if(flashAge >= 0 && flashAge < 260){
+      const f = 1 - flashAge/260;
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = `rgba(212,242,255,${(0.28*f*f).toFixed(3)})`;
+      ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+      const rr = 40 + (1-f)*Math.max(CANVAS_W,CANVAS_H)*0.80;
+      ctx.strokeStyle = `rgba(205,245,255,${(0.40*f).toFixed(3)})`;
+      ctx.lineWidth = 2.5 + 5*f;
+      ctx.beginPath(); ctx.arc(p.x, p.y, rr, 0, Math.PI*2); ctx.stroke();
+      ctx.restore();
+    }
+
+    // ===== BANNER SANDEVISTAN =====
+    const bannerAge = p.cyberSlowBannerAt ? (t - p.cyberSlowBannerAt) : Infinity;
+    if(bannerAge >= 0 && bannerAge < 1300){
+      const f = 1 - bannerAge/1300;
+      const flick = (Math.floor(bannerAge/60)%5===0) ? 0.55 : 1;
+      const jit = bannerAge < 260 ? (1 - bannerAge/260)*4 : 0;
+      const bx = CANVAS_W/2, by = CANVAS_H*0.21;
+      ctx.save();
+      ctx.globalAlpha = f*flick*0.85;
+      ctx.font = hudFont(15);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(255,0,90,0.85)';
+      ctx.fillText('SANDEVISTAN', bx - 3 + jit, by);
+      ctx.fillStyle = 'rgba(0,229,255,0.85)';
+      ctx.fillText('SANDEVISTAN', bx + 3 - jit, by);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('SANDEVISTAN', bx, by);
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = 'rgba(34,211,238,0.80)';
+      ctx.fillRect(bx - 118, by + 13, 236, 1);
+      ctx.font = hudFont(6);
+      ctx.fillStyle = 'rgba(240,171,252,0.90)';
+      ctx.fillText('TEMPO ROUBADO', bx, by + 26);
+      ctx.restore();
+    }
     ctx.restore();
   }
 
   // Anel do campo de tempo: mostra o alcance da lentidão ao redor do jogador.
   // Também aparece durante a lentidão residual depois que o especial desliga.
-  drawCyberSlowAura(ctx){
+   drawCyberSlowAura(ctx){
+     const p = this.player;
+     const sp = p && p.equippedSpecial;
+     if(!sp || sp.id!=='cyber_slow') return;
+     if(!p.cyberSlowActive) return; // sem lentidão residual: o campo some junto
+     const t = performance.now();
+     const pulse = 0.5 + Math.sin(t*0.006)*0.5;
+     const a = 1;
+     ctx.save();
+     const R = CYBER_SLOW_AURA_RADIUS;
+     // SANDEVISTAN: campo de tempo com preenchimento suave (denso perto do
+     // usuário, esvaindo na borda) — é a zona onde o mundo quase para.
+     const field = ctx.createRadialGradient(p.x, p.y, R*0.18, p.x, p.y, R);
+     field.addColorStop(0, `rgba(34,211,238,${(0.075+pulse*0.03)*a})`);
+     field.addColorStop(0.55, `rgba(34,211,238,${(0.035+pulse*0.015)*a})`);
+     field.addColorStop(1, `rgba(240,171,252,${(0.05+pulse*0.03)*a})`);
+     ctx.fillStyle = field;
+     ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, Math.PI*2); ctx.fill();
+     // anel externo: traços "relógio" girando devagar (tempo roubado)
+     ctx.strokeStyle = `rgba(34,211,238,${((0.20+pulse*0.16)*a).toFixed(3)})`;
+     ctx.lineWidth = 1.6;
+     ctx.setLineDash([12,10]);
+     ctx.lineDashOffset = -t*0.05;
+     ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, Math.PI*2); ctx.stroke();
+     ctx.setLineDash([]);
+     // anel interno contra-rotativo magenta
+     ctx.strokeStyle = `rgba(240,171,252,${((0.10+pulse*0.10)*a).toFixed(3)})`;
+     ctx.lineWidth = 1;
+     ctx.setLineDash([5,14]);
+     ctx.lineDashOffset = t*0.03;
+     ctx.beginPath(); ctx.arc(p.x, p.y, R-8, 0, Math.PI*2); ctx.stroke();
+     ctx.setLineDash([]);
+     // varredura tipo radar: linha girando deixando rastro ciano
+     const sweep = (t*0.0011) % (Math.PI*2);
+     const grad = ctx.createLinearGradient(p.x, p.y, p.x+Math.cos(sweep)*R, p.y+Math.sin(sweep)*R);
+     grad.addColorStop(0, `rgba(165,243,252,${0.30*a})`);
+     grad.addColorStop(1, 'rgba(165,243,252,0)');
+     ctx.strokeStyle = grad;
+     ctx.lineWidth = 2;
+     ctx.beginPath();
+     ctx.moveTo(p.x, p.y);
+     ctx.lineTo(p.x+Math.cos(sweep)*R, p.y+Math.sin(sweep)*R);
+     ctx.stroke();
+     // marcas de hora no perímetro (12 traços, como mostrador congelado)
+     ctx.strokeStyle = `rgba(165,243,252,${(0.22*a).toFixed(3)})`;
+     ctx.lineWidth = 1.2;
+     for(let i=0;i<12;i++){
+       const an = i/12*Math.PI*2 - t*0.0002;
+       const c=Math.cos(an), s=Math.sin(an);
+       ctx.beginPath();
+       ctx.moveTo(p.x+c*(R-4), p.y+s*(R-4));
+       ctx.lineTo(p.x+c*(R+4), p.y+s*(R+4));
+       ctx.stroke();
+     }
+     ctx.restore();
+   }
+
+  // Glitch curto de saída do Sandevistan: o mundo volta de uma vez.
+  drawCyberSlowExitGlitch(ctx){
     const p = this.player;
     const sp = p && p.equippedSpecial;
-    if(!sp || sp.id!=='cyber_slow') return;
-    if(!p.cyberSlowActive && (p.cyberSlowLinger||0) <= 0) return;
-    const t = performance.now();
-    const pulse = 0.5 + Math.sin(t*0.006)*0.5;
-    const a = p.cyberSlowActive ? 1 : clamp((p.cyberSlowLinger||0)/CYBER_SLOW_AURA_LINGER_MS, 0, 1);
+    if(!sp || sp.id!=='cyber_slow' || !p.cyberSlowEndAt) return;
+    const age = performance.now() - p.cyberSlowEndAt;
+    if(age < 0 || age > 360) return;
+    const f = 1 - age/360;
     ctx.save();
-    ctx.strokeStyle = `rgba(34,211,238,${((0.16+pulse*0.14)*a).toFixed(3)})`;
-    ctx.lineWidth = 1.6;
-    ctx.setLineDash([12,10]);
-    ctx.lineDashOffset = -t*0.05;
-    ctx.beginPath(); ctx.arc(p.x, p.y, CYBER_SLOW_AURA_RADIUS, 0, Math.PI*2); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.strokeStyle = `rgba(240,171,252,${((0.08+pulse*0.08)*a).toFixed(3)})`;
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(p.x, p.y, CYBER_SLOW_AURA_RADIUS-8, 0, Math.PI*2); ctx.stroke();
+    ctx.globalCompositeOperation = 'screen';
+    for(let i=0;i<5;i++){
+      const sy = themeHash(i*7, 3, 5)*CANVAS_H;
+      const sh = (themeHash(i, 9, 5)-0.5)*38*f;
+      ctx.globalAlpha = 0.07 + themeHash(i,1,7)*0.10*f;
+      ctx.fillStyle = i%2 ? '#ff2d6f' : '#22d3ee';
+      ctx.fillRect(sh, sy, CANVAS_W, 3 + themeHash(i,5,2)*8);
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = `rgba(255,60,120,${(0.12*f).toFixed(3)})`;
+    ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
     ctx.restore();
   }
 
@@ -31308,6 +31541,7 @@ class Game {
       for(const p of this.particles) p.draw(ctx);
       this.drawCyberSlowOverlay(ctx);
       this.drawCyberSlowAura(ctx);
+      this.drawCyberSlowExitGlitch(ctx);
       // ===================== HUD =====================
       // Tudo cabe dentro da faixa da parede (0..WALL_THICK): não cobre o chão, os itens
       // derrubados e o vão da porta de cima (janela livre HUD_LEFT_MAX..HUD_RIGHT_MIN).
