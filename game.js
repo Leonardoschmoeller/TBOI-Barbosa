@@ -25126,21 +25126,6 @@ if(e.canDamageHead()){
         }
       }
       ctx.globalAlpha=1; ctx.textAlign='left';
-      // sinete arcano no centro da sala
-      const cx=CANVAS_W/2, cy=CANVAS_H/2, R=54;
-      ctx.strokeStyle='rgba(217,70,239,0.16)'; ctx.lineWidth=1.4;
-      ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.stroke();
-      ctx.beginPath(); ctx.arc(cx,cy,R-12,0,Math.PI*2); ctx.stroke();
-      for(let i=0;i<8;i++){
-        const a = i/8*Math.PI*2 + anim*0.0002;
-        ctx.beginPath();
-        ctx.moveTo(cx+Math.cos(a)*(R-12), cy+Math.sin(a)*(R-12));
-        ctx.lineTo(cx+Math.cos(a)*R, cy+Math.sin(a)*R);
-        ctx.stroke();
-      }
-      ctx.beginPath();
-      for(let i=0;i<3;i++){ const a=i/3*Math.PI*2 - Math.PI/2; const px=cx+Math.cos(a)*(R-18), py=cy+Math.sin(a)*(R-18); i?ctx.lineTo(px,py):ctx.moveTo(px,py); }
-      ctx.closePath(); ctx.stroke();
       // rachaduras luminosas
       for(let gy=top+34; gy<bottom-30; gy+=90){
         for(let gx=left+34; gx<right-40; gx+=118){
@@ -25182,17 +25167,6 @@ if(e.canDamageHead()){
         const py = top+20 + ((h*997 + anim*0.012*(0.4+h))%(bottom-top-40));
         ctx.fillStyle = i%3===0 ? `rgba(255,215,0,${(0.16+pulse*0.10).toFixed(3)})` : `rgba(255,70,40,${(0.14+pulse*0.08).toFixed(3)})`;
         ctx.beginPath(); ctx.arc(px,py,1+h*1.6,0,Math.PI*2); ctx.fill();
-      }
-      // símbolo viral pulsante
-      const cx=CANVAS_W/2, cy=CANVAS_H/2;
-      ctx.strokeStyle=`rgba(255,80,40,${(0.10+pulse*0.05).toFixed(3)})`; ctx.lineWidth=1.4;
-      for(let r=0;r<3;r++){
-        const R=26+r*10;
-        ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.stroke();
-        for(let i=0;i<6;i++){
-          const a=i/6*Math.PI*2 + r*0.4;
-          ctx.beginPath(); ctx.moveTo(cx+Math.cos(a)*R, cy+Math.sin(a)*R); ctx.lineTo(cx+Math.cos(a)*(R+7), cy+Math.sin(a)*(R+7)); ctx.stroke();
-        }
       }
     }
 
